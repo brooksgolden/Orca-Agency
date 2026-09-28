@@ -65,6 +65,8 @@ export function useWorktreeDragRuntime(args: {
     if (drag.frameId !== null) {
       window.cancelAnimationFrame(drag.frameId)
     }
+    drag.releaseWebviewDragPassthrough?.()
+    drag.releaseWebviewDragPassthrough = null
     drag.preview?.remove()
     worktreePointerDragRef.current = null
     setSidebarPointerDragDocumentStyles(false)

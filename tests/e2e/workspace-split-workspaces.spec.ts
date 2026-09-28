@@ -74,6 +74,34 @@ test('sidebar pairing, member navigation, unsplit, and workspace drag keep full 
   await expect(surface(firstId)).toBeVisible()
   await expect(surface(secondId)).toBeVisible()
   await expect(row(secondId)).toHaveAttribute('aria-current', 'page')
+
+  // A card released over the workspace area where no pane takes it is a cancel: no
+  // sidebar reorder, and the sort mode stays as the user chose it.
+  await orcaPage.evaluate(() => window.__store!.getState().setSortBy('recent'))
+  const rowOrder = () =>
+    orcaPage.evaluate(() =>
+      Array.from(document.querySelectorAll('[role="option"][data-worktree-id]')).map((element) =>
+        element.getAttribute('data-worktree-id')
+      )
+    )
+  const orderBefore = await rowOrder()
+  const firstRowBox = await row(firstId).boundingBox()
+  const ownPaneBox = await surface(secondId).boundingBox()
+  expect(firstRowBox).not.toBeNull()
+  expect(ownPaneBox).not.toBeNull()
+  await row(secondId)
+    .locator('[data-worktree-card-surface]')
+    .dragTo(surface(secondId), {
+      sourcePosition: { x: 80, y: 16 },
+      targetPosition: {
+        x: Math.floor(ownPaneBox!.width / 2),
+        y: Math.max(1, Math.floor(firstRowBox!.y + firstRowBox!.height / 2 - ownPaneBox!.y))
+      }
+    })
+  await expect(orcaPage.locator('[data-workspace-split="true"]')).toBeVisible()
+  expect(await orcaPage.evaluate(() => window.__store!.getState().sortBy)).toBe('recent')
+  expect(await rowOrder()).toEqual(orderBefore)
+
   await orcaPage.reload()
   await row(firstId).locator('[data-worktree-card-surface]').click()
   await expect(orcaPage.locator('[data-workspace-split="true"]')).toBeVisible()

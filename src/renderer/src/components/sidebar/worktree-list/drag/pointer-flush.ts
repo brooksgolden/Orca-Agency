@@ -6,7 +6,11 @@ import {
   updateWorkspaceKanbanSidebarDropTargetVisual
 } from '../../workspace-kanban-sidebar-drop'
 import { updateSidebarDragPreviewPosition } from '../../worktree-sidebar-pointer-drag-dom'
-import { getPointerDropStatusTarget, shouldPreferSidebarStatusDropTarget } from './status-target'
+import {
+  getPointerDropStatusTarget,
+  isPointBesideSidebar,
+  shouldPreferSidebarStatusDropTarget
+} from './status-target'
 import type { WorktreeDropCommitContext } from './drop-commit-context'
 import {
   applyWorktreeDropPreview,
@@ -124,6 +128,14 @@ export function flushWorktreePointerDragFrame(args: WorktreePointerDragFrameArgs
   }
 
   const sidebarContainer = ctx.scrollRef.current
+  // Why: reorder slots are resolved from Y alone, so a card carried over a workspace pane
+  // would otherwise preview, and on release commit, a sidebar reorder nobody aimed at.
+  if (isPointBesideSidebar(sidebarContainer, drag.currentX)) {
+    drag.reorderIntent = null
+    drag.latestStatusDropTarget = null
+    clearInsertionLine(args)
+    return
+  }
   const preferredStatusTarget = ctx.getEligibleLineageDropTarget(
     sidebarContainer
       ? getPointerDropStatusTarget({

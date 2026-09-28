@@ -92,6 +92,9 @@ export function TerminalSplitWorkspaceSurfaces({
           : []
       : []
   const visibleIdsKey = visibleIds.join('\u0000')
+  // Why: the root below mounts only once a layout exists. Keying the listener effect on
+  // it re-attaches drop handling when the root appears after the visible ids settled.
+  const rendersRoot = anyMountedWorktreeHasLayout || group !== null
   useEffect(() => {
     const root = rootRef.current
     if (!root) {
@@ -211,8 +214,8 @@ export function TerminalSplitWorkspaceSurfaces({
       document.removeEventListener(WORKSPACE_PANE_POINTER_DROP, onPointerDrop)
       document.removeEventListener(WORKSPACE_PANE_POINTER_CLEAR, onPointerClear)
     }
-  }, [visibleIdsKey])
-  if (!anyMountedWorktreeHasLayout && !group) {
+  }, [visibleIdsKey, rendersRoot])
+  if (!rendersRoot) {
     return null
   }
   const renderSurface = (workspace: (typeof workspaceSurfaces)[number], isVisible: boolean) => {

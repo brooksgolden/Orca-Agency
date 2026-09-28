@@ -160,6 +160,40 @@ describe('combined nesting and animated reordering', () => {
   })
 })
 
+describe('dragging over a workspace pane', () => {
+  it('shows no sidebar reorder while the pointer is beside the sidebar', () => {
+    const t = setup()
+    const container = document.createElement('div')
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 240,
+      bottom: 800,
+      width: 240,
+      height: 800,
+      toJSON: () => ({})
+    })
+    t.args.ctx.scrollRef.current = container
+    const computeWorktreeDrop = vi.fn(t.args.ctx.computeWorktreeDrop)
+    t.args.ctx.computeWorktreeDrop = computeWorktreeDrop
+    flushWorktreePointerDragFrame(t.args)
+    t.tick(160)
+    expect(t.state().dropIndicatorY).toBe(300)
+
+    t.args.drag.currentX = 600
+    flushWorktreePointerDragFrame(t.args)
+    expect(t.state().dropIndicatorY).toBeNull()
+    expect(t.state().lineageDropTargetId).toBeNull()
+    expect(t.args.drag.reorderIntent).toBeNull()
+    expect(t.args.drag.latestStatusDropTarget).toBeNull()
+    const callsBeside = computeWorktreeDrop.mock.calls.length
+    t.tick(160)
+    expect(computeWorktreeDrop.mock.calls).toHaveLength(callsBeside)
+  })
+})
+
 describe('stationary pointer autoscroll', () => {
   it.each([1, -1])('keeps the gap tracking slots while scrolling in direction %s', (direction) => {
     const t = setup()
@@ -232,6 +266,15 @@ describe('Escape during pointer dragging', () => {
     window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }))
     expect(commitWorktreePointerDrop).not.toHaveBeenCalled()
     expect(t.result.current.worktreeDragState).toBe(WORKTREE_ROW_DRAG_INITIAL_STATE)
+  })
+
+  it('gives browser panes the pointer back when the drag ends', () => {
+    const t = renderDrag()
+    const release = vi.fn()
+    t.args.drag.releaseWebviewDragPassthrough = release
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
+    expect(release).toHaveBeenCalledOnce()
+    expect(t.args.drag.releaseWebviewDragPassthrough).toBeNull()
   })
 
   it('leaves other keys and Escape without a drag available to the app', () => {

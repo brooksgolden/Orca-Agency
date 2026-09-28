@@ -1,7 +1,9 @@
 import React from 'react'
 
 import { cn } from '@/lib/utils'
+import { useAppStore } from '@/store'
 import { WorktreeCardHeader } from './worktree-card-header'
+import { canMarkWorkspaceDone } from './worktree-card-mark-done'
 import { WorktreeCardMetaRow } from './worktree-card-meta-row'
 import { WorktreeCardDetailsHover } from './WorktreeCardMeta'
 import { WorktreeCardPortsDetails } from './WorktreeCardPorts'
@@ -64,6 +66,13 @@ export function WorktreeCardParentContent({
     hoverBranchName,
     hoverWorkspaceTitle
   } = presentation
+  // Why: Done rows have no Mark Done action, so they keep the unread quick action.
+  const markDoneAvailable = useAppStore(
+    (s) =>
+      card.groupBy === 'workspace-status' &&
+      !affiliateListMode &&
+      canMarkWorkspaceDone(worktree, s.workspaceStatuses)
+  )
 
   const identityContent = (
     <div
@@ -143,15 +152,13 @@ export function WorktreeCardParentContent({
           <WorktreeCardStatusSlot
             worktreeId={worktree.id}
             showStatus={showStatus}
-            showUnreadAction={showUnreadQuickAction && card.groupBy !== 'workspace-status'}
+            showUnreadAction={showUnreadQuickAction && !markDoneAvailable}
             isUnread={worktree.isUnread}
             unreadTooltip={unreadTooltip}
             onPointerDown={stopQuickActionPointerPropagation}
             onToggleUnread={handleToggleUnreadQuick}
             onMarkDone={
-              card.groupBy === 'workspace-status' &&
-              !affiliateListMode &&
-              (worktree.workspaceStatus == null || worktree.workspaceStatus === 'in-progress')
+              markDoneAvailable
                 ? (event) => {
                     event.preventDefault()
                     event.stopPropagation()

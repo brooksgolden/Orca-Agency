@@ -7,7 +7,11 @@ import {
 import { resolveWorkspaceKanbanCardDropCommitTarget } from '../../workspace-kanban-card-pointer-drag-dom'
 import { getFullDropIndexForWorktreeDragUnit } from '../../worktree-drag-units'
 import { resolveWorktreeSidebarStatusDropCommitTarget } from '../../worktree-sidebar-drop-preview'
-import { getPointerDropStatusTarget, shouldPreferSidebarStatusDropTarget } from './status-target'
+import {
+  getPointerDropStatusTarget,
+  isPointBesideSidebar,
+  shouldPreferSidebarStatusDropTarget
+} from './status-target'
 import type {
   WorktreeDropCommitContext,
   WorktreeStatusDropAtIndexArgs
@@ -65,6 +69,9 @@ export function commitWorktreePointerDrop(args: PointerDropCommitArgs): void {
   if (isWorkspaceKanbanSidebarDropPointInBoard(event.clientX, event.clientY)) {
     args.onWorkspaceBoardDragPreviewCommit()
   }
+  // Why: a release over the workspace area that no pane accepted is a cancel. Committing a
+  // Y-only reorder there would also switch the sidebar from Recent to Manual sorting.
+  const releasedBesideSidebar = isPointBesideSidebar(ctx.scrollRef.current, event.clientX)
   if (boardDropTarget.isPinDrop) {
     ctx.onPinWorktrees(drag.draggedIds)
   } else if (boardDropTarget.status) {
@@ -79,7 +86,7 @@ export function commitWorktreePointerDrop(args: PointerDropCommitArgs): void {
       ),
       groups: getWorkspaceKanbanSidebarDropGroups()
     })
-  } else {
+  } else if (!releasedBesideSidebar) {
     const preferredStatusTarget = ctx.getEligibleLineageDropTarget(
       ctx.scrollRef.current
         ? getPointerDropStatusTarget({

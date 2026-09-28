@@ -50,6 +50,8 @@ export type WorktreePointerDrag = {
   reorderIntent: { dropIndex: number; pointerY: number; startedAt: number } | null
   latestBoardDropTarget: WorkspaceKanbanCardTrackedDropTarget | null
   latestStatusDropTarget: WorktreeSidebarTrackedStatusDropTarget | null
+  /** Held while the drag is active so browser panes stay transparent to the pointer. */
+  releaseWebviewDragPassthrough?: (() => void) | null
 }
 
 export type WorktreeSidebarLineageDropTarget = WorktreeSidebarStatusDropTarget & {

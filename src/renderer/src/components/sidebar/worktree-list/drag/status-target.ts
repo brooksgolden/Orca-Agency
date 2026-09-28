@@ -36,6 +36,16 @@ export function getPointerDropStatusTarget(args: {
   }
 }
 
+/** True when the pointer is left or right of the sidebar column, e.g. over a workspace pane. */
+export function isPointBesideSidebar(container: HTMLElement | null, x: number): boolean {
+  if (!container) {
+    return false
+  }
+  const rect = container.getBoundingClientRect()
+  // An unmeasured (zero-width) column gives no horizontal bounds to test against.
+  return rect.width > 0 && (x < rect.left || x > rect.right)
+}
+
 export function shouldPreferSidebarStatusDropTarget(args: {
   sourceGroupKey: string
   target: WorktreeSidebarStatusDropTarget
