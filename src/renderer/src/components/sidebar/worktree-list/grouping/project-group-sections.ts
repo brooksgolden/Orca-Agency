@@ -77,9 +77,42 @@ export function appendProjectGroupSections(
     children.push(group)
     childGroupsByParentId.set(parentId, children)
   }
+  const recentRankByGroupId = new Map<string, { hasActivity: boolean; ts: number }>()
+  const recentRankForGroup = (groupId: string): { hasActivity: boolean; ts: number } => {
+    const cached = recentRankByGroupId.get(groupId)
+    if (cached) {
+      return cached
+    }
+    let rank = { hasActivity: false, ts: Number.NEGATIVE_INFINITY }
+    for (const entry of groupByProjectGroupId.get(groupId) ?? []) {
+      const candidate = recentRankForEntry(entry)
+      if (compareRecentRank(candidate, rank) < 0) {
+        rank = candidate
+      }
+    }
+    for (const pair of folderWorkspacesByProjectGroupId.get(groupId) ?? []) {
+      const candidate = { hasActivity: true, ts: pair.folderWorkspace.lastActivityAt }
+      if (compareRecentRank(candidate, rank) < 0) {
+        rank = candidate
+      }
+    }
+    for (const child of childGroupsByParentId.get(groupId) ?? []) {
+      const candidate = recentRankForGroup(child.id)
+      if (compareRecentRank(candidate, rank) < 0) {
+        rank = candidate
+      }
+    }
+    recentRankByGroupId.set(groupId, rank)
+    return rank
+  }
   for (const groups of childGroupsByParentId.values()) {
     groups.sort(
-      (left, right) => left.tabOrder - right.tabOrder || left.name.localeCompare(right.name)
+      (left, right) =>
+        (projectOrderBy === 'recent'
+          ? compareRecentRank(recentRankForGroup(left.id), recentRankForGroup(right.id))
+          : 0) ||
+        left.tabOrder - right.tabOrder ||
+        left.name.localeCompare(right.name)
     )
   }
 

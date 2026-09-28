@@ -51,7 +51,7 @@ function buildSidebarRows(options: {
   projectGroups?: readonly ProjectGroup[]
   worktrees?: (typeof worktree)[]
   collapsedGroups?: Set<string>
-  doneLaneComparator?: Parameters<typeof buildRows>[22]
+  statusLaneComparator?: Parameters<typeof buildRows>[22]
 }): Row[] {
   const worktrees = options.worktrees ?? [worktree]
   return buildRows(
@@ -77,7 +77,7 @@ function buildSidebarRows(options: {
     undefined,
     undefined,
     undefined,
-    options.doneLaneComparator
+    options.statusLaneComparator
   )
 }
 
@@ -107,7 +107,28 @@ it('interleaves Done folders and Git worktrees by activity instead of manual ord
         sortOrder: 0
       })
     ],
-    doneLaneComparator: buildWorktreeComparator('recent', new Map(), Date.now(), new Map())
+    statusLaneComparator: buildWorktreeComparator('recent', new Map(), Date.now(), new Map())
+  })
+  expect(
+    rows.flatMap((row) =>
+      row.type === 'item'
+        ? [row.worktree.id]
+        : row.type === 'folder-workspace'
+          ? [row.folderWorkspace.id]
+          : []
+    )
+  ).toEqual(['recent', worktree.id, 'old'])
+})
+
+it('interleaves In progress folders and Git worktrees by activity', () => {
+  const rows = buildSidebarRows({
+    groupBy: 'workspace-status',
+    worktrees: [{ ...worktree, workspaceStatus: 'in-progress', lastActivityAt: 20 }],
+    folderWorkspaces: [
+      makeFolderWorkspace({ id: 'old', lastActivityAt: 10, sortOrder: 100 }),
+      makeFolderWorkspace({ id: 'recent', lastActivityAt: 30, sortOrder: 0 })
+    ],
+    statusLaneComparator: buildWorktreeComparator('recent', new Map(), Date.now(), new Map())
   })
   expect(
     rows.flatMap((row) =>

@@ -91,6 +91,12 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       })
     const list = page.locator('[role="listbox"][data-worktree-sidebar]')
     await expect(row(ids[0])).toBeVisible()
+    await expect(row(ids[0]).locator('[data-worktree-status-context]')).toContainText(
+      'Smoke projects'
+    )
+    await expect(row(ids[0]).locator('[data-worktree-status-context]')).toContainText('d')
+    await row(ids[2]).getByRole('button', { name: 'Mark workspace Done' }).click()
+    await expect.poll(() => lane(ids[2])).toBe('completed')
     await row(ids[0]).locator('[data-worktree-card-surface]').click()
     await expect(page.locator('.xterm:visible')).toHaveCount(1, { timeout: 30_000 })
     await expect(list).toBeFocused()
@@ -168,6 +174,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       }, status)
     )
     await expect.poll(() => lane(ids[1])).toBe('in-progress')
+    await expect(row(ids[1])).toContainText('Smoke new task')
     await row(ids[1]).locator('[data-worktree-card-surface]').click()
     await page.keyboard.press('Delete')
     await expect.poll(() => lane(ids[1])).toBe('completed')

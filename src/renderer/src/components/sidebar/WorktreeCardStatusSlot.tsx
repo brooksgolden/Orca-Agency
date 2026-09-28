@@ -18,6 +18,7 @@ type WorktreeCardStatusSlotProps = {
   isUnread: boolean
   unreadTooltip: string
   onToggleUnread: React.MouseEventHandler<HTMLButtonElement>
+  onMarkDone?: React.MouseEventHandler<HTMLButtonElement>
   onPointerDown: React.PointerEventHandler<HTMLButtonElement>
   prDisplay?: WorktreeCardPrDisplay | null
   newCardStyle?: boolean
@@ -100,6 +101,7 @@ export function WorktreeCardStatusSlot({
   isUnread,
   unreadTooltip,
   onToggleUnread,
+  onMarkDone,
   onPointerDown,
   prDisplay = null,
   newCardStyle = false,
@@ -162,7 +164,12 @@ export function WorktreeCardStatusSlot({
   ) : newCardStyle && showStatus ? (
     <>
       <span className={cn('inline-flex size-5 items-center justify-center', className)}>
-        <StatusIndicator status={status} aria-hidden="true" tooltipSide="right" />
+        <StatusIndicator
+          status={status}
+          aria-hidden="true"
+          tooltipSide="right"
+          showTooltip={!onMarkDone}
+        />
       </span>
       <span className="sr-only">{passiveStatusAnnouncement}</span>
     </>
@@ -173,6 +180,7 @@ export function WorktreeCardStatusSlot({
         aria-hidden="true"
         className={className}
         tooltipSide="right"
+        showTooltip={!onMarkDone}
       />
       <span className="sr-only">{statusLabel}</span>
     </>
@@ -182,6 +190,28 @@ export function WorktreeCardStatusSlot({
 
   if (!showStatus && !unreadActionEnabled) {
     return null
+  }
+
+  if (showStatus && onMarkDone) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-workspace-board-preserve-open=""
+            onPointerDown={onPointerDown}
+            onClick={onMarkDone}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+            aria-label="Mark workspace Done"
+          >
+            {overlayNewCardUnreadStatus(passiveStatus, showNewCardUnreadAlert)}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>
+          Mark workspace Done
+        </TooltipContent>
+      </Tooltip>
+    )
   }
 
   if (!unreadActionEnabled) {

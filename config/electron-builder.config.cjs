@@ -203,6 +203,11 @@ module.exports = {
     // it is gitignored, but exclude it defensively so a stray local capture at
     // package time never bloats app.asar.
     '!pr-evidence{,/**/*}',
+    '!test-results{,/**/*}',
+    // Why: local packaging and native build leftovers can contain entire prior apps or
+    // node_modules trees. Neither is a runtime input for the packaged app.
+    '!dist{,/**/*}',
+    '!.build{,/**/*}',
     // Why: local agent/tooling directories may contain worktree symlink loops;
     // they are never runtime inputs and must not be traversed by electron-builder.
     '!{.claude,.grok,.agents,.codex}{,/**/*}',

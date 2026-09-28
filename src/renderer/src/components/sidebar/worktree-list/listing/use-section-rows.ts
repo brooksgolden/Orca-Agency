@@ -20,7 +20,11 @@ import { addHostSectionRows } from '../../host-section-rows'
 import { orderHostSectionOptions } from '../../host-section-order'
 import { buildSidebarHostOptions } from '../../sidebar-host-options'
 import { selectPendingWorktreeCreationKeys } from './pending-worktree-creation-keys'
-import { buildWorktreeComparator, type SortBy } from '../../smart-sort'
+import {
+  buildStatusGroupedSmartComparator,
+  buildWorktreeComparator,
+  type SortBy
+} from '../../smart-sort'
 import { buildAttentionByWorktree } from '../../smart-attention'
 import { folderWorkspaceToWorktree } from '../../../../../../shared/folder-workspace-worktree'
 import { getAgentStatusEpochNow } from '@/lib/agent-status-epoch-clock'
@@ -75,12 +79,12 @@ function collectRenderedSidebarRowKeys(sectionRows: ReturnType<typeof addHostSec
 // tier wrapped around them.
 export function useSidebarSectionRows(args: SectionRowsArgs) {
   const { repos, worktrees, repoMap, effectiveCollapsedGroups, defaultHostId } = args
-  const sortDoneFolders =
+  const sortStatusFolders =
     args.groupBy === 'workspace-status' &&
     (args.sortBy === 'smart' || args.sortBy === 'recent') &&
     args.visibleFolderWorkspacesForRows.length > 0
-  const agentStatusEpoch = useAppStore((s) => (sortDoneFolders ? s.agentStatusEpoch : 0))
-  const sortNow = sortDoneFolders ? getAgentStatusEpochNow(agentStatusEpoch) : 0
+  const agentStatusEpoch = useAppStore((s) => (sortStatusFolders ? s.agentStatusEpoch : 0))
+  const sortNow = sortStatusFolders ? getAgentStatusEpochNow(agentStatusEpoch) : 0
   const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
   const sshTargetLabels = useAppStore((s) => s.sshTargetLabels)
   const sshConnectionStates = useAppStore((s) => s.sshConnectionStates)
@@ -155,12 +159,9 @@ export function useSidebarSectionRows(args: SectionRowsArgs) {
   const rows: Row[] = useMemo(() => {
     const state = useAppStore.getState()
     const now = sortNow
-    const doneLaneComparator = sortDoneFolders
-      ? buildWorktreeComparator(
-          'recent',
-          repoMap,
-          now,
-          buildAttentionByWorktree(
+    const statusLaneComparator = sortStatusFolders
+      ? (() => {
+          const attention = buildAttentionByWorktree(
             [...worktrees, ...args.visibleFolderWorkspacesForRows.map(folderWorkspaceToWorktree)],
             state.tabsByWorktree,
             state.agentStatusByPaneKey,
@@ -170,7 +171,11 @@ export function useSidebarSectionRows(args: SectionRowsArgs) {
             state.migrationUnsupportedByPtyId,
             state.terminalLayoutsByTabId
           )
-        )
+          const base = buildWorktreeComparator(args.sortBy, repoMap, now, attention)
+          return args.sortBy === 'smart'
+            ? buildStatusGroupedSmartComparator(base, now, args.workspaceStatuses, attention)
+            : base
+        })()
       : undefined
     return buildRows(
       args.groupBy,
@@ -195,11 +200,12 @@ export function useSidebarSectionRows(args: SectionRowsArgs) {
       hostLabelById,
       defaultHostId,
       args.pinnedDisplayPolicy,
-      doneLaneComparator
+      statusLaneComparator
     )
   }, [
     args.groupBy,
-    sortDoneFolders,
+    args.sortBy,
+    sortStatusFolders,
     sortNow,
     worktrees,
     repoMap,

@@ -7,6 +7,7 @@ import { WorktreeCardDetailsHover } from './WorktreeCardMeta'
 import { WorktreeCardPortsDetails } from './WorktreeCardPorts'
 import type { WorktreeCardPresentation } from './worktree-card-presentation'
 import { WorktreeCardSecondaryRows } from './worktree-card-secondary-rows'
+import { WorktreeCardStatusContext } from './worktree-card-status-context'
 import { WorktreeCardStatusSlot } from './WorktreeCardStatusSlot'
 import type { WorktreeCardController } from './use-worktree-card-controller'
 
@@ -70,6 +71,7 @@ export function WorktreeCardParentContent({
       data-worktree-card-hover-trigger=""
     >
       <WorktreeCardHeader card={card} presentation={presentation} />
+      <WorktreeCardStatusContext card={card} />
       {presentation.hasMetaRow && <WorktreeCardMetaRow card={card} presentation={presentation} />}
     </div>
   )
@@ -141,11 +143,26 @@ export function WorktreeCardParentContent({
           <WorktreeCardStatusSlot
             worktreeId={worktree.id}
             showStatus={showStatus}
-            showUnreadAction={showUnreadQuickAction}
+            showUnreadAction={showUnreadQuickAction && card.groupBy !== 'workspace-status'}
             isUnread={worktree.isUnread}
             unreadTooltip={unreadTooltip}
             onPointerDown={stopQuickActionPointerPropagation}
             onToggleUnread={handleToggleUnreadQuick}
+            onMarkDone={
+              card.groupBy === 'workspace-status' &&
+              !affiliateListMode &&
+              (worktree.workspaceStatus == null || worktree.workspaceStatus === 'in-progress')
+                ? (event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    void card.updateWorktreeMeta(
+                      worktree.id,
+                      { workspaceStatus: 'completed' },
+                      { executionHostId: worktree.hostId ?? 'local' }
+                    )
+                  }
+                : undefined
+            }
             prDisplay={statusLaneReview}
             newCardStyle={newCardStyle}
             hasBranchIdentity={Boolean(branchIdentityDisplay)}

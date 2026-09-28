@@ -71,7 +71,7 @@ export function buildRows(
   hostLabelById?: ReadonlyMap<string, string>,
   defaultHostId: ExecutionHostId = LOCAL_EXECUTION_HOST_ID,
   pinnedDisplayPolicy: PinnedWorktreeDisplayPolicy = getPinnedWorktreeDisplayPolicy(settings),
-  doneLaneComparator?: (a: Worktree, b: Worktree) => number
+  statusLaneComparator?: (a: Worktree, b: Worktree) => number
 ): Row[] {
   const result: Row[] = []
   const projectIndex = buildProjectGroupingIndex(projectGrouping)
@@ -214,7 +214,7 @@ export function buildRows(
   })
 
   const sectionContext: SectionAppendContext = {
-    doneLaneComparator,
+    statusLaneComparator,
     result,
     groupBy,
     collapsedGroups,

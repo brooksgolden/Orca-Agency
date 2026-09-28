@@ -46,6 +46,24 @@ describe('WorktreeCardStatusSlot', () => {
     status: 'pending'
   }
 
+  it('uses the left status control for Done when the Status view provides that action', () => {
+    const markup = renderToStaticMarkup(
+      <WorktreeCardStatusSlot
+        worktreeId="wt-1"
+        showStatus
+        showUnreadAction
+        isUnread={false}
+        unreadTooltip="Mark as unread"
+        onPointerDown={vi.fn()}
+        onToggleUnread={vi.fn()}
+        onMarkDone={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('aria-label="Mark workspace Done"')
+    expect(markup).not.toContain('aria-label="Mark as unread"')
+  })
+
   it('lets the unread bell replace the visual status dot by default', () => {
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot

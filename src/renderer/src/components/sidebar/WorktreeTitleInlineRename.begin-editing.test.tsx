@@ -89,6 +89,7 @@ type ReactElementLike = {
 async function renderTitleRename(props: {
   beginEditing: boolean
   disabled?: boolean
+  displayLabel?: string
   onBeginEditingConsumed: () => void
   onRename?: (displayName: string) => Promise<void> | void
 }): Promise<unknown> {
@@ -183,6 +184,21 @@ describe('WorktreeTitleInlineRename beginEditing', () => {
     expect(inputs).toHaveLength(1)
     expect(inputs[0].props.value).toBe('Feature workspace')
     expect(inputs[0].props['data-worktree-title-rename-input']).toBe('true')
+  })
+
+  it('edits the workspace name when a conversation title is displayed', async () => {
+    const onBeginEditingConsumed = vi.fn()
+    const props = {
+      displayLabel: "Jake's website",
+      onBeginEditingConsumed
+    }
+
+    await renderTitleRename({ ...props, beginEditing: true })
+    const rerender = expandNode(await renderTitleRename({ ...props, beginEditing: false }))
+    const inputs = findElementsByType(rerender, 'input')
+
+    expect(inputs).toHaveLength(1)
+    expect(inputs[0].props.value).toBe('Feature workspace')
   })
 
   it('still consumes the trigger when the title is disabled', async () => {

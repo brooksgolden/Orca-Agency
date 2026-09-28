@@ -34,7 +34,7 @@ import { folderWorkspaceToWorktree } from '../../../../../../shared/folder-works
 
 /** Everything section emission reads that stays fixed for one buildRows call. */
 export type SectionAppendContext = {
-  doneLaneComparator?: (a: Worktree, b: Worktree) => number
+  statusLaneComparator?: (a: Worktree, b: Worktree) => number
   result: Row[]
   groupBy: WorktreeGroupBy
   collapsedGroups: Set<string>
@@ -213,11 +213,7 @@ export function appendOrderedGroups(
         hostContextLabelByWorktreeIdentity,
         cyclicLineageIds
       })
-      const compare =
-        groupBy === 'workspace-status' &&
-        getWorkspaceStatusFromGroupKey(key, workspaceStatuses) === 'completed'
-          ? ctx.doneLaneComparator
-          : undefined
+      const compare = groupBy === 'workspace-status' ? ctx.statusLaneComparator : undefined
       const orderedFolders = compare
         ? [...folderPairs].sort((a, b) =>
             compare(

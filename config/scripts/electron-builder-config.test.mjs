@@ -37,6 +37,9 @@ describe('electron-builder config', () => {
         '!tests{,/**/*}',
         '!examples{,/**/*}',
         '!pr-evidence{,/**/*}',
+        '!test-results{,/**/*}',
+        '!dist{,/**/*}',
+        '!.build{,/**/*}',
         '!{.claude,.grok,.agents,.codex}{,/**/*}',
         '!Casks{,/**/*}',
         '!{AGENTS.md,CLAUDE.md,DEVELOPING.md,bundle-size-progress.md,ORCHESTRATION_IMPLEMENTATION_CHECKLIST.md,ORCHESTRATION_STRUCTURED_OUTPUT_DESIGN.md}',
@@ -44,6 +47,18 @@ describe('electron-builder config', () => {
         '!resources/plugins/launch/**'
       ])
     )
+  })
+
+  it('keeps local package outputs and scratch builds out of app.asar', () => {
+    const matcher = new FileMatcher('/app', '/dest', (value) => value, electronBuilderConfig.files)
+    matcher.prependPattern('**/*')
+    const isPacked = matcher.createFilter()
+    const packs = (repoPath) => isPacked(join('/app', repoPath), { isDirectory: () => false })
+
+    expect(packs('dist/win-unpacked/resources/app.asar')).toBe(false)
+    expect(packs('.build/node_modules-broken/node_modules/example/index.js')).toBe(false)
+    expect(packs('test-results/sidebar-smoke/trace.zip')).toBe(false)
+    expect(packs('out/main/index.js')).toBe(true)
   })
 
   it('keeps local agent tooling out of app.asar', () => {

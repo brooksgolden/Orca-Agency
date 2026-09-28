@@ -8,10 +8,23 @@ import { useWorktreeCardLinkedDetails } from './use-worktree-card-linked-details
 import { useWorktreeCardReviewDetails } from './use-worktree-card-review-details'
 import { useWorktreeCardSecondaryDetails } from './use-worktree-card-secondary-details'
 import { useWorktreeCardWorkspaceActions } from './use-worktree-card-workspace-actions'
+import { useWorktreeAgentRows } from './useWorktreeAgentRows'
+import { getLatestWorkspaceAgentTitle } from './worktree-card-task-title'
 
 export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const { worktree, repo } = props
   const foundation = useWorktreeCardFoundation({ worktree, repo })
+  const statusContextAgents = useWorktreeAgentRows(
+    worktree.id,
+    foundation.groupBy === 'workspace-status' && !props.affiliateListMode
+  )
+  const statusTaskTitle =
+    foundation.groupBy === 'workspace-status'
+      ? getLatestWorkspaceAgentTitle(
+          statusContextAgents,
+          foundation.settings?.tabAutoGenerateTitle === true
+        )
+      : null
   const review = useWorktreeCardReviewDetails({
     worktree,
     repo,
@@ -142,6 +155,8 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
 
   return {
     ...props,
+    statusContextAgents,
+    statusTaskTitle,
     ...foundation,
     ...review,
     ...linked,

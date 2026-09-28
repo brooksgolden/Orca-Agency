@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildRows } from './worktree-list/grouping/build-rows'
 import { repo, worktree } from './worktree-list-groups-test-fixtures'
 import type { ProjectGroup } from '../../../../shared/project-group-types'
+import type { FolderWorkspace } from '../../../../shared/folder-workspace-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 
@@ -394,7 +395,7 @@ describe('project groups', () => {
     ])
   })
 
-  it('orders repos inside a Project Group by activity in recent mode, keeping tabOrder', () => {
+  it('orders Project Groups and their repos by recent activity', () => {
     const groupA: ProjectGroup = {
       id: 'group-a',
       name: 'Platform',
@@ -446,16 +447,14 @@ describe('project groups', () => {
       new Map(worktrees.map((entry) => [entry.id, entry])),
       false,
       undefined,
-      // Group headers always follow tabOrder (Infra=0 before Platform=1),
-      // independent of projectOrderBy.
       [groupA, groupB]
     )
 
     expect(rows.filter((row) => row.type === 'header').map((row) => row.key)).toEqual([
-      'project-group:group-b',
       'project-group:group-a',
       'repo:repo-fresh',
-      'repo:repo-stale'
+      'repo:repo-stale',
+      'project-group:group-b'
     ])
   })
 
@@ -518,5 +517,73 @@ describe('project groups', () => {
     expect(rows.filter((row) => row.type === 'header').map((row) => row.projectGroupDepth)).toEqual(
       [0, 1, 1, 0]
     )
+  })
+
+  it('ranks a parent group by recent folder workspace activity in its child group', () => {
+    const parent: ProjectGroup = {
+      id: 'parent',
+      name: 'General',
+      parentPath: '/general',
+      parentGroupId: null,
+      createdFrom: 'folder-scan',
+      tabOrder: 10,
+      isCollapsed: false,
+      color: null,
+      createdAt: 1,
+      updatedAt: 1
+    }
+    const other: ProjectGroup = { ...parent, id: 'other', name: 'Other', tabOrder: 0 }
+    const child: ProjectGroup = {
+      ...parent,
+      id: 'child',
+      name: 'Websites',
+      parentGroupId: parent.id,
+      tabOrder: 0
+    }
+    const folder = (
+      id: string,
+      projectGroupId: string,
+      lastActivityAt: number
+    ): FolderWorkspace => ({
+      id,
+      projectGroupId,
+      name: id,
+      folderPath: '/general',
+      linkedTask: null,
+      comment: '',
+      isArchived: false,
+      isUnread: false,
+      isPinned: false,
+      sortOrder: 0,
+      lastActivityAt,
+      createdAt: 1,
+      updatedAt: 1
+    })
+    const rows = buildRows(
+      'repo',
+      [],
+      new Map(),
+      null,
+      new Set(),
+      undefined,
+      undefined,
+      'recent',
+      {},
+      undefined,
+      false,
+      undefined,
+      [parent, other, child],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [folder('new', child.id, 200), folder('old', other.id, 100)]
+    )
+    expect(rows.filter((row) => row.type === 'header').map((row) => row.key)).toEqual([
+      'project-group:parent',
+      'project-group:child',
+      'project-group:other'
+    ])
   })
 })
