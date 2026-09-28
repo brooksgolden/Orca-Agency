@@ -16,6 +16,12 @@ import {
   WorkspaceSplitLayoutSlots,
   type WorkspacePaneRect
 } from './workspace-split/WorkspaceSplitLayoutSlots'
+import {
+  WORKSPACE_PANE_POINTER_CLEAR,
+  WORKSPACE_PANE_POINTER_DROP,
+  WORKSPACE_PANE_POINTER_MOVE,
+  readWorkspacePanePointerDetail
+} from './workspace-split/workspace-pane-pointer-drag'
 
 function nearestEdge(element: HTMLElement, x: number, y: number): WorkspaceSplitEdge {
   const bounds = element.getBoundingClientRect()
@@ -102,6 +108,32 @@ export function TerminalSplitWorkspaceSurfaces({
         ? surface
         : null
     }
+    const pointerSurface = (x: number, y: number): HTMLElement | null => {
+      const element = document.elementFromPoint(x, y)
+      const surface = element?.closest<HTMLElement>('[data-workspace-surface-id]')
+      return surface && root.contains(surface) && ids.has(surface.dataset.workspaceSurfaceId ?? '')
+        ? surface
+        : null
+    }
+    const placeWorkspace = (sourceId: string, surface: HTMLElement, x: number, y: number) => {
+      const targetId = surface.dataset.workspaceSurfaceId!
+      if (sourceId === targetId) {
+        return
+      }
+      const state = useAppStore.getState()
+      const existingGroup = findWorkspaceSplitGroup(state.workspaceSplitGroups, targetId)
+      if (
+        existingGroup &&
+        !collectWorkspaceIds(existingGroup.layout).includes(sourceId) &&
+        collectWorkspaceIds(existingGroup.layout).length >= MAX_WORKSPACE_PANES
+      ) {
+        toast.error(`A split can contain up to ${MAX_WORKSPACE_PANES} workspaces`)
+        return
+      }
+      if (activateAndRevealWorkspace(sourceId, { revealInSidebar: false }) !== false) {
+        useAppStore.getState().placeWorkspaceAtEdge(sourceId, targetId, nearestEdge(surface, x, y))
+      }
+    }
     const onDragOver = (event: DragEvent) => {
       const surface = targetSurface(event)
       if (!surface || !event.dataTransfer) {
@@ -131,34 +163,53 @@ export function TerminalSplitWorkspaceSurfaces({
       if (!sourceId || sourceId === targetId) {
         return
       }
-      const state = useAppStore.getState()
-      const existingGroup = findWorkspaceSplitGroup(state.workspaceSplitGroups, targetId)
-      if (
-        existingGroup &&
-        !collectWorkspaceIds(existingGroup.layout).includes(sourceId) &&
-        collectWorkspaceIds(existingGroup.layout).length >= MAX_WORKSPACE_PANES
-      ) {
-        toast.error(`A split can contain up to ${MAX_WORKSPACE_PANES} workspaces`)
-        return
-      }
-      if (activateAndRevealWorkspace(sourceId, { revealInSidebar: false }) !== false) {
-        useAppStore
-          .getState()
-          .placeWorkspaceAtEdge(
-            sourceId,
-            targetId,
-            nearestEdge(surface, event.clientX, event.clientY)
-          )
-      }
+      placeWorkspace(sourceId, surface, event.clientX, event.clientY)
     }
     const onDragEnd = () => setHover(null)
+    const onPointerMove = (event: Event) => {
+      const detail = readWorkspacePanePointerDetail(event)
+      if (!detail) {
+        return
+      }
+      const { sourceId, x, y } = detail
+      const surface = pointerSurface(x, y)
+      if (!surface || surface.dataset.workspaceSurfaceId === sourceId) {
+        setHover(null)
+        return
+      }
+      const next = { id: surface.dataset.workspaceSurfaceId!, edge: nearestEdge(surface, x, y) }
+      setHover((previous) =>
+        previous?.id === next.id && previous.edge === next.edge ? previous : next
+      )
+    }
+    const onPointerDrop = (event: Event) => {
+      const detail = readWorkspacePanePointerDetail(event)
+      if (!detail) {
+        return
+      }
+      const { sourceId, x, y } = detail
+      const surface = pointerSurface(x, y)
+      setHover(null)
+      if (!surface || surface.dataset.workspaceSurfaceId === sourceId) {
+        return
+      }
+      event.preventDefault()
+      placeWorkspace(sourceId, surface, x, y)
+    }
+    const onPointerClear = () => setHover(null)
     document.addEventListener('dragover', onDragOver, true)
     document.addEventListener('drop', onDrop, true)
     document.addEventListener('dragend', onDragEnd, true)
+    document.addEventListener(WORKSPACE_PANE_POINTER_MOVE, onPointerMove)
+    document.addEventListener(WORKSPACE_PANE_POINTER_DROP, onPointerDrop)
+    document.addEventListener(WORKSPACE_PANE_POINTER_CLEAR, onPointerClear)
     return () => {
       document.removeEventListener('dragover', onDragOver, true)
       document.removeEventListener('drop', onDrop, true)
       document.removeEventListener('dragend', onDragEnd, true)
+      document.removeEventListener(WORKSPACE_PANE_POINTER_MOVE, onPointerMove)
+      document.removeEventListener(WORKSPACE_PANE_POINTER_DROP, onPointerDrop)
+      document.removeEventListener(WORKSPACE_PANE_POINTER_CLEAR, onPointerClear)
     }
   }, [visibleIdsKey])
   if (!anyMountedWorktreeHasLayout && !group) {

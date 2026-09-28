@@ -2,7 +2,6 @@ import type React from 'react'
 import type { WorkspaceStatus } from '../../../../../../shared/worktree/types'
 import {
   clearWorkspaceKanbanSidebarDropTargetVisual,
-  hasWorkspaceKanbanSidebarDropBoard,
   isWorkspaceKanbanSidebarDropPointInBoard,
   updateWorkspaceKanbanSidebarDropTargetVisual
 } from '../../workspace-kanban-sidebar-drop'
@@ -98,15 +97,8 @@ export function flushWorktreePointerDragFrame(args: WorktreePointerDragFrameArgs
     ctx.clearWorktreeDrag()
     return
   }
-  // Why: show the board preview as soon as a card drag begins so the drop target is visible up front, not only at the sidebar edge.
-  if (
-    !drag.workspaceBoardDragPreviewRequested &&
-    !args.workspaceBoardOpen &&
-    !hasWorkspaceKanbanSidebarDropBoard()
-  ) {
-    drag.workspaceBoardDragPreviewRequested = true
-    args.onWorkspaceBoardDragPreviewStart()
-  }
+  // The board remains available through its explicit toolbar button. Opening it during a
+  // workspace drag covers the terminal pane that may be the intended split target.
   const boardTarget = updateWorkspaceKanbanSidebarDropTargetVisual({
     x: drag.currentX,
     y: drag.currentY,

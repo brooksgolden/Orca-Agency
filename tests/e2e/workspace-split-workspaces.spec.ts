@@ -64,8 +64,12 @@ test('sidebar pairing, member navigation, unsplit, and workspace drag keep full 
   const bounds = await surface(firstId).boundingBox()
   expect(bounds).not.toBeNull()
   await row(secondId)
-    .locator('[data-workspace-pane-drag-handle]')
-    .dragTo(surface(firstId), { targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) } })
+    .locator('[data-worktree-card-surface]')
+    .dragTo(surface(firstId), {
+      sourcePosition: { x: 80, y: 16 },
+      targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) }
+    })
+  await expect(orcaPage.locator('[data-workspace-board-sheet]')).toHaveCount(0)
   await expect(orcaPage.locator('[data-workspace-split="true"]')).toBeVisible()
   await expect(surface(firstId)).toBeVisible()
   await expect(surface(secondId)).toBeVisible()

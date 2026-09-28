@@ -6,6 +6,11 @@ import type {
 } from './drop-commit-context'
 import { commitWorktreePointerDrop } from './pointer-commit'
 import type { WorktreePointerDrag } from './row-state'
+import {
+  dispatchWorkspacePanePointerClear,
+  dispatchWorkspacePanePointerDrop,
+  dispatchWorkspacePanePointerMove
+} from '../../../workspace-split/workspace-pane-pointer-drag'
 
 const SIDEBAR_POINTER_DRAG_THRESHOLD_PX = 4
 
@@ -45,6 +50,11 @@ export function useWorktreePointerDragWindowEvents(args: {
       }
       event.preventDefault()
       event.stopPropagation()
+      dispatchWorkspacePanePointerMove({
+        sourceId: drag.worktreeId,
+        x: event.clientX,
+        y: event.clientY
+      })
       scheduleWorktreePointerDragFrame(drag)
     }
 
@@ -61,6 +71,16 @@ export function useWorktreePointerDragWindowEvents(args: {
       }
       event.preventDefault()
       event.stopPropagation()
+      if (
+        dispatchWorkspacePanePointerDrop({
+          sourceId: drag.worktreeId,
+          x: event.clientX,
+          y: event.clientY
+        })
+      ) {
+        clearWorktreeDrag()
+        return
+      }
       commitWorktreePointerDrop({
         event,
         drag,
@@ -75,6 +95,7 @@ export function useWorktreePointerDragWindowEvents(args: {
       if (!drag || event.pointerId !== drag.pointerId) {
         return
       }
+      dispatchWorkspacePanePointerClear()
       clearWorktreeDrag()
     }
 
@@ -84,6 +105,7 @@ export function useWorktreePointerDragWindowEvents(args: {
       }
       event.preventDefault()
       event.stopPropagation()
+      dispatchWorkspacePanePointerClear()
       clearWorktreeDrag()
     }
 

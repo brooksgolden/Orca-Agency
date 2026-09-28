@@ -143,8 +143,11 @@ test('packaged file links and folder workspace splits retain their workspace', a
     const bounds = await surface(ids[0]).boundingBox()
     expect(bounds).not.toBeNull()
     await row(ids[1])
-      .locator('[data-workspace-pane-drag-handle]')
-      .dragTo(surface(ids[0]), { targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) } })
+      .locator('[data-worktree-card-surface]')
+      .dragTo(surface(ids[0]), {
+        sourcePosition: { x: 80, y: 16 },
+        targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) }
+      })
     await expect(page.locator('[data-workspace-split="true"]')).toBeVisible()
     await expect(surface(ids[0]).locator('[data-tab-group-body-id]')).toBeVisible()
     await expect(surface(ids[1]).locator('[data-tab-group-body-id]')).toBeVisible()
@@ -154,8 +157,11 @@ test('packaged file links and folder workspace splits retain their workspace', a
     await expect(row(ids[0])).toHaveAttribute('aria-current', 'page')
 
     await row(ids[1])
-      .locator('[data-workspace-pane-drag-handle]')
-      .dragTo(surface(ids[0]), { targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) } })
+      .locator('[data-worktree-card-surface]')
+      .dragTo(surface(ids[0]), {
+        sourcePosition: { x: 80, y: 16 },
+        targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) }
+      })
     await page.reload()
     await page.waitForFunction(() => Boolean(window.api))
     await row(ids[0]).locator('[data-worktree-card-surface]').click()

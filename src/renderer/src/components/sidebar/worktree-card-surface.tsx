@@ -1,5 +1,5 @@
 import React from 'react'
-import { GripVertical, LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { AutoRenameFailedDialog } from './AutoRenameFailedDialog'
@@ -8,7 +8,6 @@ import { useIsSleepingWorktree } from './use-worktree-sleep-state'
 import { WorktreeCardParentContent } from './worktree-card-parent-content'
 import { buildWorktreeCardPresentation } from './worktree-card-presentation'
 import type { WorktreeCardController } from './use-worktree-card-controller'
-import { writeWorkspaceDragData } from './workspace-status'
 
 export function WorktreeCardSurface({ card }: { card: WorktreeCardController }): React.JSX.Element {
   const presentation = buildWorktreeCardPresentation(card)
@@ -90,23 +89,6 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
       aria-busy={isDeleting}
       style={cardStyle}
     >
-      {!affiliateListMode && !isDeleting && !titleRenaming ? (
-        <button
-          type="button"
-          draggable
-          aria-label="Drag workspace into pane"
-          title="Drag workspace into pane"
-          data-workspace-pane-drag-handle={worktree.id}
-          className="absolute right-1 top-1 z-10 rounded p-0.5 text-muted-foreground opacity-60 hover:bg-accent hover:opacity-100 cursor-grab"
-          onClick={(event) => event.stopPropagation()}
-          onDragStart={(event) => {
-            event.stopPropagation()
-            writeWorkspaceDragData(event.dataTransfer, worktree.id)
-          }}
-        >
-          <GripVertical className="size-3.5" />
-        </button>
-      ) : null}
       {isDeleting && (
         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/50 backdrop-blur-[1px]">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-[11px] font-medium text-foreground shadow-sm border border-border/50">
