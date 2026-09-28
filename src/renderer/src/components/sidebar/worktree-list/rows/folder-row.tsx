@@ -116,7 +116,7 @@ export function renderFolderWorkspaceVirtualRow(args: {
           isCurrentWorktree={ctx.currentWorktreeId === folderWorktree.id}
           contentIndent={cardContentIndent}
           flushSurface
-          nativeDragEnabled={false}
+          nativeDragEnabled
           onImmediateActivate={activationDisabled ? undefined : ctx.onImmediateActivate}
           activationRowKey={folderWorktree.id}
           onSelectionGesture={(event) => ctx.onSelectionGesture(event, folderWorktree)}

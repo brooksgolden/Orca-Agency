@@ -114,11 +114,14 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     await page.keyboard.type('echo FIRST_WORKSPACE_SMOKE > smoke-output.txt')
     await page.keyboard.press('Enter')
     await expect
-      .poll(() => existsSync(path.join(folderPaths[0], 'smoke-output.txt')), { timeout: 45_000 })
-      .toBe(true)
-    expect(readShellOutput(path.join(folderPaths[0], 'smoke-output.txt'))).toContain(
-      'FIRST_WORKSPACE_SMOKE'
-    )
+      .poll(
+        () => {
+          const file = path.join(folderPaths[0], 'smoke-output.txt')
+          return existsSync(file) ? readShellOutput(file) : ''
+        },
+        { timeout: 45_000 }
+      )
+      .toContain('FIRST_WORKSPACE_SMOKE')
 
     await row(ids[1]).locator('[data-worktree-card-surface]').click()
     await expect(page.locator('.xterm:visible')).toHaveCount(1, { timeout: 30_000 })
@@ -137,11 +140,14 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     await page.keyboard.type('echo SECOND_WORKSPACE_SMOKE > smoke-output.txt')
     await page.keyboard.press('Enter')
     await expect
-      .poll(() => existsSync(path.join(folderPaths[1], 'smoke-output.txt')), { timeout: 45_000 })
-      .toBe(true)
-    expect(readShellOutput(path.join(folderPaths[1], 'smoke-output.txt'))).toContain(
-      'SECOND_WORKSPACE_SMOKE'
-    )
+      .poll(
+        () => {
+          const file = path.join(folderPaths[1], 'smoke-output.txt')
+          return existsSync(file) ? readShellOutput(file) : ''
+        },
+        { timeout: 45_000 }
+      )
+      .toContain('SECOND_WORKSPACE_SMOKE')
 
     // Exercise the main-to-renderer bridge and real metadata persistence.
     const session = await page.evaluate(async () => {
