@@ -15,6 +15,10 @@ type MockState = {
   runtimePaneTitlesByTabId: Record<string, Record<number, string>>
   terminalLayoutsByTabId: Record<string, TerminalLayoutSnapshot>
   ptyIdsByTabId: Record<string, string[]>
+  paneForegroundAgentByPaneKey: Record<
+    string,
+    { agent: 'claude' | null; processObserved?: boolean; shellForeground: boolean }
+  >
   agentStatusEpoch: number
   agentStatusByPaneKey: Record<string, AgentStatusEntry>
   runtimeAgentOrchestrationByPaneKey: Record<string, NonNullable<AgentStatusEntry['orchestration']>>
@@ -109,6 +113,7 @@ describe('useWorktreeActivityStatus', () => {
       runtimePaneTitlesByTabId: {},
       terminalLayoutsByTabId: {},
       ptyIdsByTabId: {},
+      paneForegroundAgentByPaneKey: {},
       agentStatusEpoch: 0,
       agentStatusByPaneKey: {},
       runtimeAgentOrchestrationByPaneKey: {},
@@ -310,6 +315,42 @@ describe('useWorktreeActivityStatus', () => {
     }
 
     expect(renderToStaticMarkup(<StatusProbe worktreeId={worktreeId} />)).toBe('<span>done</span>')
+  })
+
+  it('shows a live manually launched Claude pane as working despite a done row on an old tab', () => {
+    const worktreeId = 'repo1::/path/wt1'
+    const oldPaneKey = makePaneKey('old-tab', SECOND_LEAF_ID)
+    mockState = {
+      ...mockState,
+      tabsByWorktree: {
+        [worktreeId]: [makeTab('old-tab', worktreeId), makeTab('visible-tab', worktreeId)]
+      },
+      ptyIdsByTabId: { 'visible-tab': ['live-pty'] },
+      runtimePaneTitlesByTabId: { 'visible-tab': { 1: '◐ Anthony CPA task management prototype' } },
+      terminalLayoutsByTabId: {
+        'visible-tab': {
+          root: { type: 'leaf', leafId: LEAF_ID },
+          activeLeafId: LEAF_ID,
+          expandedLeafId: null,
+          ptyIdsByLeafId: { [LEAF_ID]: 'live-pty' }
+        }
+      },
+      paneForegroundAgentByPaneKey: {
+        [makePaneKey('visible-tab', LEAF_ID)]: {
+          agent: 'claude',
+          processObserved: true,
+          shellForeground: false
+        }
+      },
+      agentStatusEpoch: 1,
+      agentStatusByPaneKey: {
+        [oldPaneKey]: makeAgentStatusEntry({ paneKey: oldPaneKey, state: 'done' })
+      }
+    }
+
+    expect(renderToStaticMarkup(<StatusProbe worktreeId={worktreeId} />)).toBe(
+      '<span>working</span>'
+    )
   })
 
   it('scopes cached agent summaries to the matching worktree', () => {

@@ -5,6 +5,8 @@ import type { TuiAgent } from '../../../../shared/tui-agent'
 export type PaneForegroundAgentEntry = {
   /** Recognized agent process in the pane's foreground; null when unknown. */
   agent: TuiAgent | null
+  /** Set only after the pane's foreground process was inspected as this agent. */
+  processObserved?: boolean
   /** True only when fresh provider evidence is safe for input-byte routing. */
   routingTrusted?: boolean
   /** True after exit/input evidence revokes routing until provider confirmation. */
@@ -46,6 +48,7 @@ export const createPaneForegroundAgentSlice: StateCreator<
       if (
         current &&
         current.agent === entry.agent &&
+        current.processObserved === entry.processObserved &&
         current.routingTrusted === entry.routingTrusted &&
         current.routingRevoked === entry.routingRevoked &&
         current.routingConfirmationPending === entry.routingConfirmationPending &&

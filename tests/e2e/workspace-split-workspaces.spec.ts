@@ -108,4 +108,26 @@ test('sidebar pairing, member navigation, unsplit, and workspace drag keep full 
   await expect(surface(firstId)).toBeVisible()
   await expect(surface(secondId)).toBeVisible()
   await orcaPage.screenshot({ path: testInfo.outputPath('workspace-split.png') })
+
+  await surface(secondId).getByRole('button', { name: 'Remove workspace from split' }).click()
+  await expect(orcaPage.locator('[data-workspace-split="true"]')).toHaveCount(0)
+  await expect(row(firstId)).toHaveAttribute('aria-current', 'page')
+
+  await row(secondId)
+    .locator('[data-worktree-card-surface]')
+    .dragTo(surface(firstId), {
+      sourcePosition: { x: 80, y: 16 },
+      targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) }
+    })
+  await expect(orcaPage.locator('[data-workspace-split="true"]')).toBeVisible()
+  await orcaPage.evaluate((id) => {
+    const state = window.__store!.getState()
+    const tabs = state.unifiedTabsByWorktree[id] ?? []
+    if (tabs.length !== 1 || tabs[0].contentType !== 'terminal') {
+      throw new Error('Expected one terminal tab in the removable workspace')
+    }
+    state.closeTab(tabs[0].entityId)
+  }, secondId)
+  await expect(orcaPage.locator('[data-workspace-split="true"]')).toHaveCount(0)
+  await expect(row(firstId)).toHaveAttribute('aria-current', 'page')
 })

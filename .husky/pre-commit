@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
-pnpm exec lint-staged
+# Use the repository config so dependency packages cannot override the hook.
+pnpm exec lint-staged --config package.json

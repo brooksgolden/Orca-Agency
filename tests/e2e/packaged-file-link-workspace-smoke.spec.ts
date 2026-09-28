@@ -169,6 +169,9 @@ test('packaged file links and folder workspace splits retain their workspace', a
     await expect(surface(ids[0])).toBeVisible()
     await expect(surface(ids[1])).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('folder-workspace-split.png') })
+    await surface(ids[1]).locator('[data-workspace-unsplit-button]').click()
+    await expect(page.locator('[data-workspace-split="true"]')).toHaveCount(0)
+    await expect(row(ids[0])).toHaveAttribute('aria-current', 'page')
     expect(errors).toEqual([])
     expect(
       await app.evaluate(({ BrowserWindow }) =>

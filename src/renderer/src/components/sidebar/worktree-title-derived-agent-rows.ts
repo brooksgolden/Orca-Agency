@@ -1,4 +1,5 @@
 import type { DashboardAgentRow } from '@/components/dashboard/useDashboardData'
+import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 import { formatAgentTypeLabel, isClaudeManagementTitle } from '@/lib/agent-status'
 import { isCursorAgentTitle } from '../../../../shared/agent-title-core'
 import { classifyTitleActivity, resolveTitleActivityLabel } from '@/lib/pane-agent-evidence'
@@ -22,8 +23,8 @@ import {
   resolveCompatibleAgentTypeForOwner,
   type CompatibleAgentOwnerOptions
 } from '../../../../shared/agent-title-owner'
-import { resolvePaneAgentOwner } from '../../../../shared/pane-agent-owner'
 import { isClaudeIdentityFrameTitle } from '../../../../shared/terminal-title-agent-type'
+import { resolveTitleDerivedPaneOwner } from './title-derived-pane-owner'
 
 /** Fixed, not per-process: title rows are a pure projection of the current title, so they are
  *  comparable across restarts in a way a sequenced authority's rows are not. Ordering against
@@ -59,6 +60,7 @@ export function buildTitleDerivedAgentRows(args: {
   runtimePaneTitlesByTabId?: Record<string, Record<number, string>>
   ptyIdsByTabId?: Record<string, string[]>
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined>
+  foregroundAgentsByPaneKey?: Record<string, PaneForegroundAgentEntry>
   runtimeAgentOrchestrationByPaneKey?: Record<string, AgentStatusOrchestrationContext>
   seenPaneKeys: Set<string>
   now: number
@@ -112,7 +114,12 @@ export function buildTitleDerivedAgentRows(args: {
           tab,
           leafId,
           title,
-          ownerAgentType: resolveTitleDerivedPaneOwner(tab, layout, leafId),
+          ownerAgentType: resolveTitleDerivedPaneOwner(
+            tab,
+            layout,
+            leafId,
+            args.foregroundAgentsByPaneKey
+          ),
           now: args.now,
           runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey
         })
@@ -133,7 +140,12 @@ export function buildTitleDerivedAgentRows(args: {
       tab,
       leafId,
       title: tab.title,
-      ownerAgentType: resolveTitleDerivedPaneOwner(tab, layout, leafId),
+      ownerAgentType: resolveTitleDerivedPaneOwner(
+        tab,
+        layout,
+        leafId,
+        args.foregroundAgentsByPaneKey
+      ),
       now: args.now,
       runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey
     })
@@ -267,19 +279,6 @@ export function resolveTitleDerivedAgentType(
     return null
   }
   return agentType
-}
-
-function resolveTitleDerivedPaneOwner(
-  tab: TerminalTab,
-  layout: TerminalLayoutSnapshot | undefined,
-  leafId: string
-): AgentType | null {
-  // Why: launchAgent is tab-scoped, so it is pane ownership only while the tab has one
-  // leaf; applying it inside a split would let one pane brand its sibling.
-  if (layout?.root?.type !== 'leaf' || layout.root.leafId !== leafId) {
-    return null
-  }
-  return resolvePaneAgentOwner({ launchAgent: tab.launchAgent })
 }
 
 /**

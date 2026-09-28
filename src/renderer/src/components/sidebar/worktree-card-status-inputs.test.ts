@@ -7,6 +7,8 @@ import type {
 } from '../../../../shared/terminal-tab-types'
 import {
   EMPTY_LIVE_PTY_IDS,
+  selectForegroundAgentsForWorktree,
+  selectForegroundAgentPaneIdsForWorktree,
   EMPTY_RUNTIME_PANE_TITLES,
   EMPTY_TERMINAL_LAYOUT_ROOTS,
   selectLivePtyIdsForWorktree,
@@ -17,6 +19,7 @@ import {
 
 type SelectorState = Parameters<typeof selectRuntimePaneTitlesForWorktree>[0]
 type LayoutRootSelectorState = Parameters<typeof selectTerminalLayoutRootsForWorktree>[0]
+type ForegroundSelectorState = Parameters<typeof selectForegroundAgentPaneIdsForWorktree>[0]
 
 function makeTab(id: string, worktreeId: string): TerminalTab {
   return {
@@ -41,6 +44,41 @@ function makeLayout(root: TerminalPaneLayoutNode, ptyId: string): TerminalLayout
 }
 
 describe('worktree card status input selectors', () => {
+  it('attributes only a live foreground agent to its pane', () => {
+    const worktreeId = 'repo1::/path/wt1'
+    const leafId = '11111111-1111-4111-8111-111111111111'
+    const state: ForegroundSelectorState = {
+      tabsByWorktree: { [worktreeId]: [makeTab('tab-1', worktreeId)] },
+      terminalLayoutsByTabId: {
+        'tab-1': makeLayout({ type: 'leaf', leafId }, 'pty-1')
+      },
+      paneForegroundAgentByPaneKey: {
+        [`tab-1:${leafId}`]: { agent: 'claude', processObserved: true, shellForeground: false }
+      }
+    }
+
+    expect(selectForegroundAgentPaneIdsForWorktree(state, worktreeId)['tab-1']?.has(leafId)).toBe(
+      true
+    )
+    expect(selectForegroundAgentsForWorktree(state, worktreeId)[`tab-1:${leafId}`]?.agent).toBe(
+      'claude'
+    )
+    const shellState: ForegroundSelectorState = {
+      ...state,
+      paneForegroundAgentByPaneKey: {
+        [`tab-1:${leafId}`]: { agent: 'claude', processObserved: true, shellForeground: true }
+      }
+    }
+    expect(selectForegroundAgentPaneIdsForWorktree(shellState, worktreeId)['tab-1']).toBeUndefined()
+    const unobservedState: ForegroundSelectorState = {
+      ...state,
+      paneForegroundAgentByPaneKey: {
+        [`tab-1:${leafId}`]: { agent: 'claude', shellForeground: false }
+      }
+    }
+    expect(selectForegroundAgentsForWorktree(unobservedState, worktreeId)).toEqual({})
+  })
+
   it('stays shallow-equal when unrelated tabs receive PTY ids or pane titles', () => {
     const worktreeId = 'repo1::/path/wt1'
     const paneTitles = { 0: 'codex [working]' }

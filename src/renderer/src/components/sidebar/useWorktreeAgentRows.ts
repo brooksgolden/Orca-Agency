@@ -5,8 +5,10 @@ import { applyAgentRowLineage } from '@/components/dashboard/agent-row-lineage'
 import { migrationUnsupportedToAgentStatusEntry } from '@/lib/migration-unsupported-agent-entry'
 import { useAppStore } from '@/store'
 import {
+  EMPTY_FOREGROUND_AGENTS,
   EMPTY_LIVE_PTY_IDS,
   EMPTY_RUNTIME_PANE_TITLES,
+  selectForegroundAgentsForWorktree,
   selectLivePtyIdsForWorktree,
   selectRuntimePaneTitlesForWorktree
 } from './worktree-card-status-inputs'
@@ -89,6 +91,11 @@ export function useWorktreeAgentRows(worktreeId: string, active = true): Dashboa
   const ptyIdsByTabId = useAppStore(
     useShallow((s) => (active ? selectLivePtyIdsForWorktree(s, worktreeId) : EMPTY_LIVE_PTY_IDS))
   )
+  const foregroundAgentsByPaneKey = useAppStore(
+    useShallow((s) =>
+      active ? selectForegroundAgentsForWorktree(s, worktreeId) : EMPTY_FOREGROUND_AGENTS
+    )
+  )
   const terminalLayoutsByTabId = useAppStore(
     useShallow((s) =>
       active ? selectTerminalLayoutsForWorktree(s, worktreeId) : EMPTY_TERMINAL_LAYOUTS
@@ -129,6 +136,7 @@ export function useWorktreeAgentRows(worktreeId: string, active = true): Dashboa
         retained,
         runtimePaneTitlesByTabId,
         ptyIdsByTabId,
+        foregroundAgentsByPaneKey,
         terminalLayoutsByTabId,
         runtimeAgentOrchestrationByPaneKey,
         now
@@ -143,6 +151,7 @@ export function useWorktreeAgentRows(worktreeId: string, active = true): Dashboa
     retained,
     runtimePaneTitlesByTabId,
     ptyIdsByTabId,
+    foregroundAgentsByPaneKey,
     terminalLayoutsByTabId,
     runtimeAgentOrchestrationByPaneKey,
     agentFreshnessSignature

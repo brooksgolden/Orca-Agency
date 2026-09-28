@@ -129,6 +129,22 @@ describe('getWorktreeStatus', () => {
     expect(status).toBe('active')
   })
 
+  it('uses a proven foreground agent for a working pane title when the tab has no launch agent', () => {
+    const leafId = '11111111-1111-4111-8111-111111111111'
+    const status = getWorktreeStatus(
+      [{ id: 'tab-1', title: 'Terminal' }],
+      [],
+      livePtyMap('tab-1'),
+      { 'tab-1': { 1: '◐ Researching WIP reports' } },
+      {
+        terminalLayoutRootsByTabId: { 'tab-1': { type: 'leaf', leafId } },
+        foregroundAgentPaneIdsByTabId: { 'tab-1': new Set([leafId]) }
+      }
+    )
+
+    expect(status).toBe('working')
+  })
+
   it('still spins on an agent-attributable braille-spinner title', () => {
     const status = getWorktreeStatus(
       [{ id: 'tab-1', title: '⠹ codex fix flaky test' }],

@@ -36,6 +36,14 @@ export function findWorkspaceSplitGroup(
   return groups.find((group) => collectWorkspaceIds(group.layout).includes(workspaceId)) ?? null
 }
 
+export function findWorkspaceSplitPartner(
+  groups: readonly WorkspaceSplitGroup[] | undefined,
+  workspaceId: string
+): string | null {
+  const group = findWorkspaceSplitGroup(groups, workspaceId)
+  return group ? (collectWorkspaceIds(group.layout).find((id) => id !== workspaceId) ?? null) : null
+}
+
 function removeLeaf(node: WorkspaceLayoutNode, id: string): WorkspaceLayoutNode | null {
   if (node.type === 'leaf') {
     return node.workspaceId === id ? null : node

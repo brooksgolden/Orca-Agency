@@ -44,6 +44,26 @@ function makeSingleLayout(leafId: string): TerminalLayoutSnapshot {
 }
 
 describe('buildTitleDerivedAgentRows', () => {
+  it('shows a manually launched Claude task in Activity when its foreground process is observed', () => {
+    const paneKey = makePaneKey('tab-1', LEAF_ID_1)
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { title: '◐ Anthony CPA task management prototype' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: { 'tab-1': { 1: '◐ Anthony CPA task management prototype' } },
+      ptyIdsByTabId: { 'tab-1': ['pty-claude'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      foregroundAgentsByPaneKey: {
+        [paneKey]: { agent: 'claude', processObserved: true, shellForeground: false }
+      },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.paneKey, row.agentType, row.state])).toEqual([
+      [paneKey, 'claude', 'working']
+    ])
+  })
+
   it('adds title-derived rows for live agent panes that have no hook status yet', () => {
     const rows = buildWorktreeAgentRows({
       tabs: [makeTab('tab-1')],

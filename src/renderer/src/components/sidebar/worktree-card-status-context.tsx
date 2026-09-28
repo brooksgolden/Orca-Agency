@@ -4,6 +4,7 @@ import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timesta
 import { useNow } from '@/hooks/use-now'
 import { formatShortTimeAgo } from '@/lib/short-time-ago'
 import { projectGroupIdFromRepoId } from '../../../../shared/folder-workspace-worktree'
+import { useWorktreeActivityStatus } from './use-worktree-activity-status'
 import type { WorktreeCardController } from './use-worktree-card-controller'
 
 /** Project identity and the age of the latest finished agent in Status grouping. */
@@ -14,6 +15,7 @@ export function WorktreeCardStatusContext({
 }): React.JSX.Element | null {
   const visible = card.groupBy === 'workspace-status' && !card.affiliateListMode
   const now = useNow(30_000, visible)
+  const activityStatus = useWorktreeActivityStatus(card.worktree.id)
   if (!visible) {
     return null
   }
@@ -36,14 +38,18 @@ export function WorktreeCardStatusContext({
     return Math.max(latest, agent.entry.updatedAt, agent.entry.stateStartedAt)
   }, 0)
   const timestamp = latestWorkingAt || latestCompletionAt || card.worktree.lastActivityAt
-  const ageLabel = timestamp > 0 ? formatShortTimeAgo(timestamp, now) : null
-  const ageTitle = latestWorkingAt
-    ? `Last agent update ${new Date(latestWorkingAt).toLocaleString()}`
-    : latestCompletionAt
-      ? `Last agent finished ${new Date(latestCompletionAt).toLocaleString()}`
-      : timestamp > 0
-        ? `Last workspace activity ${new Date(timestamp).toLocaleString()}`
-        : undefined
+  const ageLabel =
+    activityStatus === 'working' ? 'Now' : timestamp > 0 ? formatShortTimeAgo(timestamp, now) : null
+  const ageTitle =
+    activityStatus === 'working'
+      ? 'Agent working now'
+      : latestWorkingAt
+        ? `Last agent update ${new Date(latestWorkingAt).toLocaleString()}`
+        : latestCompletionAt
+          ? `Last agent finished ${new Date(latestCompletionAt).toLocaleString()}`
+          : timestamp > 0
+            ? `Last workspace activity ${new Date(timestamp).toLocaleString()}`
+            : undefined
 
   return (
     <div

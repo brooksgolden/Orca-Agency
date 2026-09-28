@@ -6,6 +6,7 @@ import type {
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import { migrationUnsupportedToAgentStatusEntry } from '@/lib/migration-unsupported-agent-entry'
 import type { RetainedAgentEntry } from '@/store/slices/agent-status'
+import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 import type { AppState } from '@/store/types'
 import { applyAgentRowLineage, type DashboardAgentRowWithLineage } from './agent-row-lineage'
 import { buildWorktreeAgentRows } from '../sidebar/worktree-agent-rows'
@@ -16,6 +17,7 @@ import {
   selectTerminalLayoutsForWorktree
 } from '../sidebar/worktree-agent-row-selectors'
 import {
+  selectForegroundAgentsForWorktree,
   selectLivePtyIdsForWorktree,
   selectRuntimePaneTitlesForWorktree
 } from '../sidebar/worktree-card-status-inputs'
@@ -30,6 +32,7 @@ type WorktreeAgentRowsCacheEntry = {
   orchestration: Record<string, AgentStatusOrchestrationContext>
   terminalLayoutsByTabId: Record<string, TerminalLayoutSnapshot | undefined>
   paneTitlesByTabId: Record<string, Record<number, string>>
+  foregroundAgentsByPaneKey: Record<string, PaneForegroundAgentEntry>
   ptyIdsByTabId: Record<string, string[]>
   rows: DashboardAgentRowWithLineage[]
 }
@@ -88,7 +91,7 @@ export type WorktreeAgentRowsState = Pick<
   | 'ptyIdsByTabId'
   | 'runtimePaneTitlesByTabId'
 > &
-  Partial<Pick<AppState, 'unifiedTabsByWorktree'>>
+  Partial<Pick<AppState, 'unifiedTabsByWorktree' | 'paneForegroundAgentByPaneKey'>>
 
 // Why not identity: the per-worktree layout/title/ptyId selectors build a fresh top-level
 // record per call while preserving per-tab value references, so shallow equality is the
@@ -121,6 +124,7 @@ export function selectWorktreeAgentRowsCached(args: {
   const tabs = state.tabsByWorktree[worktreeId]
   const terminalLayoutsByTabId = selectTerminalLayoutsForWorktree(state, worktreeId)
   const paneTitlesByTabId = selectRuntimePaneTitlesForWorktree(state, worktreeId)
+  const foregroundAgentsByPaneKey = selectForegroundAgentsForWorktree(state, worktreeId)
   const ptyIdsByTabId = selectLivePtyIdsForWorktree(state, worktreeId)
 
   const cached = cache?.byWorktree.get(worktreeId)
@@ -134,6 +138,7 @@ export function selectWorktreeAgentRowsCached(args: {
     cached.orchestration === orchestration &&
     shallowRecordEqual(cached.terminalLayoutsByTabId, terminalLayoutsByTabId) &&
     shallowRecordEqual(cached.paneTitlesByTabId, paneTitlesByTabId) &&
+    shallowRecordEqual(cached.foregroundAgentsByPaneKey, foregroundAgentsByPaneKey) &&
     shallowRecordEqual(cached.ptyIdsByTabId, ptyIdsByTabId)
   ) {
     return cached.rows
@@ -155,6 +160,7 @@ export function selectWorktreeAgentRowsCached(args: {
       entries,
       retained,
       runtimePaneTitlesByTabId: paneTitlesByTabId,
+      foregroundAgentsByPaneKey,
       ptyIdsByTabId,
       terminalLayoutsByTabId,
       runtimeAgentOrchestrationByPaneKey: orchestration,
@@ -173,6 +179,7 @@ export function selectWorktreeAgentRowsCached(args: {
       orchestration,
       terminalLayoutsByTabId,
       paneTitlesByTabId,
+      foregroundAgentsByPaneKey,
       ptyIdsByTabId,
       rows
     })

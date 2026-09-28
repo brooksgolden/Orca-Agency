@@ -28,6 +28,7 @@ type WorktreeStatusHeuristicOptions = {
   stalePaneIdsByTabId?: Record<string, ReadonlySet<string>>
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined>
   terminalLayoutRootsByTabId?: Record<string, TerminalPaneLayoutNode | null | undefined>
+  foregroundAgentPaneIdsByTabId?: Record<string, ReadonlySet<string>>
 }
 
 const STATUS_LABELS: Record<WorktreeStatus, string> = {
@@ -101,7 +102,11 @@ function tabHasStatus(
       }
       if (
         classifyTitleActivity(title) === status &&
-        titleStatusIsAgentAttributable(title, tab.launchAgent)
+        titleStatusIsAgentAttributable(
+          title,
+          tab.launchAgent,
+          Boolean(leafId && options.foregroundAgentPaneIdsByTabId?.[tab.id]?.has(leafId))
+        )
       ) {
         return true
       }
@@ -147,14 +152,18 @@ function suppressingPaneIds(
 }
 
 // Why: require agent attribution so a bare never-cleared spinner title can't spin the dot "0 agents" forever with no matching sidebar row.
-function titleStatusIsAgentAttributable(title: string, launchAgent?: TuiAgent | null): boolean {
+function titleStatusIsAgentAttributable(
+  title: string,
+  launchAgent?: TuiAgent | null,
+  foregroundAgent = false
+): boolean {
   if (resolveAgentTypeFromTerminalTitle(title) !== null) {
     return true
   }
   // Why: a spinner proves activity but not identity (Claude's thinking title has no provider
   // token, #9040); the tab's launch identity supplies it, mirroring the row builder's spinner
   // fallback (#9647) so the dot and the sidebar row agree.
-  return containsAgentSpinnerGlyph(title) && Boolean(launchAgent)
+  return containsAgentSpinnerGlyph(title) && (Boolean(launchAgent) || foregroundAgent)
 }
 
 export function getWorktreeStatusLabel(status: WorktreeStatus): string {
@@ -178,6 +187,7 @@ export function resolveWorktreeStatus(args: {
   stalePaneIdsByTabId?: Record<string, ReadonlySet<string>>
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined>
   terminalLayoutRootsByTabId?: Record<string, TerminalPaneLayoutNode | null | undefined>
+  foregroundAgentPaneIdsByTabId?: Record<string, ReadonlySet<string>>
   hasPermission: boolean
   hasLiveWorking: boolean
   hasLiveMonitoring?: boolean
@@ -194,7 +204,8 @@ export function resolveWorktreeStatus(args: {
       agentStatusPaneIdsByTabId: args.agentStatusPaneIdsByTabId,
       stalePaneIdsByTabId: args.stalePaneIdsByTabId,
       terminalLayoutsByTabId: args.terminalLayoutsByTabId,
-      terminalLayoutRootsByTabId: args.terminalLayoutRootsByTabId
+      terminalLayoutRootsByTabId: args.terminalLayoutRootsByTabId,
+      foregroundAgentPaneIdsByTabId: args.foregroundAgentPaneIdsByTabId
     }
   )
   if (args.hasPermission) {

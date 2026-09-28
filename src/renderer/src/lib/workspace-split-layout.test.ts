@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   collectWorkspaceIds,
   findWorkspaceSplitGroup,
+  findWorkspaceSplitPartner,
   placeWorkspaceAtEdge,
   readWorkspaceSplitGroups,
   removeWorkspaceFromSplit,
@@ -17,6 +18,7 @@ describe('workspace split layout', () => {
     expect(findWorkspaceSplitGroup(paired, 'project-a')).toBe(paired[0])
     expect(findWorkspaceSplitGroup(paired, 'project-b')).toBe(paired[0])
     expect(collectWorkspaceIds(paired[0].layout)).toEqual(['project-a', 'project-b'])
+    expect(findWorkspaceSplitPartner(paired, 'project-b')).toBe('project-a')
     expect(removeWorkspaceFromSplit(paired, 'project-b')).toEqual([])
   })
 

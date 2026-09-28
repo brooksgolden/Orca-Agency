@@ -18,6 +18,8 @@ import {
 import { structuredAgentSessionTabId } from '../../../../../shared/structured-agent-session-projection'
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
 import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
+import { findWorkspaceSplitPartner } from '@/lib/workspace-split-layout'
+import { parseWorkspaceKey } from '../../../../../shared/workspace-scope'
 
 export function createTabsCloseActions(
   set: TabsSliceSet,
@@ -187,6 +189,26 @@ export function createTabsCloseActions(
             : {})
         }
       })
+
+      // Closing the last tab in a split pane should remove that pane, while the
+      // workspace itself remains available in the sidebar.
+      const afterClose = get()
+      const splitPartner = findWorkspaceSplitPartner(afterClose.workspaceSplitGroups, worktreeId)
+      if (
+        !opts?.preserveWorktreeSelection &&
+        splitPartner &&
+        (afterClose.unifiedTabsByWorktree[worktreeId] ?? []).length === 0
+      ) {
+        afterClose.unsplitWorkspace(worktreeId)
+        if (afterClose.activeWorktreeId === null || afterClose.activeWorktreeId === worktreeId) {
+          const scope = parseWorkspaceKey(splitPartner)
+          if (scope?.type === 'folder') {
+            get().setActiveFolderWorkspace(scope.folderWorkspaceId)
+          } else {
+            get().setActiveWorktree(scope?.type === 'worktree' ? scope.worktreeId : splitPartner)
+          }
+        }
+      }
 
       if (opts?.recordInteraction !== false) {
         get().recordFeatureInteraction?.('terminal-tabs')
