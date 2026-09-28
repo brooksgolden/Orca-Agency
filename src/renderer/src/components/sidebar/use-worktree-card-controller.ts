@@ -8,21 +8,43 @@ import { useWorktreeCardLinkedDetails } from './use-worktree-card-linked-details
 import { useWorktreeCardReviewDetails } from './use-worktree-card-review-details'
 import { useWorktreeCardSecondaryDetails } from './use-worktree-card-secondary-details'
 import { useWorktreeCardWorkspaceActions } from './use-worktree-card-workspace-actions'
+import { useShallow } from 'zustand/react/shallow'
+import { useAppStore } from '@/store'
 import { useWorktreeAgentRows } from './useWorktreeAgentRows'
+import {
+  EMPTY_TERMINAL_LAYOUTS,
+  selectTerminalLayoutsForWorktree
+} from './worktree-agent-row-selectors'
+import {
+  EMPTY_RUNTIME_PANE_TITLES,
+  selectRuntimePaneTitlesForWorktree
+} from './worktree-card-status-inputs'
 import { getLatestWorkspaceAgentTitle } from './worktree-card-task-title'
 
 export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const { worktree, repo } = props
   const foundation = useWorktreeCardFoundation({ worktree, repo })
-  const statusContextAgents = useWorktreeAgentRows(
-    worktree.id,
-    foundation.groupBy === 'workspace-status' && !props.affiliateListMode
+  const showStatusContext = foundation.groupBy === 'workspace-status' && !props.affiliateListMode
+  const statusContextAgents = useWorktreeAgentRows(worktree.id, showStatusContext)
+  const statusLayoutsByTabId = useAppStore(
+    useShallow((s) =>
+      showStatusContext ? selectTerminalLayoutsForWorktree(s, worktree.id) : EMPTY_TERMINAL_LAYOUTS
+    )
+  )
+  const statusPaneTitlesByTabId = useAppStore(
+    useShallow((s) =>
+      showStatusContext
+        ? selectRuntimePaneTitlesForWorktree(s, worktree.id)
+        : EMPTY_RUNTIME_PANE_TITLES
+    )
   )
   const statusTaskTitle =
     foundation.groupBy === 'workspace-status'
       ? getLatestWorkspaceAgentTitle(
           statusContextAgents,
-          foundation.settings?.tabAutoGenerateTitle === true
+          foundation.settings?.tabAutoGenerateTitle === true,
+          statusLayoutsByTabId,
+          statusPaneTitlesByTabId
         )
       : null
   const review = useWorktreeCardReviewDetails({

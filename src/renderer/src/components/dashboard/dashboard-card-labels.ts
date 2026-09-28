@@ -1,4 +1,7 @@
-import { getAgentRowConversationName } from '../../../../shared/agent-row-conversation-name'
+import {
+  getAgentRowConversationName,
+  type ConversationNameTab
+} from '../../../../shared/agent-row-conversation-name'
 import { DASHBOARD_MAX_LABEL_LENGTH } from '../../../../shared/dashboard-snapshot'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
@@ -29,7 +32,10 @@ export function boundedLabelOrUndefined(value: string | undefined): string | und
 /** Mirrors useAgentRowConversationName so the board and the sidebar label the
  *  same agent with the same name. */
 export function rowConversationName(
-  row: DashboardAgentRow,
+  row: Pick<DashboardAgentRow, 'paneKey' | 'agentType' | 'lineage'> & {
+    tab: ConversationNameTab & { id: string }
+    entry: Pick<DashboardAgentRow['entry'], 'orchestration' | 'providerSession'>
+  },
   generatedTitlesEnabled: boolean,
   layout: TerminalLayoutSnapshot | undefined,
   paneTitles: Record<number, string> | undefined
