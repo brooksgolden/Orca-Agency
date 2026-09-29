@@ -9,15 +9,17 @@ import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-pr
 async function clickPrintedFileLink(
   page: Page,
   printedPath: string,
-  sessionIndex: number
+  worktreeId: string
 ): Promise<void> {
   const snapshot = async () =>
-    page.evaluate(async (index) => {
-      const session = (await window.api.pty.listSessions())[index]
+    page.evaluate(async (owner) => {
+      const session = (await window.api.pty.listSessions()).find(
+        (item) => item.worktreeId === owner || item.id.startsWith(`${owner}@@`)
+      )
       return session
         ? window.api.pty.getMainBufferSnapshot(session.id, { scrollbackRows: 100 })
         : null
-    }, sessionIndex)
+    }, worktreeId)
   await expect
     .poll(async () => (await snapshot())?.data.split(printedPath).length ?? 0, { timeout: 20_000 })
     .toBeGreaterThanOrEqual(3)
@@ -118,7 +120,7 @@ test('packaged file links and folder workspace splits retain their workspace', a
     await expect(page.locator('.xterm:visible .xterm-helper-textarea')).toBeFocused()
     await page.keyboard.type('echo ./linked.md')
     await page.keyboard.press('Enter')
-    await clickPrintedFileLink(page, './linked.md', 0)
+    await clickPrintedFileLink(page, './linked.md', `folder:${ids[0]}`)
     await expect(page.locator('.editor-header-path').first()).toContainText('linked.md')
     await expect(row(ids[0])).toHaveAttribute('aria-current', 'page')
 
@@ -133,7 +135,7 @@ test('packaged file links and folder workspace splits retain their workspace', a
     await expect(page.locator('.xterm:visible .xterm-helper-textarea')).toBeFocused()
     await page.keyboard.type('echo ./linked.md')
     await page.keyboard.press('Enter')
-    await clickPrintedFileLink(page, './linked.md', 1)
+    await clickPrintedFileLink(page, './linked.md', `folder:${ids[1]}`)
     await expect(page.locator('.editor-header-path').first()).toContainText('linked.md')
     await expect(row(ids[1])).toHaveAttribute('aria-current', 'page')
     await page.screenshot({ path: testInfo.outputPath('file-in-current-workspace.png') })

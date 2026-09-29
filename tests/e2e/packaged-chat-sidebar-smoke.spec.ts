@@ -90,7 +90,9 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
         )
         // The stub records the real launch command and cwd without making an AI request.
         await window.api.settings.set({
-          agentCmdOverrides: { claude: `"${stub}"` },
+          terminalWindowsShell: 'powershell.exe',
+          terminalWindowsPowerShellImplementation: 'powershell.exe',
+          agentCmdOverrides: { claude: `& '${stub.replaceAll("'", "''")}'` },
           chatSidebar: { view: 'chats', groupBy: 'status', sessions }
         })
       },
@@ -131,6 +133,20 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
         BrowserWindow.getAllWindows().every((window) => !window.isVisible())
       )
     ).toBe(true)
+  } catch (error) {
+    const page = await app.firstWindow()
+    await page.screenshot({ path: testInfo.outputPath('packaged-chat-failure.png') })
+    const terminals = await page.evaluate(async () => {
+      const sessions = await window.api.pty.listSessions()
+      return Promise.all(
+        sessions.map(async (session) => ({
+          id: session.id,
+          buffer: await window.api.pty.getMainBufferSnapshot(session.id, { scrollbackRows: 50 })
+        }))
+      )
+    })
+    writeFileSync(testInfo.outputPath('resume-terminals.json'), JSON.stringify(terminals, null, 2))
+    throw error
   } finally {
     await closeElectronAppForE2E(app)
     await cleanupE2EDaemons(userDataDir)

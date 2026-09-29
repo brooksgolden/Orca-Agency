@@ -7,8 +7,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'install-reviewed-orca-backups.ps1')
 $sourcePath = (Resolve-Path -LiteralPath $Source).Path
 $targetPath = (Resolve-Path -LiteralPath $Target).Path
+$userDataPath = Get-ReviewedFullPath $UserData
 if ($sourcePath -eq $targetPath) { throw 'Source and installed app must be different directories.' }
 $manifest = Get-Content -LiteralPath (Join-Path $sourcePath 'reviewed-build.json') -Raw | ConvertFrom-Json
 if ($manifest.smokeTest -ne 'passed') { throw 'The source package has no passing smoke-test record.' }
@@ -28,6 +30,14 @@ Assert-ReviewedFiles $sourcePath
 if (-not (Test-Path -LiteralPath (Join-Path $targetPath 'Orca.exe'))) {
   throw "No installed Orca found at $targetPath."
 }
+# Why: Copy-Item silently skips a package folder where the app has a file, leaving a partial install.
+foreach ($item in Get-ChildItem -LiteralPath $sourcePath -Recurse -Force) {
+  $relative = $item.FullName.Substring($sourcePath.TrimEnd('\').Length).TrimStart('\')
+  $existing = Get-Item -LiteralPath (Join-Path $targetPath $relative) -Force -ErrorAction SilentlyContinue
+  if ($existing -and $existing.PSIsContainer -ne $item.PSIsContainer) {
+    throw "Package item '$relative' would replace a $(if ($existing.PSIsContainer) { 'folder' } else { 'file' }) in the installed app. No files were changed."
+  }
+}
 $targetExecutable = Join-Path $targetPath 'Orca.exe'
 $desktopAppRunning = Get-Process -Name 'Orca' -ErrorAction SilentlyContinue | Where-Object {
   try {
@@ -46,26 +56,23 @@ if (-not $PSCmdlet.ShouldProcess($targetPath, 'Back up Orca and its user data, t
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $backup = "$targetPath-backup-$stamp"
 Copy-Item -LiteralPath $targetPath -Destination $backup -Recurse
+Write-ReviewedBackupMarker $backup $targetPath 'app'
 $userDataBackup = $null
 if ($ExistingUserDataBackup) {
   $userDataBackup = (Resolve-Path -LiteralPath $ExistingUserDataBackup).Path
   if (-not [string]::Equals(
     (Split-Path -Parent $userDataBackup),
-    (Split-Path -Parent $UserData),
+    (Split-Path -Parent $userDataPath),
     [System.StringComparison]::OrdinalIgnoreCase
   ) -or -not (Split-Path -Leaf $userDataBackup).StartsWith(
-    "$(Split-Path -Leaf $UserData)-backup-",
+    "$(Split-Path -Leaf $userDataPath)-backup-",
     [System.StringComparison]::OrdinalIgnoreCase
   )) {
     throw 'Existing user data backup must be a sibling Orca backup directory.'
   }
-} elseif (Test-Path -LiteralPath $UserData) {
-  $userDataBackup = "$UserData-backup-$stamp"
-  New-Item -ItemType Directory -Path $userDataBackup -ErrorAction Stop | Out-Null
-  & robocopy.exe $UserData $userDataBackup /E /R:0 /W:0 /XJ /XF Cookies *.sqlite-shm *.db-shm /NFL /NDL /NJH /NJS /NP | Out-Null
-  if ($LASTEXITCODE -ge 8) {
-    throw "Orca user data backup failed with robocopy exit code $LASTEXITCODE. No app files were changed."
-  }
+} elseif (Test-Path -LiteralPath $userDataPath) {
+  $userDataBackup = "$userDataPath-backup-$stamp"
+  New-ReviewedDataBackup $userDataPath $userDataBackup
 }
 try {
   foreach ($entry in Get-ChildItem -LiteralPath $sourcePath -Force) {
@@ -74,10 +81,18 @@ try {
   Assert-ReviewedFiles $targetPath
 } catch {
   $installError = $_
-  foreach ($entry in Get-ChildItem -LiteralPath $backup -Force) {
-    Copy-Item -LiteralPath $entry.FullName -Destination $targetPath -Recurse -Force
+  try {
+    Restore-ReviewedAppBackup $backup $targetPath $sourcePath
+  } catch {
+    throw "Installation failed and the automatic restore also failed. Restore the app manually from $backup. Install error: $installError Restore error: $_"
   }
   throw "Installation failed; the previous app files were restored. Backup: $backup. Error: $installError"
+}
+try {
+  Remove-ExpiredReviewedBackups $targetPath 'app' @($backup)
+  Remove-ExpiredReviewedBackups $userDataPath 'settings' @($userDataBackup)
+} catch {
+  Write-Warning "Installation passed, but old backup cleanup was deferred: $_"
 }
 Write-Host "Installed reviewed commit $($manifest.commit). App backup: $backup"
 Write-Host "User data backup, if present: $userDataBackup"
