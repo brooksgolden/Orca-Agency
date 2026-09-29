@@ -491,6 +491,15 @@ describe('buildNewWorkspaceCreateTargetOptions', () => {
 })
 
 describe('findActionableFolderProjectGroup', () => {
+  it('does not choose an arbitrary machine for a duplicated folder id', () => {
+    expect(
+      findActionableFolderProjectGroup({
+        projectGroups: [group({ id: 'same' }), group({ id: 'same', connectionId: 'box' })],
+        groupId: 'same',
+        actionableHostIds: new Set(['local', 'ssh:box'])
+      })
+    ).toBeNull()
+  })
   const folderGroups = [
     group({ id: 'local-group' }),
     group({ id: 'ssh-group', connectionId: 'box' }),

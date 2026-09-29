@@ -20,10 +20,11 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { updateChatSidebar } from './chat-sidebar-preferences'
 import { chatFolderLabel, chatSidebarWorktrees } from './chat-sidebar-rows'
+import { hiddenChatFolderLabels } from './chat-creation-folders'
 
 export function ChatSidebarOptions() {
   const groupBy = useAppStore((state) => state.settings?.chatSidebar?.groupBy ?? 'status')
-  const hiddenFolders = useAppStore((state) => state.settings?.chatSidebar?.hiddenFolders)
+  const savedHiddenFolders = useAppStore((state) => state.settings?.chatSidebar?.hiddenFolders)
   const state = useAppStore(
     useShallow((s) => ({
       repos: s.repos,
@@ -32,6 +33,7 @@ export function ChatSidebarOptions() {
       worktreesByRepo: s.worktreesByRepo
     }))
   )
+  const hiddenFolders = hiddenChatFolderLabels(savedHiddenFolders, state.projectGroups)
   const folders = useMemo(
     () =>
       [...new Set(chatSidebarWorktrees(state).map((row) => chatFolderLabel(state, row)))].sort(),
@@ -93,8 +95,15 @@ export function ChatSidebarOptions() {
                 onCheckedChange={(checked) => {
                   void updateChatSidebar((current) => ({
                     hiddenFolders: checked
-                      ? (current.hiddenFolders ?? []).filter((item) => item !== folder)
-                      : [...new Set([...(current.hiddenFolders ?? []), folder])]
+                      ? hiddenChatFolderLabels(current.hiddenFolders, state.projectGroups).filter(
+                          (item) => item !== folder
+                        )
+                      : [
+                          ...new Set([
+                            ...hiddenChatFolderLabels(current.hiddenFolders, state.projectGroups),
+                            folder
+                          ])
+                        ]
                   }))
                 }}
               >

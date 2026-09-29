@@ -296,24 +296,26 @@ export default function NewWorkspaceComposerCard(
       )}
     >
       <div className="min-w-0 space-y-4 pt-3">
-        <NewWorkspaceComposerProjectSection
-          {...props}
-          projectOptions={projectOptions}
-          projectHostSetupOptions={projectHostSetupOptions}
-          ephemeralVmRecipes={ephemeralVmRecipes}
-          projectDescriptionId={projectDescriptionId}
-          onAddProject={handleAddProject}
-          focusNameInput={focusNameInput}
-          shouldShowRunTargetPicker={shouldShowRunTargetPicker}
-          handleProjectHostSetupChange={(setupId) => onProjectHostSetupChange?.(setupId)}
-          handleAddSshHost={() => setAddRemoteHostMode('ssh')}
-          handleAddRemoteServer={() => setAddRemoteHostMode('server')}
-          handleConnectRunTargetHost={handleConnectRunTargetHost}
-          handleSetLocation={handleSetLocation}
-          sshStatusLabel={sshStatusLabel}
-          connectButtonLabel={connectButtonLabel}
-          selectedProjectName={selectedProjectName}
-        />
+        {props.projectField ?? (
+          <NewWorkspaceComposerProjectSection
+            {...props}
+            projectOptions={projectOptions}
+            projectHostSetupOptions={projectHostSetupOptions}
+            ephemeralVmRecipes={ephemeralVmRecipes}
+            projectDescriptionId={projectDescriptionId}
+            onAddProject={handleAddProject}
+            focusNameInput={focusNameInput}
+            shouldShowRunTargetPicker={shouldShowRunTargetPicker}
+            handleProjectHostSetupChange={(setupId) => onProjectHostSetupChange?.(setupId)}
+            handleAddSshHost={() => setAddRemoteHostMode('ssh')}
+            handleAddRemoteServer={() => setAddRemoteHostMode('server')}
+            handleConnectRunTargetHost={handleConnectRunTargetHost}
+            handleSetLocation={handleSetLocation}
+            sshStatusLabel={sshStatusLabel}
+            connectButtonLabel={connectButtonLabel}
+            selectedProjectName={selectedProjectName}
+          />
+        )}
         <NewWorkspaceComposerNameSection {...props} onNamePlainEnter={handleNamePlainEnter} />
         <NewWorkspaceComposerAgentSection
           {...props}

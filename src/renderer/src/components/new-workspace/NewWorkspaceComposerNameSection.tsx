@@ -10,6 +10,7 @@ import type { NewWorkspaceComposerCardProps } from './new-workspace-composer-car
 type NewWorkspaceComposerNameSectionProps = Pick<
   NewWorkspaceComposerCardProps,
   | 'nameInputRef'
+  | 'nameLabel'
   | 'eligibleRepos'
   | 'repoId'
   | 'onRepoChange'
@@ -47,6 +48,7 @@ type NewWorkspaceComposerNameSectionProps = Pick<
 
 export function NewWorkspaceComposerNameSection({
   nameInputRef,
+  nameLabel,
   eligibleRepos,
   repoId,
   onRepoChange,
@@ -92,12 +94,13 @@ export function NewWorkspaceComposerNameSection({
     <div className="min-w-0 space-y-1" data-contextual-tour-target="workspace-creation-name">
       <div className="flex items-center justify-between gap-2">
         <label className="min-w-0 truncate text-xs font-medium text-muted-foreground">
-          {selectedRepoIsGit
-            ? translate('auto.components.NewWorkspaceComposerCard.ac3748dcda', 'Create From')
-            : translate(
-                'auto.components.NewWorkspaceComposerCard.0ee17638fe',
-                'Workspace name'
-              )}{' '}
+          {nameLabel ??
+            (selectedRepoIsGit
+              ? translate('auto.components.NewWorkspaceComposerCard.ac3748dcda', 'Create From')
+              : translate(
+                  'auto.components.NewWorkspaceComposerCard.0ee17638fe',
+                  'Workspace name'
+                ))}{' '}
           <span className="text-muted-foreground/70">
             {translate('auto.components.NewWorkspaceComposerCard.0c5d6a479c', '[Optional]')}
           </span>

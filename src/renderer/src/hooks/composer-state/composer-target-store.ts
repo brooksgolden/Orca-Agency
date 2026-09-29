@@ -15,6 +15,7 @@ import type { LinkedWorkItemSummary } from '@/lib/new-workspace'
 import type { ComposerDecisions } from './composer-decisions'
 
 export type ComposerStateInput = {
+  chatMode?: boolean
   initialRepoId?: string
   initialEphemeralVmRecipeId?: string
   initialProjectGroupId?: string
@@ -39,6 +40,7 @@ const NEVER_CANCEL_COMPOSER_SUBMIT = (): boolean => false
 
 export function useComposerTargetStore(options: ComposerStateInput, decisions: ComposerDecisions) {
   const {
+    chatMode = false,
     initialRepoId,
     initialEphemeralVmRecipeId,
     initialName = '',
@@ -162,6 +164,7 @@ export function useComposerTargetStore(options: ComposerStateInput, decisions: C
   )
 
   return {
+    chatMode,
     initialRepoId,
     initialEphemeralVmRecipeId,
     initialName,

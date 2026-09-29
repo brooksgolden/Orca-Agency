@@ -12,6 +12,16 @@ const leafA = '77777777-7777-4777-8777-777777777777'
 const leafB = '88888888-8888-4888-8888-888888888888'
 
 describe('chat sidebar preferences', () => {
+  it('preserves original creation time when a chat closes and resumes in a new tab', () => {
+    const first = chatSidebarPreferencePatch([chatRow({ createdAt: 100 })], {}, 200)
+    expect(first?.sessions?.[key].createdAt).toBe(100)
+    const resumed = chatSidebarPreferencePatch(
+      [chatRow({ tabId: 'resumed', createdAt: 300 })],
+      { sessions: first?.sessions },
+      400
+    )
+    expect(resumed).toBeNull()
+  })
   it('moves a name and completion to the provider session once it is known', () => {
     const patch = chatSidebarPreferencePatch(
       [chatRow({ aliases: [fallback] })],

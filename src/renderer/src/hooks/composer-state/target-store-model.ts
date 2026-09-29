@@ -23,6 +23,7 @@ import type { WorkspaceHostScope } from '../../../../shared/ui-chrome-types'
 import type { WorkspaceSource as WorkspaceCreateTelemetrySource } from '../../../../shared/workspace-source'
 
 export type ComposerTargetStoreModel = {
+  chatMode: boolean
   initialRepoId: string | undefined
   initialEphemeralVmRecipeId: string | undefined
   initialName: string

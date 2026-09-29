@@ -11,6 +11,15 @@ import {
 const LOCAL_HOST_LABEL = getExecutionHostLabel('local')
 
 describe('sidebar host options', () => {
+  it('excludes removed hosts when resolving new-chat defaults', () => {
+    const hosts = buildSidebarHostOptions({
+      repos: [{ connectionId: 'removed' }],
+      sshTargetLabels: new Map([['configured', 'Remote']]),
+      settings: { activeRuntimeEnvironmentId: 'removed-runtime' },
+      hostSource: 'configured-only'
+    })
+    expect(hosts.map((host) => host.id)).toEqual(['local', 'ssh:configured'])
+  })
   it('hides host controls for local-only workspaces', () => {
     const hosts = buildSidebarHostOptions({
       repos: [{ connectionId: null }],

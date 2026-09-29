@@ -196,14 +196,14 @@ export function findActionableFolderProjectGroup({
   if (!groupId) {
     return null
   }
-  return (
-    projectGroups.find(
-      (group) =>
-        group.id === groupId &&
-        Boolean(group.parentPath?.trim()) &&
-        actionableHostIds.has(getNewWorkspaceProjectGroupHostId(group))
-    ) ?? null
+  const matches = projectGroups.filter(
+    (group) =>
+      group.id === groupId &&
+      Boolean(group.parentPath?.trim()) &&
+      actionableHostIds.has(getNewWorkspaceProjectGroupHostId(group))
   )
+  // A duplicated ID across hosts cannot be resolved by the legacy option ID safely.
+  return matches.length === 1 ? matches[0] : null
 }
 
 export function buildNewWorkspaceFolderSourceOptions(

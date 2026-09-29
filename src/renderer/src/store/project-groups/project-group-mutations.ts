@@ -11,8 +11,12 @@ import {
   settingsForProjectGroupOwner
 } from '../slices/project-group-owner-routing'
 import { findRepoForHost, repoMatchesHostIdentity } from '../slices/repo-host-identity'
-import { callRuntimeRpc, getActiveRuntimeTarget } from '../../runtime/runtime-rpc-client'
-import { getRepoExecutionHostId } from '../../../../shared/execution-host'
+import {
+  callRuntimeRpc,
+  getActiveRuntimeTarget,
+  settingsForRuntimeOwner
+} from '../../runtime/runtime-rpc-client'
+import { getRepoExecutionHostId, parseExecutionHostId } from '../../../../shared/execution-host'
 import type { ProjectRemovalFailure, RepoSlice } from '../repos/repo-state'
 import { mergeProjectCompatibilityForHostRepoChange } from '../repos/repo-catalog-identity'
 import { applyProjectGroupDeleteCascade } from './project-group-removal-state'
@@ -31,20 +35,31 @@ export function createProjectGroupMutationActions(
   | 'moveProjectToGroup'
 > {
   return {
-    createProjectGroup: async (name) => {
+    createProjectGroup: async (name, options) => {
       try {
-        const target = getActiveRuntimeTarget(get().settings)
+        const host = parseExecutionHostId(options?.hostId)
+        const target = getActiveRuntimeTarget(
+          options?.hostId
+            ? settingsForRuntimeOwner(
+                get().settings,
+                host?.kind === 'runtime' ? host.environmentId : null
+              )
+            : get().settings
+        )
+        const input = {
+          name,
+          parentPath: options?.parentPath,
+          connectionId: host?.kind === 'ssh' ? host.targetId : undefined,
+          createdFrom: 'manual' as const
+        }
         const group =
           target.kind === 'local'
-            ? await window.api.projectGroups.create({
-                name,
-                createdFrom: 'manual'
-              })
+            ? await window.api.projectGroups.create(input)
             : (
                 await callRuntimeRpc<{ group: ProjectGroup }>(
                   target,
                   'projectGroup.create',
-                  { name, createdFrom: 'manual' },
+                  input,
                   { timeoutMs: 15_000 }
                 )
               ).group

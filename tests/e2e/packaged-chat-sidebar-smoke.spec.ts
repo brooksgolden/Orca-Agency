@@ -128,8 +128,12 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await expect(latest).toBeVisible()
     await expect(rows).toHaveCount(2)
     await expect(rows.first()).toContainText('Latest client research')
-    await expect(latest).toContainText('Client folder')
-    expect((await latest.boundingBox())?.height).toBe(44)
+    await expect(rows.filter({ hasText: 'Earlier client draft' })).toContainText('agency-project')
+    expect((await latest.boundingBox())?.height).toBe(28)
+    await expect(rows.filter({ hasText: 'Earlier client draft' })).toHaveAttribute(
+      'data-chat-sub-tab',
+      'true'
+    )
     await latest.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Rename chat', exact: true }).click()
     await page.getByRole('textbox', { name: 'Chat name', exact: true }).fill('Saved client name')
@@ -143,9 +147,9 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await renamed.getByRole('button', { name: 'Reopen Saved client name' }).click()
     await renamed.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Change folder', exact: true }).hover()
-    await page.getByRole('menuitem', { name: 'Local tools', exact: true }).click()
-    await expect(renamed).toContainText('Local tools')
-    await expect(rows.filter({ hasText: 'Earlier client draft' })).toContainText('Client folder')
+    await page.getByRole('menuitem', { name: 'local-tools', exact: true }).click()
+    await expect(renamed).toContainText('local-tools')
+    await expect(rows.filter({ hasText: 'Earlier client draft' })).toContainText('agency-project')
     await renamed.dblclick()
     await expect
       .poll(() => (existsSync(capture) ? readFileSync(capture, 'utf8') : ''), { timeout: 45_000 })
@@ -196,6 +200,19 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await expect(rows.filter({ hasText: 'coho' })).toBeVisible()
     await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toHaveCount(0)
     await page.screenshot({ path: testInfo.outputPath('packaged-chat-sidebar.png') })
+    const inbox = path.join(userDataDir, 'Uncategorized')
+    mkdirSync(inbox)
+    await page.evaluate(async (parentPath) => {
+      await window.api.projectGroups.create({ name: 'Old inbox label', parentPath })
+    }, inbox)
+    await page.reload()
+    await page.getByRole('button', { name: 'New chat', exact: true }).click()
+    const newChat = page.getByRole('dialog', { name: 'New chat', exact: true })
+    await expect(newChat.getByRole('combobox', { name: 'Folder', exact: true })).toContainText(
+      'Uncategorized (default)'
+    )
+    await page.screenshot({ path: testInfo.outputPath('packaged-new-chat-folder.png') })
+    await page.keyboard.press('Escape')
     expect(errors).toEqual([])
     expect(
       await app.evaluate(({ BrowserWindow }) =>

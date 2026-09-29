@@ -128,6 +128,22 @@ test('packaged file links and folder workspace splits retain their workspace', a
     await clickPrintedFileLink(page, './linked.md', `folder:${ids[0]}`)
     await expect(page.locator('.editor-header-path').first()).toContainText('linked.md')
     await expect(row(ids[0])).toHaveAttribute('aria-current', 'page')
+    await app.evaluate(({ ipcMain }) => {
+      // Capture the app's clipboard boundary without overwriting Brooks's clipboard.
+      ipcMain.removeHandler('clipboard:writeText')
+      ipcMain.handle('clipboard:writeText', (_event, text: string) => {
+        Reflect.set(globalThis, 'copiedFilePathSmoke', text)
+      })
+    })
+    await page
+      .locator('[data-tab-id]')
+      .filter({ hasText: 'linked.md' })
+      .first()
+      .click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Copy Path', exact: true }).click()
+    await expect
+      .poll(() => app.evaluate(() => Reflect.get(globalThis, 'copiedFilePathSmoke')))
+      .toBe(path.join(folders[0], 'linked.md'))
 
     await row(ids[1]).locator('[data-worktree-card-surface]').click()
     await expect(row(ids[1])).toHaveAttribute('aria-current', 'page')

@@ -20,6 +20,7 @@ export type ChatSidebarRow = {
   paneKey: string | null
   session: AiVaultSession | null
   timestamp: number
+  createdAt?: number
   turnStartedAt: number
   /** No turn clock exists (title-derived); only a later working state proves a new turn. */
   activityFromState: boolean

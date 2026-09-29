@@ -28,6 +28,8 @@ export type ChatSidebarSessionSnapshot = {
 
 export type ChatSidebarSessionEntry = {
   worktreeId: string
+  /** Stable chat creation order, retained after the original terminal closes. */
+  createdAt?: number
   /** Pins which chat shows its workspace's manual name once sibling chats appear. */
   ownsWorkspaceName?: boolean
   snapshot?: ChatSidebarSessionSnapshot
@@ -45,6 +47,7 @@ export type ChatSidebarSettings = {
   historySince?: number
   completed?: Record<string, ChatSidebarCompletion>
   defaultRepoId?: string
+  defaultFolder?: { projectGroupId: string; executionHostId: ExecutionHostId }
   /** Keyed by `JSON.stringify([executionHostId, agent, sessionId])`. */
   sessions?: Record<string, ChatSidebarSessionEntry>
   hidden?: string[]

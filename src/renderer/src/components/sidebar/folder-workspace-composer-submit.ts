@@ -22,6 +22,7 @@ import { planAgentSessionLaunch } from '@/lib/agent-session-launch-plan'
 import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/structured-agent-session-provisional-tab'
 import { getNewWorkspaceProjectGroupHostId } from '@/lib/new-workspace-project-options'
 import { useAppStore } from '@/store'
+import { basename } from '@/lib/path'
 import {
   buildFolderWorkspaceLinkedStartupPlan,
   getFolderWorkspaceAgentLaunchPlatform,
@@ -45,6 +46,7 @@ type FolderWorkspaceCreateInput = {
 }
 
 type SubmitFolderWorkspaceCreateParams = {
+  chatMode?: boolean
   projectGroup: ProjectGroup
   name: string
   lastAutoName: string
@@ -66,6 +68,7 @@ type SubmitFolderWorkspaceCreateParams = {
 }
 
 export async function submitFolderWorkspaceCreate({
+  chatMode = false,
   projectGroup,
   name,
   lastAutoName,
@@ -89,7 +92,11 @@ export async function submitFolderWorkspaceCreate({
   const workspaceName =
     nameIsAutoManaged && linkedName
       ? linkedName
-      : name.trim() || linkedName || `${projectGroup.name} workspace`
+      : name.trim() ||
+        linkedName ||
+        (chatMode
+          ? basename(projectGroup.parentPath ?? '') || projectGroup.name
+          : `${projectGroup.name} workspace`)
   const launchPlatform = getFolderWorkspaceAgentLaunchPlatform(projectGroup)
   // Why: an SSH folder group runs the plain `orca` relay shim, so the Linux-only
   // `orca-ide` rename must not be applied for remote launches.

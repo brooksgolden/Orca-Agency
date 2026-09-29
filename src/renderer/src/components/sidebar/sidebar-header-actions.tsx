@@ -48,7 +48,10 @@ function NewWorkspaceButton({
   // Why primary: workspace.create binds both Mod+N and Mod+Shift+N, and listing
   // every alias in a one-line tooltip reads as noise rather than help.
   const shortcutLabel = formatOptionalPrimaryShortcutLabel('workspace.create', keybindings)
-  const label = translate('auto.components.sidebar.SidebarHeader.92154beb7e', 'New workspace')
+  const chatsView = useAppStore((s) => s.settings?.chatSidebar?.view === 'chats')
+  const label = chatsView
+    ? 'New chat'
+    : translate('auto.components.sidebar.SidebarHeader.92154beb7e', 'New workspace')
 
   // Why the tour handoff here: the tour highlights this button, and it is now
   // the control that performs the action rather than one that opens a menu.

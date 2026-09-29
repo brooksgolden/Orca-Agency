@@ -25,20 +25,18 @@ import { setChatSidebarTitle } from './chat-sidebar-preferences'
 import { activeChatTarget, isChatRowSelected } from './chat-sidebar-selection'
 import { chatResumeSession } from './chat-sidebar-resume'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
+import { chatSidebarListItems, chatSidebarItemHeight } from './chat-sidebar-groups'
 import {
   chatFolderDestinations,
   changeChatFolder,
   type ChatFolderDestination
 } from './chat-folder-destinations'
 
-type ListItem =
-  | { kind: 'heading'; label: string; id: string }
-  | { kind: 'chat'; row: Row; id: string }
-
 const NAVIGATION_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Home', 'End'])
 
 export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const { rows, state, history } = useChatSidebarData()
+  const splits = useAppStore((s) => s.workspaceSplitGroups)
   const now = useNow(30_000)
   const [query, setQuery] = useState('')
   const [renaming, setRenaming] = useState<Row | null>(null)
@@ -105,36 +103,10 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     setRenaming(row)
     setName(row.title)
   }, [])
-  const groupBy = state.settings?.chatSidebar?.groupBy ?? 'status'
-  const hiddenFolders = state.settings?.chatSidebar?.hiddenFolders
-  const items = useMemo<ListItem[]>(() => {
-    const text = query.toLocaleLowerCase().trim()
-    const visible = rows.filter(
-      (row) =>
-        !hiddenFolders?.includes(row.folder) &&
-        (!text || `${row.title}\n${row.folder}`.toLocaleLowerCase().includes(text))
-    )
-    if (groupBy === 'recent') {
-      return visible.map((row) => ({ kind: 'chat', row, id: row.id }))
-    }
-    const groups = new Map<string, Row[]>()
-    for (const row of visible) {
-      const key = groupBy === 'folder' ? row.folder : row.completed ? 'Done' : 'In progress'
-      const group = groups.get(key) ?? []
-      group.push(row)
-      groups.set(key, group)
-    }
-    const keys = groupBy === 'status' ? ['In progress', 'Done'] : [...groups.keys()]
-    return keys.flatMap((key): ListItem[] => {
-      const group = groups.get(key)
-      return group?.length
-        ? [
-            { kind: 'heading', label: `${key} (${group.length})`, id: `heading:${key}` },
-            ...group.map((row): ListItem => ({ kind: 'chat', row, id: row.id }))
-          ]
-        : []
-    })
-  }, [rows, query, hiddenFolders, groupBy])
+  const items = useMemo(
+    () => chatSidebarListItems(rows, state, query, splits),
+    [rows, state, query, splits]
+  )
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of rows) {
@@ -153,7 +125,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (items[index].kind === 'heading' ? 28 : 44),
+    estimateSize: (index) => chatSidebarItemHeight(items[index]),
     getItemKey: (index) => items[index].id,
     overscan: 8
   })
@@ -227,8 +199,10 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
             return (
               <div
                 key={item.key}
+                data-index={item.index}
+                ref={virtualizer.measureElement}
                 className="absolute left-0 top-0 w-full"
-                style={{ height: item.size, transform: `translateY(${item.start}px)` }}
+                style={{ transform: `translateY(${item.start}px)` }}
               >
                 {entry.kind === 'heading' ? (
                   <div
@@ -240,6 +214,13 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
                 ) : (
                   <ChatSidebarRow
                     row={entry.row}
+                    subTab={entry.subTab}
+                    lastSubTab={entry.lastSubTab}
+                    showFolder={entry.showFolder}
+                    groupId={entry.groupId}
+                    splitId={entry.splitId}
+                    splitStart={entry.splitStart}
+                    splitEnd={entry.splitEnd}
                     now={now}
                     selected={entry.id === selectedId}
                     tabStop={entry.id === tabStopId}

@@ -117,22 +117,34 @@ beforeEach(() => {
 })
 
 describe('project group store routing', () => {
-  it('creates local project groups without contacting the runtime transport', async () => {
-    projectGroupsCreate.mockResolvedValue(projectGroup)
-    const store = createTestStore()
+  it.each([null, '/workspace/client'])(
+    'creates local groups with folder %s on their owner',
+    async (parentPath) => {
+      const folder = { ...projectGroup, parentPath }
+      projectGroupsCreate.mockResolvedValue(folder)
+      const store = createTestStore()
+      store.setState({
+        settings: {
+          ...store.getState().settings!,
+          activeRuntimeEnvironmentId: parentPath ? 'env-1' : null
+        }
+      })
+      const options = parentPath ? { parentPath, hostId: 'local' } : undefined
 
-    await expect(store.getState().createProjectGroup('Platform')).resolves.toEqual({
-      ...projectGroup,
-      executionHostId: 'local'
-    })
+      await expect(store.getState().createProjectGroup('Platform', options)).resolves.toEqual({
+        ...folder,
+        executionHostId: 'local'
+      })
 
-    expect(store.getState().projectGroups).toEqual([{ ...projectGroup, executionHostId: 'local' }])
-    expect(projectGroupsCreate).toHaveBeenCalledWith({
-      name: 'Platform',
-      createdFrom: 'manual'
-    })
-    expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
-  })
+      expect(store.getState().projectGroups).toEqual([{ ...folder, executionHostId: 'local' }])
+      expect(projectGroupsCreate).toHaveBeenCalledWith({
+        name: 'Platform',
+        createdFrom: 'manual',
+        ...(parentPath ? { parentPath, connectionId: undefined } : {})
+      })
+      expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
+    }
+  )
 
   it('stamps local fetched folder groups with the local owner', async () => {
     const folderGroup = { ...projectGroup, parentPath: '/workspace/platform' }

@@ -5,6 +5,15 @@ import {
 } from './ipc-events/new-workspace-command'
 
 describe('buildNewWorkspaceShortcutModalData', () => {
+  it('uses the folder chat composer for the keyboard shortcut in Chats view', () => {
+    expect(
+      buildNewWorkspaceShortcutModalData({
+        activeView: 'terminal',
+        taskPageData: {},
+        settings: { chatSidebar: { view: 'chats' } }
+      })
+    ).toEqual({ telemetrySource: 'shortcut', chatMode: true })
+  })
   it('carries the active Linear issue into the Cmd+N composer', () => {
     const data = buildNewWorkspaceShortcutModalData({
       activeView: 'tasks',

@@ -27,6 +27,7 @@ import { buildAgentChatRows } from './chat-sidebar-agent-rows'
 import { chatPreference, isChatCompleted } from './chat-sidebar-identity'
 import { chatWorkspaceNameOwners, manualWorkspaceName } from './chat-sidebar-workspace-names'
 import { chatLiveSession, chatSnapshotSessions } from './chat-sidebar-session-snapshot'
+import { basename } from '@/lib/path'
 
 export function chatSidebarWorktrees(
   state: Pick<ChatSidebarState, 'worktreesByRepo' | 'folderWorkspaces'>
@@ -47,8 +48,9 @@ export function chatFolderLabel(
 ): string {
   const repo = state.repos.find((item) => item.id === worktree.repoId)
   const groupId = repo?.projectGroupId ?? projectGroupIdFromRepoId(worktree.repoId)
+  const group = state.projectGroups.find((item) => item.id === groupId)
   return (
-    state.projectGroups.find((group) => group.id === groupId)?.name ??
+    (group?.parentPath ? basename(group.parentPath) || group.parentPath : group?.name) ??
     repo?.displayName ??
     worktree.path.split(/[\\/]/).findLast(Boolean) ??
     'Folder'
@@ -108,6 +110,13 @@ export function buildChatSidebarRows(
     )
   )
   const add = (row: ChatSidebarRow) => {
+    const tab =
+      state.tabsByWorktree[row.worktree.id]?.find((item) => item.id === row.tabId) ??
+      state.unifiedTabsByWorktree[row.worktree.id]?.find((item) => item.id === row.tabId)
+    const sessionCreatedAt = Date.parse(row.session?.createdAt ?? '')
+    row.createdAt =
+      chatPreference(settings?.sessions, row)?.createdAt ??
+      (Number.isFinite(sessionCreatedAt) ? sessionCreatedAt : tab?.createdAt)
     row.automated = [row.id, ...row.aliases].some((id) => automationChats.has(id))
     if ([row.id, ...row.aliases].some((id) => hidden.has(id))) {
       return

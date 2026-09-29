@@ -90,6 +90,7 @@ export function chatSidebarPreferencePatch(
     }
     if (row.sessionKey) {
       const stored = sessions[row.sessionKey]
+      const createdAt = stored?.createdAt ?? row.createdAt
       const ownsWorkspaceName =
         row.ownsWorkspaceName ||
         (stored?.worktreeId === row.worktree.id && stored.ownsWorkspaceName === true)
@@ -101,11 +102,13 @@ export function chatSidebarPreferencePatch(
       )
       if (
         stored?.worktreeId !== row.worktree.id ||
+        stored?.createdAt !== createdAt ||
         (stored.ownsWorkspaceName === true) !== ownsWorkspaceName ||
         (snapshot !== undefined && !sameChatSessionSnapshot(stored.snapshot, snapshot))
       ) {
         sessions[row.sessionKey] = {
           worktreeId: row.worktree.id,
+          ...(createdAt !== undefined ? { createdAt } : {}),
           ...(ownsWorkspaceName ? { ownsWorkspaceName: true } : {}),
           ...(snapshot ? { snapshot } : {})
         }

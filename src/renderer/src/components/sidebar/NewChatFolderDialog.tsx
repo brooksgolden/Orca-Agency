@@ -17,6 +17,10 @@ import type { ChatSidebarRow } from './chat-sidebar-types'
 import { useCreateRepo } from './useCreateRepo'
 import { CreateProjectParentBrowser } from './CreateProjectLocationField'
 import { setChatFolder } from './chat-sidebar-preferences'
+import { chatCreationFolders } from './chat-creation-folders'
+import { getNewWorkspaceProjectGroupHostId } from '@/lib/new-workspace-project-options'
+import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
+import { basename } from '@/lib/path'
 
 export function NewChatFolderDialog({
   row,
@@ -28,7 +32,34 @@ export function NewChatFolderDialog({
   const host = parseExecutionHostId(row.hostId)
   const fetchWorktrees = useAppStore((state) => state.fetchWorktrees)
   const [browsing, setBrowsing] = useState(false)
-  const onFolderReady = useCallback((worktree: Worktree) => setChatFolder(row, worktree), [row])
+  const onFolderReady = useCallback(
+    async (worktree: Worktree) => {
+      const state = useAppStore.getState()
+      let registered = chatCreationFolders(state.projectGroups).find(
+        (folder) =>
+          getNewWorkspaceProjectGroupHostId(folder) === row.hostId &&
+          normalizeRuntimePathForComparison(folder.parentPath ?? '') ===
+            normalizeRuntimePathForComparison(worktree.path)
+      )
+      if (!registered) {
+        const group = await state.createProjectGroup(basename(worktree.path) || worktree.path, {
+          parentPath: worktree.path,
+          hostId: row.hostId
+        })
+        if (!group) {
+          throw new Error(
+            'Folder created, but could not be added to the folder list. Please retry.'
+          )
+        }
+        registered = group
+      }
+      if (!(await state.moveProjectToGroup(worktree.repoId, registered.id))) {
+        throw new Error('Folder created, but could not be organized. Please retry.')
+      }
+      await setChatFolder(row, worktree)
+    },
+    [row]
+  )
   const create = useCreateRepo(fetchWorktrees, onClose, undefined, {
     hostId: row.hostId,
     runtimeEnvironmentId: host?.kind === 'runtime' ? host.environmentId : null,

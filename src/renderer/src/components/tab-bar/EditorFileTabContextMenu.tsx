@@ -27,6 +27,7 @@ import { shouldBlockEditorTabLocalOpen } from './editor-tab-local-open-guard'
 import { translate } from '@/i18n/i18n'
 import { TabWorkspaceLayoutMenuSection } from './TabWorkspaceLayoutMenuSection'
 import { TAB_CONTEXT_MENU_CONTENT_CLASS } from './tab-context-menu-sizing'
+import { clipboardFilePath } from '../../../../shared/clipboard-file-path'
 
 const isMac = navigator.userAgent.includes('Mac')
 const isLinux = navigator.userAgent.includes('Linux')
@@ -228,7 +229,7 @@ export function EditorFileTabContextMenu({
         ) : null}
         <DropdownMenuItem
           onSelect={() => {
-            void window.api.ui.writeClipboardText(file.filePath)
+            void window.api.ui.writeClipboardText(clipboardFilePath(file.filePath))
           }}
         >
           <Copy className="size-3.5" />
@@ -236,7 +237,9 @@ export function EditorFileTabContextMenu({
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            void window.api.ui.writeClipboardText(file.relativePath)
+            void window.api.ui.writeClipboardText(
+              clipboardFilePath(file.relativePath, file.filePath)
+            )
           }}
         >
           <Copy className="size-3.5" />

@@ -539,30 +539,38 @@ describe('submitFolderWorkspaceCreate', () => {
     expect(mocks.ensureAgentStartupInTerminal).not.toHaveBeenCalled()
   })
 
-  it('does not mark first-input rename without submitted first input', async () => {
-    const createFolderWorkspace = vi.fn(async () => makeFolderWorkspace())
+  it.each([
+    { chatMode: false, name: '', expected: 'Platform workspace' },
+    { chatMode: true, name: '', expected: 'platform' },
+    { chatMode: true, name: 'My chat', expected: 'My chat' }
+  ])(
+    'keeps chat naming $expected without a first-input rename',
+    async ({ chatMode, name, expected }) => {
+      const createFolderWorkspace = vi.fn(async () => makeFolderWorkspace())
 
-    await submitFolderWorkspaceCreate({
-      projectGroup: makeProjectGroup(),
-      name: '',
-      lastAutoName: '',
-      linkedWorkItem: null,
-      note: '   ',
-      quickAgent: 'codex',
-      autoRenameBranchFromWork: true,
-      agentCmdOverrides: {},
-      createFolderWorkspace,
-      onOpenChange: vi.fn()
-    })
+      await submitFolderWorkspaceCreate({
+        projectGroup: makeProjectGroup(),
+        chatMode,
+        name,
+        lastAutoName: '',
+        linkedWorkItem: null,
+        note: '   ',
+        quickAgent: 'codex',
+        autoRenameBranchFromWork: true,
+        agentCmdOverrides: {},
+        createFolderWorkspace,
+        onOpenChange: vi.fn()
+      })
 
-    expect(createFolderWorkspace).toHaveBeenCalledWith({
-      projectGroupId: 'group-1',
-      name: 'Platform workspace',
-      connectionId: null,
-      linkedTask: null,
-      createdWithAgent: 'codex'
-    })
-  })
+      expect(createFolderWorkspace).toHaveBeenCalledWith({
+        projectGroupId: 'group-1',
+        name: expected,
+        connectionId: null,
+        linkedTask: null,
+        createdWithAgent: 'codex'
+      })
+    }
+  )
 
   it('quotes quick-agent startup for POSIX when the folder group is a local WSL UNC path', async () => {
     const createFolderWorkspace = vi.fn(async () => makeFolderWorkspace())

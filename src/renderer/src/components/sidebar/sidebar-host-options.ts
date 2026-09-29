@@ -8,7 +8,8 @@ import {
 } from '../../../../shared/execution-host'
 import {
   buildExecutionHostRegistry,
-  type ExecutionHostHealth
+  type ExecutionHostHealth,
+  type ExecutionHostSource
 } from '../../../../shared/execution-host-registry'
 import type { RuntimeCompatVerdict } from '../../../../shared/protocol-compat'
 import type { SshConnectionState, SshConnectionStatus } from '../../../../shared/ssh-types'
@@ -37,6 +38,7 @@ export type SidebarHostScopeOption = {
 }
 
 export function buildSidebarHostOptions(args: {
+  hostSource?: ExecutionHostSource
   repos: readonly Pick<Repo, 'connectionId' | 'executionHostId'>[]
   sshTargetLabels: ReadonlyMap<string, string>
   sshConnectionStates?: ReadonlyMap<string, SshConnectionState>
@@ -63,6 +65,7 @@ export function buildSidebarHostOptions(args: {
     ? (`runtime:${encodeURIComponent(args.settings.activeRuntimeEnvironmentId.trim())}` as const)
     : null
   return buildExecutionHostRegistry({
+    hostSource: args.hostSource,
     repos: args.repos,
     settings: args.settings,
     sshTargetLabels: args.sshTargetLabels,

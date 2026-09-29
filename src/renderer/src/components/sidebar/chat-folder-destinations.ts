@@ -10,6 +10,8 @@ import { normalizeRuntimePathForComparison } from '../../../../shared/cross-plat
 import { chatSidebarWorktrees } from './chat-sidebar-rows'
 import type { ChatSidebarRow, ChatSidebarState } from './chat-sidebar-types'
 import { setChatFolder } from './chat-sidebar-preferences'
+import { basename } from '@/lib/path'
+import { chatCreationFolders } from './chat-creation-folders'
 
 const isSamePath = (a: string, b: string) =>
   normalizeRuntimePathForComparison(a) === normalizeRuntimePathForComparison(b)
@@ -26,25 +28,26 @@ export type ChatFolderDestination = {
 export function chatFolderDestinations(
   state: Pick<ChatSidebarState, 'projectGroups' | 'repos' | 'worktreesByRepo' | 'folderWorkspaces'>
 ): ChatFolderDestination[] {
-  const groups: ChatFolderDestination[] = state.projectGroups.flatMap((group) =>
-    group.parentPath
-      ? [
-          {
-            id: `group:${group.id}`,
-            label: group.name,
-            path: group.parentPath,
-            hostId: getNewWorkspaceProjectGroupHostId(group),
-            projectGroupId: group.id
-          }
-        ]
-      : []
+  const groups: ChatFolderDestination[] = chatCreationFolders(state.projectGroups).flatMap(
+    (group) =>
+      group.parentPath
+        ? [
+            {
+              id: `group:${group.id}`,
+              label: group.name,
+              path: group.parentPath,
+              hostId: getNewWorkspaceProjectGroupHostId(group),
+              projectGroupId: group.id
+            }
+          ]
+        : []
   )
   const worktrees = chatSidebarWorktrees(state)
   for (const repo of state.repos) {
     if (
       groups.some(
         (group) =>
-          group.projectGroupId === repo.projectGroupId &&
+          (group.projectGroupId === repo.projectGroupId || isSamePath(group.path, repo.path)) &&
           group.hostId === getRepoExecutionHostId(repo)
       )
     ) {
@@ -56,7 +59,7 @@ export function chatFolderDestinations(
     if (worktree) {
       groups.push({
         id: `repo:${repo.id}`,
-        label: repo.displayName,
+        label: basename(repo.path) || repo.path,
         path: repo.path,
         hostId: getRepoExecutionHostId(repo),
         worktreeId: worktree.id

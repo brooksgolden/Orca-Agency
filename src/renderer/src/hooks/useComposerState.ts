@@ -30,6 +30,7 @@ import type {
 } from './composer-state/composer-card-contract'
 
 export type UseComposerStateOptions = {
+  chatMode?: boolean
   initialRepoId?: string
   initialEphemeralVmRecipeId?: string
   initialProjectGroupId?: string

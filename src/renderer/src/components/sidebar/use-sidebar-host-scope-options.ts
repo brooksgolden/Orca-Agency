@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useAppStore } from '@/store'
 import { getHostDisplayLabelOverrides } from '../../../../shared/host-setting-overrides'
+import type { ExecutionHostSource } from '../../../../shared/execution-host-registry'
 import {
   buildSidebarHostOptions,
   buildSidebarHostScopeOptions,
@@ -11,7 +12,7 @@ import {
 /** Shared host-scope derivation for the sidebar scope strip and the workspace
  * options menu so both surfaces consume the same live runtime status without
  * duplicating store wiring. */
-export function useSidebarHostScopeOptions(): {
+export function useSidebarHostScopeOptions(hostSource?: ExecutionHostSource): {
   hostOptions: SidebarHostOption[]
   hostScopeOptions: SidebarHostScopeOption[]
 } {
@@ -26,6 +27,7 @@ export function useSidebarHostScopeOptions(): {
   const hostOptions = useMemo(
     () =>
       buildSidebarHostOptions({
+        hostSource,
         repos,
         sshTargetLabels,
         sshConnectionStates,
@@ -35,6 +37,7 @@ export function useSidebarHostScopeOptions(): {
         hostLabelOverrides
       }),
     [
+      hostSource,
       repos,
       sshTargetLabels,
       sshConnectionStates,

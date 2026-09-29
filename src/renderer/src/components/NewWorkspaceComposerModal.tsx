@@ -27,6 +27,15 @@ import type { TaskSourceContext } from '../../../shared/task-source-context'
 import { translate } from '@/i18n/i18n'
 import { getWorkspaceComposerInitialFocusTarget } from '@/lib/workspace-composer-initial-focus'
 import { getFolderWorkspacePrimaryActionLabel } from '@/components/sidebar/folder-workspace-composer-helpers'
+import {
+  chatCreationFolders,
+  chatFolderKey,
+  defaultChatFolder
+} from './sidebar/chat-creation-folders'
+import { ChatFolderPicker } from './sidebar/ChatFolderPicker'
+import { Label } from './ui/label'
+import { useSidebarHostScopeOptions } from './sidebar/use-sidebar-host-scope-options'
+import { findActionableFolderProjectGroup } from '@/lib/new-workspace-project-options'
 
 // Why: match App-level AddRepoDialog loading — the add flow is off the hot
 // path for the composer, so keep its clone/SSH machinery out of the entry render.
@@ -35,6 +44,7 @@ const HostedAddRepoDialog = lazyWithRetry(() => import('@/components/sidebar/Add
 })
 
 type ComposerModalData = {
+  chatMode?: boolean
   prefilledName?: string
   initialRepoId?: string
   initialEphemeralVmRecipeId?: string
@@ -117,6 +127,22 @@ function QuickTabBody({
   active: boolean
 }): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
+  const projectGroups = useAppStore((s) => s.projectGroups)
+  const { hostOptions } = useSidebarHostScopeOptions('configured-only')
+  const folders = useMemo(
+    () =>
+      chatCreationFolders(projectGroups).filter(
+        (folder) =>
+          findActionableFolderProjectGroup({
+            projectGroups,
+            groupId: folder.id,
+            actionableHostIds: new Set(hostOptions.map((host) => host.id))
+          }) !== null
+      ),
+    [projectGroups, hostOptions]
+  )
+  const defaultFolder = defaultChatFolder(folders, settings?.chatSidebar?.defaultFolder)
+  const chatMode = modalData.chatMode === true
   const {
     cardProps,
     composerRef,
@@ -126,6 +152,7 @@ function QuickTabBody({
     createDisabled,
     selectAddedProjectRepo
   } = useComposerState({
+    chatMode,
     initialName: modalData.prefilledName ?? '',
     // Why: the modal is quick-create only now, so prompt-prefill state is
     // intentionally ignored even if older callers still send it.
@@ -135,7 +162,7 @@ function QuickTabBody({
     initialTaskSourceContext: modalData.taskSourceContext ?? null,
     initialRepoId: modalData.initialRepoId,
     initialEphemeralVmRecipeId: modalData.initialEphemeralVmRecipeId,
-    initialProjectGroupId: modalData.initialProjectGroupId,
+    initialProjectGroupId: chatMode ? defaultFolder?.id : modalData.initialProjectGroupId,
     initialWorkspaceStatus: modalData.initialWorkspaceStatus,
     ...(modalData.initialBaseBranch ? { initialBaseBranch: modalData.initialBaseBranch } : {}),
     persistDraft: false,
@@ -183,9 +210,21 @@ function QuickTabBody({
     setQuickAgentOverride(agent)
   }, [])
 
+  const chatFolders = folders.filter((folder) =>
+    cardProps.projectOptions.some(
+      (option) => option.kind === 'project-group' && option.projectGroupId === folder.id
+    )
+  )
+  const chatFolder = chatFolders.find(
+    (folder) => `project-group:${folder.id}` === cardProps.selectedProjectId
+  )
+  const submissionDisabled = createDisabled || (chatMode && !chatFolder)
   const handleCreate = useCallback(async (): Promise<void> => {
+    if (submissionDisabled) {
+      return
+    }
     await submitQuick(quickAgent)
-  }, [quickAgent, submitQuick])
+  }, [quickAgent, submitQuick, submissionDisabled])
   // Why: Add Project layers over the composer as a nested dialog instead of
   // replacing it in the activeModal slot — closing the composer mid-flow (and
   // losing the typed name/prompt) was the old, abrupt behavior. Once opened it
@@ -229,11 +268,13 @@ function QuickTabBody({
     (option) => option.id === cardProps.selectedProjectId
   )
   const isFolderWorkspaceTarget = selectedProjectOption?.kind === 'project-group'
-  const primaryActionLabel = isFolderWorkspaceTarget
-    ? getFolderWorkspacePrimaryActionLabel()
-    : cardProps.selectedRepoIsGit
-      ? translate('auto.components.NewWorkspaceComposerModal.createWorktree', 'Create worktree')
-      : translate('auto.components.NewWorkspaceComposerModal.createWorkspace', 'Create workspace')
+  const primaryActionLabel = chatMode
+    ? 'Start chat'
+    : isFolderWorkspaceTarget
+      ? getFolderWorkspacePrimaryActionLabel()
+      : cardProps.selectedRepoIsGit
+        ? translate('auto.components.NewWorkspaceComposerModal.createWorktree', 'Create worktree')
+        : translate('auto.components.NewWorkspaceComposerModal.createWorkspace', 'Create workspace')
 
   // Cmd/Ctrl+Enter submits. Escape belongs to the dialog's dismissable layer:
   // the page-style "blur the focused field first" rule assumes the user chose
@@ -261,7 +302,7 @@ function QuickTabBody({
       if (!shouldAllowComposerEnterSubmitTarget(target, composerRef.current)) {
         return
       }
-      if (createDisabled) {
+      if (submissionDisabled) {
         return
       }
       event.preventDefault()
@@ -269,24 +310,28 @@ function QuickTabBody({
     }
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
-  }, [active, composerRef, createDisabled, handleCreate, nestedDialogOpen])
+  }, [active, composerRef, submissionDisabled, handleCreate, nestedDialogOpen])
 
   return (
     <>
       <DialogHeader className="gap-1">
         <DialogTitle className="text-base font-semibold">
-          {isFolderWorkspaceTarget
-            ? translate(
-                'auto.components.sidebar.FolderWorkspaceComposerDialog.title',
-                'Create Folder Workspace'
-              )
-            : primaryActionLabel}
+          {chatMode
+            ? 'New chat'
+            : isFolderWorkspaceTarget
+              ? translate(
+                  'auto.components.sidebar.FolderWorkspaceComposerDialog.title',
+                  'Create Folder Workspace'
+                )
+              : primaryActionLabel}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          {translate(
-            'auto.components.NewWorkspaceComposerModal.fa90f739a5',
-            'Choose the project, workspace name, and agent before creating the workspace.'
-          )}
+          {chatMode
+            ? 'Choose a folder and agent for your new chat.'
+            : translate(
+                'auto.components.NewWorkspaceComposerModal.fa90f739a5',
+                'Choose the project, workspace name, and agent before creating the workspace.'
+              )}
         </DialogDescription>
       </DialogHeader>
       <NewWorkspaceComposerCard
@@ -302,6 +347,31 @@ function QuickTabBody({
         quickAgent={quickAgent}
         onQuickAgentChange={handleQuickAgentChange}
         {...cardProps}
+        createDisabled={submissionDisabled}
+        {...(chatMode
+          ? {
+              projectField: (
+                <div className="space-y-1">
+                  <Label>Folder</Label>
+                  <ChatFolderPicker
+                    folders={chatFolders}
+                    value={chatFolder ? chatFolderKey(chatFolder) : undefined}
+                    defaultId={defaultFolder ? chatFolderKey(defaultFolder) : undefined}
+                    onChange={(key) => {
+                      const folder = chatFolders.find((item) => chatFolderKey(item) === key)
+                      if (folder) {
+                        cardProps.onProjectChange(`project-group:${folder.id}`)
+                      }
+                    }}
+                  />
+                </div>
+              ),
+              repoBackedSourcesDisabled: true,
+              nameLabel: 'Chat name',
+              selectedRepoIsGit: false,
+              allowSmartNameAddProject: false
+            }
+          : {})}
         primaryActionLabel={primaryActionLabel}
         onOpenAgentSettings={() => setAgentSettingsOpen(true)}
         onCreate={() => void handleCreate()}

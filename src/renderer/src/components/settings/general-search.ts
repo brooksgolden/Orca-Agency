@@ -11,6 +11,12 @@ export { getGeneralSupportSearchEntries } from './general-support-search'
 
 export const getGeneralWorkspaceSearchEntries = createLocalizedCatalog(() => [
   {
+    title: 'Default chat folder',
+    targetSectionId: 'general-default-chat-folder',
+    description: 'Folder selected when you start a new chat.',
+    keywords: ['chat', 'folder', 'default', 'uncategorized']
+  },
+  {
     title: translate('auto.components.settings.general.search.4c95d08fa2', 'Workspace Directory'),
     description: translate(
       'auto.components.settings.general.search.d0bc793689',

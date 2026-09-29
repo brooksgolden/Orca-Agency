@@ -38,6 +38,8 @@ export type NewWorkspaceComposerCardProps = {
   eligibleRepos: readonly RepoOption[]
   repoId: string
   projectOptions?: NewWorkspaceProjectOption[]
+  projectField?: React.ReactNode
+  nameLabel?: string
   selectedProjectId?: string | null
   selectedRepoIsGit: boolean
   onRepoChange: (value: string) => void

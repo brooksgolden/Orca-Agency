@@ -1,6 +1,6 @@
 import { expect, test } from './helpers/orca-app'
 
-test('individual chats retain names, status, ordering and exact tab navigation', async ({
+test('workspace groups retain chat names, status, ordering and exact tab navigation', async ({
   orcaPage,
   electronApp
 }, testInfo) => {
@@ -65,7 +65,11 @@ test('individual chats retain names, status, ordering and exact tab navigation',
   await expect(first).toHaveAttribute('data-chat-state', 'working')
   await expect(rows.first()).toHaveAttribute('data-chat-sidebar-id', ids.first)
   const firstBounds = await first.boundingBox()
-  expect(firstBounds!.height).toBe(44)
+  expect(firstBounds!.height).toBe(28)
+  await expect(second).toHaveAttribute('data-chat-sub-tab', 'true')
+  expect(await second.getAttribute('data-chat-workspace-group')).toBe(
+    await first.getAttribute('data-chat-workspace-group')
+  )
   await second.click()
   await expect
     .poll(() => orcaPage.evaluate(() => window.__store!.getState().activeTabId))
@@ -85,7 +89,8 @@ test('individual chats retain names, status, ordering and exact tab navigation',
   await renamed.getByRole('button', { name: 'Reopen Aside profile extensions' }).click()
   await expect(renamed).toHaveAttribute('data-chat-completed', 'false')
   await orcaPage.getByRole('textbox', { name: 'Find chat' }).fill('Aside')
-  await expect(rows).toHaveCount(1)
+  // A matching sub-tab retains the main chat above it for context.
+  await expect(rows).toHaveCount(2)
   await orcaPage.getByRole('textbox', { name: 'Find chat' }).fill('')
   await expect(rows).toHaveCount(2)
   // One tab stop for the list; arrows move between chats and Enter opens the focused one.
