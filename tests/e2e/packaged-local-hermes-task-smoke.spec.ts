@@ -42,7 +42,11 @@ test('packaged local Hermes scheduled task appears in Automations', async (// ox
       }
     })
     await page.waitForFunction(() => Boolean(window.api))
-    await page.getByRole('button', { name: 'Automations', exact: true }).click()
+    const navigation = page.getByRole('button', { name: 'Automations', exact: true })
+    await expect(navigation).toBeVisible()
+    await expect(navigation).toBeEnabled()
+    // Why: hidden Electron windows can stop the animation frames Playwright's pointer check awaits.
+    await navigation.dispatchEvent('click')
     await expect(page.getByRole('heading', { name: 'Automations', exact: true })).toBeVisible()
     const name = page.getByText('Hermes workspace mirror', { exact: true })
     await expect(name).toBeVisible({ timeout: 60_000 })
