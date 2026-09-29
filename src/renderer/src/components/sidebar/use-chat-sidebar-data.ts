@@ -57,11 +57,12 @@ export function useChatSidebarData() {
   })
   const now = useNow(30_000)
   const rows = useMemo(
-    () => buildChatSidebarRows(state, history.sessions, now, sessionWorktrees),
+    () => buildChatSidebarRows(state, history.sessions, now, sessionWorktrees, true),
     [state, history.sessions, now, sessionWorktrees]
   )
   useEffect(() => {
     void updateChatSidebar((current) => chatSidebarPreferencePatch(rows, current, Date.now()))
   }, [rows])
-  return { rows, state, worktrees, history }
+  const chats = useMemo(() => rows.filter((row) => !row.automated), [rows])
+  return { rows: chats, state, worktrees, history }
 }

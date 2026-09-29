@@ -8,6 +8,8 @@ import { isWindowsAbsolutePathLike } from '../../../shared/cross-platform-path'
 import { repoIsRemote } from '../../../shared/agent-launch-remote'
 import { getRepoSshConnectionId } from '../../../shared/execution-host'
 import { isWslUncPath } from '../../../shared/wsl-paths'
+import { requireTuiAgentConfig } from '../../../shared/require-tui-agent-config'
+import type { TuiAgent } from '../../../shared/tui-agent'
 
 type LaunchStore = ReturnType<typeof useAppStore.getState>
 type LaunchRepo = LaunchStore['repos'][number]
@@ -20,6 +22,25 @@ export type AgentBackgroundLaunchHost = {
   isRemote: boolean
   /** Accepted status connection; undefined preserves unknown-owner behavior. */
   expectedConnectionId: string | null | undefined
+}
+
+export async function prepareAgentBackgroundHostTrust(
+  agent: TuiAgent,
+  workspacePath: string | undefined,
+  connectionId: string | null
+) {
+  const preset = requireTuiAgentConfig(agent).preflightTrust
+  if (preset && workspacePath && window.api.agentTrust?.markTrusted) {
+    try {
+      await window.api.agentTrust.markTrusted({
+        preset,
+        workspacePath,
+        ...(connectionId ? { connectionId } : {})
+      })
+    } catch {
+      // Best-effort: the user can still accept the trust prompt.
+    }
+  }
 }
 
 function resolveFolderWorkspaceConnectionIdForLaunch(

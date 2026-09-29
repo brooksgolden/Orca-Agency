@@ -1,6 +1,7 @@
 import { useAppStore } from '@/store'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { ChatSidebarRow } from './chat-sidebar-types'
+import type { Worktree } from '../../../../shared/worktree/types'
 
 type Preferences = NonNullable<GlobalSettings['chatSidebar']>
 let pendingUpdate = Promise.resolve()
@@ -45,5 +46,16 @@ export function setChatSidebarTitle(row: Pick<ChatSidebarRow, 'id' | 'aliases'>,
       titles[row.id] = title.trim()
     }
     return { titles }
+  })
+}
+
+export function setChatFolder(row: ChatSidebarRow, destination: Worktree) {
+  return updateChatSidebar((current) => {
+    const folderAssignments = { ...current.folderAssignments }
+    for (const id of [row.id, ...row.aliases]) {
+      delete folderAssignments[id]
+    }
+    folderAssignments[row.id] = { worktreeId: destination.id, executionHostId: row.hostId }
+    return { folderAssignments }
   })
 }

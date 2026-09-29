@@ -1,14 +1,18 @@
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
 import {
   isLegacySharedCodexHome,
-  isPerAccountManagedCodexHome
+  isPerAccountManagedCodexHome,
+  type AiVaultResumeSession
 } from '../../../shared/ai-vault-resume-preparation'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 
 export async function prepareAiVaultSessionForResume(
-  session: AiVaultSession
-): Promise<AiVaultSession> {
-  if (session.structuredSession || !aiVaultSessionNeedsResumePreparation(session)) {
+  session: AiVaultResumeSession
+): Promise<AiVaultResumeSession> {
+  if (
+    session.structuredSession ||
+    (!session.resumeCwd && !aiVaultSessionNeedsResumePreparation(session))
+  ) {
     return session
   }
   const result = await window.api.aiVault.prepareSessionResume({
@@ -16,8 +20,17 @@ export async function prepareAiVaultSessionForResume(
     sessionId: session.sessionId,
     filePath: session.filePath,
     codexHome: session.codexHome,
-    executionHostId: session.executionHostId
+    executionHostId: session.executionHostId,
+    ...(session.resumeCwd ? { resumeCwd: session.resumeCwd } : {})
   })
+  if (session.resumeCwd) {
+    if (!result.relocatedClaudeSession) {
+      throw new Error(
+        'This host cannot move a Claude chat to another folder yet. Update the host or choose the original folder. Your chat is unchanged.'
+      )
+    }
+    return { ...session, ...result.relocatedClaudeSession, resumeCwd: undefined, resumeCommand: '' }
+  }
   if (result.useRealCodexHome) {
     return { ...session, codexHome: null }
   }

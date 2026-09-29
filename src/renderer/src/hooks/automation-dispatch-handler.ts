@@ -6,6 +6,7 @@ import { observeExistingAutomationSession } from '@/lib/automation-session-obser
 import { findReusableAutomationSession } from '@/lib/automation-session-reuse'
 import type { AutomationTerminalOwnership } from '@/lib/automation-terminal-ownership'
 import { useAppStore } from '@/store'
+import { registerAutomationChat } from '@/lib/register-automation-chat'
 import type {
   AutomationDispatchRequest,
   AutomationDispatchResult
@@ -108,6 +109,7 @@ export async function handleAutomationDispatchRequest({
         if (releaseTab) {
           completion.setReuseDispatchTabRelease(releaseTab)
           try {
+            await registerAutomationChat(worktree.id, reusableSession)
             const submitted = await submitPromptToAgentPty({
               tabId: reusableSession.tabId,
               ptyId: reusableSession.ptyId,
@@ -170,6 +172,7 @@ export async function handleAutomationDispatchRequest({
       prompt: automation.prompt,
       launchSource: 'unknown',
       title: run.title,
+      automationRun: true,
       onData: completion.appendOutput,
       onAgentStatus: (payload) => {
         completion.captureAssistantMessage(payload.lastAssistantMessage)

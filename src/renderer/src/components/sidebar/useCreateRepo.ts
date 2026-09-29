@@ -14,6 +14,7 @@ import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import { upsertAddedRepoWithProjectHostSetup } from './add-repo-store-upsert'
 import { worktreeRefreshOptions } from './add-repo-runtime-owner'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { Worktree } from '../../../../shared/worktree/types'
 
 export function useCreateRepo(
   fetchWorktrees: (
@@ -26,12 +27,15 @@ export function useCreateRepo(
     hostId?: string | null
     runtimeEnvironmentId?: string | null
     sshTargetId?: string | null
+    kind?: 'git' | 'folder'
+    onFolderReady?: (worktree: Worktree) => Promise<void>
   } = {}
 ) {
   const [createName, setCreateName] = useState('')
   const [createParent, setCreateParent] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const { onFolderReady } = options
   const mountedRef = useMountedRef()
   const hostToken = options.hostId ?? options.sshTargetId ?? ''
   const hostTokenRef = useRef(hostToken)
@@ -100,9 +104,7 @@ export function useCreateRepo(
             ...useAppStore.getState().settings,
             activeRuntimeEnvironmentId: null
           })
-      // Why: Create Project is intentionally Git-only; non-Git folders use the
-      // existing add-folder flows instead of this path.
-      const createKind = 'git' as const
+      const createKind = options.kind ?? 'git'
       const result = options.sshTargetId
         ? await window.api.repos.createRemote({
             connectionId: options.sshTargetId,
@@ -168,7 +170,7 @@ export function useCreateRepo(
           }
         )
       }
-      if (isGitRepoKind(repo)) {
+      if (isGitRepoKind(repo) && createKind !== 'folder') {
         // Why: Git repos use the shared default-checkout completion path.
         // Why: if refresh is temporarily non-authoritative, the shared opener
         // still reveals the project so the user is not left in a completed add flow.
@@ -212,12 +214,18 @@ export function useCreateRepo(
               worktree.hostId === ownerOptions.executionHostId
           )
         if (folderWorktree) {
-          activateAndRevealWorktree(folderWorktree.id, {
-            sidebarRevealBehavior: 'auto',
-            ...(ownerOptions.executionHostId
-              ? { executionHostId: ownerOptions.executionHostId }
-              : {})
-          })
+          if (onFolderReady) {
+            await onFolderReady(folderWorktree)
+          } else {
+            activateAndRevealWorktree(folderWorktree.id, {
+              sidebarRevealBehavior: 'auto',
+              ...(ownerOptions.executionHostId
+                ? { executionHostId: ownerOptions.executionHostId }
+                : {})
+            })
+          }
+        } else {
+          throw new Error('Folder created, but its workspace could not load. Retry to open it.')
         }
         await markOnboardingProjectAdded('addedFolder')
         closeModal()
@@ -250,7 +258,9 @@ export function useCreateRepo(
     closeModal,
     onGitRepoReady,
     options.runtimeEnvironmentId,
-    options.sshTargetId
+    options.sshTargetId,
+    options.kind,
+    onFolderReady
   ])
 
   return {

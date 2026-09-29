@@ -14,6 +14,7 @@ import {
   isSessionOwnedByWorktree
 } from './paired-parked-terminal-restore'
 import { startDeferredSessionReattach } from './deferred-session-reattach-connect'
+import { ptySessionOwnerIds } from '../../../../../shared/pty-session-id-format'
 
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
@@ -102,7 +103,10 @@ export function runDeferredSessionReattachChoice(session: ConnectPanePtySession)
     (candidateReattachSessionId &&
     !isRemoteRuntimePtyId(candidateReattachSessionId) &&
     !candidateHasEagerBuffer &&
-    isSessionOwnedByWorktree(candidateReattachSessionId, session.deps.worktreeId)
+    isSessionOwnedByWorktree(
+      candidateReattachSessionId,
+      ptySessionOwnerIds(session.deps.worktreeId, storeSnapshot.worktreesByRepo)
+    )
       ? candidateReattachSessionId
       : null)
   recordPtyConnectDiagnostic(

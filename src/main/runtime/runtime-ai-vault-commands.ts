@@ -9,6 +9,7 @@ import type {
 import type { AiVaultListArgs, AiVaultListResult } from '../../shared/ai-vault-types'
 import { listAiVaultSessions } from '../ai-vault/cached-session-list'
 import { resolveLocalAiVaultSessionTitles } from '../ai-vault/session-title-resolver'
+import { prepareClaudeFolderResume } from '../ai-vault/claude-folder-resume'
 
 export class RuntimeAiVaultCommands {
   constructor(
@@ -29,6 +30,9 @@ export class RuntimeAiVaultCommands {
   }
 
   prepare(args: AiVaultPrepareSessionResumeArgs): Promise<AiVaultPrepareSessionResumeResult> {
+    if (args.agent === 'claude' && args.resumeCwd) {
+      return prepareClaudeFolderResume(args)
+    }
     return this.getPrepareResume()?.(args) ?? Promise.resolve({ useRealCodexHome: false })
   }
 }

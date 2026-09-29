@@ -1,6 +1,8 @@
 import type { Store } from '../persistence'
 import type { PublishAutomationsChanged } from '../../shared/runtime-client-events'
 import type { AutomationDispatchResult, AutomationRun } from '../../shared/automations-types'
+import { agentHookServer } from '../agent-hooks/server'
+import { recordAutomationChatOwnership } from './chat-ownership'
 
 export type AutomationRunWriter = {
   createRun: Store['createAutomationRun']
@@ -33,6 +35,7 @@ export function createAutomationRunWriter(
     },
     updateRun: (result: AutomationDispatchResult): AutomationRun => {
       const run = store.updateAutomationRun(result)
+      recordAutomationChatOwnership(store, run, agentHookServer.getProviderSessionIdentities())
       announce(run.automationId, result.usage ? 'usage' : 'run')
       return run
     },

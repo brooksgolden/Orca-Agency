@@ -242,6 +242,18 @@ export function updateSettings(
     )
   }
   const previousSettings = operations.state.settings
+  // Why: a renderer preference write can race a host-owned automation-origin write.
+  if (sanitizedUpdates.chatSidebar && previousSettings.chatSidebar?.automationChats?.length) {
+    sanitizedUpdates.chatSidebar = {
+      ...sanitizedUpdates.chatSidebar,
+      automationChats: [
+        ...new Set([
+          ...previousSettings.chatSidebar.automationChats,
+          ...(sanitizedUpdates.chatSidebar.automationChats ?? [])
+        ])
+      ]
+    }
+  }
   operations.state.settings = {
     ...operations.state.settings,
     ...sanitizedUpdates,

@@ -7,6 +7,32 @@ afterEach(() => {
 })
 
 describe('prepareAiVaultSessionForResume', () => {
+  it('moves a closed Claude chat only after its owning host prepares the same session', async () => {
+    const prepareSessionResume = vi.fn().mockResolvedValue({
+      useRealCodexHome: false,
+      relocatedClaudeSession: { cwd: '/actual/new', filePath: '/projects/new/chat.jsonl' }
+    })
+    stubPreparation(prepareSessionResume)
+    const original = { ...session({ agent: 'claude' }), resumeCwd: '/shortcut/new' }
+    const prepared = await prepareAiVaultSessionForResume(original)
+    expect(prepared).toMatchObject({
+      sessionId: original.sessionId,
+      cwd: '/actual/new',
+      filePath: '/projects/new/chat.jsonl',
+      resumeCommand: ''
+    })
+    expect(prepared.resumeCwd).toBeUndefined()
+    expect(prepareSessionResume).toHaveBeenCalledWith(
+      expect.objectContaining({ resumeCwd: '/shortcut/new' })
+    )
+  })
+
+  it('does not silently launch in the wrong folder when an older or SSH host cannot prepare it', async () => {
+    stubPreparation(vi.fn().mockResolvedValue({ useRealCodexHome: false }))
+    await expect(
+      prepareAiVaultSessionForResume({ ...session({ agent: 'claude' }), resumeCwd: '/new' })
+    ).rejects.toThrow('cannot move a Claude chat')
+  })
   it('returns a real-home launch identity only after targeted materialization succeeds', async () => {
     const prepareSessionResume = vi.fn().mockResolvedValue({ useRealCodexHome: true })
     stubPreparation(prepareSessionResume)

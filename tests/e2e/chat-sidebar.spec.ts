@@ -1,9 +1,16 @@
 import { expect, test } from './helpers/orca-app'
 
 test('individual chats retain names, status, ordering and exact tab navigation', async ({
-  orcaPage
+  orcaPage,
+  electronApp
 }, testInfo) => {
   test.setTimeout(180_000)
+  // Why: hidden Windows renderers must keep frames ticking for pointer stability checks.
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.setBackgroundThrottling(false)
+    }
+  })
   const ids = await orcaPage.evaluate(async () => {
     const state = window.__store!.getState()
     const worktree = Object.values(state.worktreesByRepo).flat()[0]

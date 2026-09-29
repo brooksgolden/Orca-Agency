@@ -69,10 +69,22 @@ export function chatSidebarPreferencePatch(
   const sessions = { ...current.sessions }
   const titles = { ...current.titles }
   const completed = { ...current.completed }
+  const folderAssignments = { ...current.folderAssignments }
+  let foldersChanged = false
   let sessionsChanged = false
   let titlesChanged = false
   let completedChanged = false
+  const automationChats = new Set(current.automationChats ?? [])
+  let automationChanged = false
   for (const row of rows) {
+    if (row.automated) {
+      for (const id of [row.id, ...row.aliases]) {
+        if (!automationChats.has(id)) {
+          automationChats.add(id)
+          automationChanged = true
+        }
+      }
+    }
     if (options.liveOnly && !chatLiveSessionSnapshot(row, now)) {
       continue
     }
@@ -101,6 +113,7 @@ export function chatSidebarPreferencePatch(
       }
       titlesChanged = moveAliases(titles, row, row.sessionKey) || titlesChanged
       completedChanged = moveAliases(completed, row, row.sessionKey) || completedChanged
+      foldersChanged = moveAliases(folderAssignments, row, row.sessionKey) || foldersChanged
     }
     if (!row.activityFromState) {
       continue
@@ -118,12 +131,20 @@ export function chatSidebarPreferencePatch(
       completedChanged = true
     }
   }
-  if (!sessionsChanged && !titlesChanged && !completedChanged) {
+  if (
+    !sessionsChanged &&
+    !titlesChanged &&
+    !completedChanged &&
+    !foldersChanged &&
+    !automationChanged
+  ) {
     return null
   }
   return {
+    ...(automationChanged ? { automationChats: [...automationChats] } : {}),
     ...(sessionsChanged ? { sessions } : {}),
     ...(titlesChanged ? { titles } : {}),
+    ...(foldersChanged ? { folderAssignments } : {}),
     ...(completedChanged ? { completed } : {})
   }
 }

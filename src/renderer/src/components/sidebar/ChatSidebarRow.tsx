@@ -5,6 +5,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { AgentStateDot } from '@/components/AgentStateDot'
@@ -14,6 +18,7 @@ import { writeWorkspaceDragData } from './workspace-status'
 import type { ChatSidebarRow as Row } from './chat-sidebar-types'
 import { setChatCompleted } from './chat-sidebar-preferences'
 import { selectChatTabInWorkspace } from './chat-sidebar-selection'
+import type { ChatFolderDestination } from './chat-folder-destinations'
 
 export const ChatSidebarRow = memo(function ChatSidebarRow({
   row,
@@ -21,7 +26,10 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
   tabStop,
   now,
   onOpen,
-  onRename
+  onRename,
+  folders,
+  onChangeFolder,
+  onNewFolder
 }: {
   row: Row
   selected: boolean
@@ -29,6 +37,9 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
   now: number
   onOpen: (row: Row) => void
   onRename: (row: Row) => void
+  folders: ChatFolderDestination[]
+  onChangeFolder: (row: Row, folder: ChatFolderDestination) => void
+  onNewFolder: (row: Row) => void
 }) {
   return (
     <ContextMenu>
@@ -85,7 +96,10 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
               {row.title}
             </div>
             <div className="flex min-w-0 items-center gap-2 text-[11px] leading-4 text-muted-foreground">
-              <span className="min-w-0 flex-1 truncate" title={row.worktree.path}>
+              <span
+                className="min-w-0 flex-1 truncate"
+                title={(row.folderWorktree ?? row.worktree).path}
+              >
                 {row.folder}
               </span>
               <span
@@ -108,6 +122,20 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
         <ContextMenuItem onSelect={() => void setChatCompleted(row, !row.completed)}>
           {row.completed ? 'Move to In progress' : 'Mark done'}
         </ContextMenuItem>
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>Change folder</ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            <ContextMenuItem onSelect={() => onNewFolder(row)}>New folder...</ContextMenuItem>
+            <ContextMenuSeparator />
+            {folders
+              .filter((folder) => folder.hostId === row.hostId)
+              .map((folder) => (
+                <ContextMenuItem key={folder.id} onSelect={() => onChangeFolder(row, folder)}>
+                  {folder.label}
+                </ContextMenuItem>
+              ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
       </ContextMenuContent>
     </ContextMenu>
   )

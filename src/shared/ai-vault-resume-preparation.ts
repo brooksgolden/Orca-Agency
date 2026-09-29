@@ -1,10 +1,13 @@
 import type { AiVaultSession } from './ai-vault-types'
 
+/** A launch request, separate from the persisted history schema. */
+export type AiVaultResumeSession = AiVaultSession & { resumeCwd?: string }
+
 export type AiVaultPrepareSessionResumeArgs = Pick<
   AiVaultSession,
   'agent' | 'filePath' | 'codexHome' | 'executionHostId'
 > &
-  Partial<Pick<AiVaultSession, 'sessionId'>>
+  Partial<Pick<AiVaultResumeSession, 'sessionId' | 'resumeCwd'>>
 
 export type AiVaultPrepareSessionResumeResult = {
   useRealCodexHome: boolean
@@ -12,6 +15,7 @@ export type AiVaultPrepareSessionResumeResult = {
   // homes, so the owning host repins resume to the selected account's home.
   // Absent (older hosts included) means resume keeps the session's own home.
   substituteCodexHome?: string
+  relocatedClaudeSession?: { cwd: string; filePath: string }
 }
 
 export type AiVaultSessionResumePreparation = (

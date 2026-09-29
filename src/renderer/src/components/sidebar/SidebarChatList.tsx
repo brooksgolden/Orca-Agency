@@ -1,16 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useShallow } from 'zustand/react/shallow'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +24,12 @@ import { useChatSidebarData } from './use-chat-sidebar-data'
 import { setChatSidebarTitle } from './chat-sidebar-preferences'
 import { activeChatTarget, isChatRowSelected } from './chat-sidebar-selection'
 import { chatResumeSession } from './chat-sidebar-resume'
+import { NewChatFolderDialog } from './NewChatFolderDialog'
+import {
+  chatFolderDestinations,
+  changeChatFolder,
+  type ChatFolderDestination
+} from './chat-folder-destinations'
 
 type ListItem =
   | { kind: 'heading'; label: string; id: string }
@@ -43,7 +43,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const [query, setQuery] = useState('')
   const [renaming, setRenaming] = useState<Row | null>(null)
   const [name, setName] = useState('')
-  const [folder, setFolder] = useState('all')
+  const [newFolderRow, setNewFolderRow] = useState<Row | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const target = useAppStore(useShallow(activeChatTarget))
   const targetState = useAppStore(
@@ -59,11 +59,25 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     activeWorktreeId: null,
     targetState
   })
+  const folders = useMemo(() => chatFolderDestinations(targetState), [targetState])
+  const moveChat = useCallback((row: Row, folder: ChatFolderDestination) => {
+    void changeChatFolder(row, folder)
+      .then(() => {
+        toast.success(`Chat filed under ${folder.label}`, {
+          description: row.tabId
+            ? 'Running work continues. The new working folder applies when you reopen the chat.'
+            : undefined
+        })
+      })
+      .catch((error: unknown) =>
+        toast.error(error instanceof Error ? error.message : 'Could not change folder.')
+      )
+  }, [])
   const openChat = useCallback(
     (row: Row) => {
       const resumeSession = row.tabId ? null : chatResumeSession(row)
       if (resumeSession) {
-        handleResume(resumeSession, row.worktree.id)
+        handleResume(resumeSession, (row.folderWorktree ?? row.worktree).id)
         onOpen?.()
         return
       }
@@ -92,14 +106,12 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     setName(row.title)
   }, [])
   const groupBy = state.settings?.chatSidebar?.groupBy ?? 'status'
-  const folders = useMemo(() => [...new Set(rows.map((row) => row.folder))].sort(), [rows])
-  // Why: a folder that lost its last chat must not leave the filter pointing at nothing.
-  const activeFolder = folders.includes(folder) ? folder : 'all'
+  const hiddenFolders = state.settings?.chatSidebar?.hiddenFolders
   const items = useMemo<ListItem[]>(() => {
     const text = query.toLocaleLowerCase().trim()
     const visible = rows.filter(
       (row) =>
-        (activeFolder === 'all' || row.folder === activeFolder) &&
+        !hiddenFolders?.includes(row.folder) &&
         (!text || `${row.title}\n${row.folder}`.toLocaleLowerCase().includes(text))
     )
     if (groupBy === 'recent') {
@@ -122,7 +134,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
           ]
         : []
     })
-  }, [rows, query, activeFolder, groupBy])
+  }, [rows, query, hiddenFolders, groupBy])
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of rows) {
@@ -190,19 +202,6 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <Select value={activeFolder} onValueChange={setFolder}>
-          <SelectTrigger aria-label="Filter chats by folder" size="sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All folders</SelectItem>
-            {folders.map((label) => (
-              <SelectItem key={label} value={label}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
       {history.error ? (
         <div className="px-3 text-xs text-muted-foreground">
@@ -246,6 +245,9 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
                     tabStop={entry.id === tabStopId}
                     onOpen={openChat}
                     onRename={renameChat}
+                    folders={folders}
+                    onChangeFolder={moveChat}
+                    onNewFolder={setNewFolderRow}
                   />
                 )}
               </div>
@@ -290,6 +292,9 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
           </form>
         </DialogContent>
       </Dialog>
+      {newFolderRow ? (
+        <NewChatFolderDialog row={newFolderRow} onClose={() => setNewFolderRow(null)} />
+      ) : null}
     </div>
   )
 }

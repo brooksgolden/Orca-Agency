@@ -4,6 +4,7 @@ import { structuredAgentSessionTabId } from '../../../shared/structured-agent-se
 import type { PtyListedSession } from '../../../shared/pty-listed-session'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../shared/terminal-tab-types'
+import type { Worktree } from '../../../shared/worktree/types'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
 import type { TerminalSlice } from '@/store/slices/terminals'
 import { runWorktreeAgentActivationGate } from './worktree-agent-activation-gate'
@@ -15,8 +16,41 @@ const LIVE_LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const DEAD_LEAF_ID = '22222222-2222-4222-8222-222222222222'
 const SIBLING_LEAF_ID = '33333333-3333-4333-8333-333333333333'
 
-function listed(id: string): PtyListedSession {
-  return { id, cwd: '/worktree', title: 'Codex', agentOwnership: 'present' }
+function listed(id: string, worktreeId?: string): PtyListedSession {
+  return {
+    id,
+    cwd: '/worktree',
+    title: 'Codex',
+    agentOwnership: 'present',
+    ...(worktreeId ? { worktreeId } : {})
+  }
+}
+
+// Shaped like the September 2026 folder migration: repo id and path changed, instance kept.
+const PRIOR_WORKTREE_ID = 'old-repo::/General::workspace:f23cd281'
+const MIGRATED_PTY_ID = `${PRIOR_WORKTREE_ID}@@867d8f22`
+
+function workspaceRecord(id: string, priorWorktreeIds?: string[]): Worktree {
+  return {
+    id,
+    repoId: id.slice(0, id.indexOf('::')),
+    path: '/worktree',
+    displayName: 'Workspace',
+    head: '',
+    branch: '',
+    isBare: false,
+    comment: '',
+    linkedIssue: null,
+    linkedPR: null,
+    linkedLinearIssue: null,
+    isArchived: false,
+    isUnread: false,
+    isPinned: false,
+    sortOrder: 0,
+    lastActivityAt: 0,
+    isMainWorktree: false,
+    ...(priorWorktreeIds ? { priorWorktreeIds } : {})
+  }
 }
 
 function sleepingRecord(
@@ -83,6 +117,7 @@ function testDeps(args: {
   resumeCount?: number
   /** Host census of PTY→surface ownership; null models a host that could not answer. */
   surfaceOwners?: LiveTerminalSurfaceOwnerIndex | null
+  worktrees?: Worktree[]
 }) {
   const resume = vi.fn(() => args.resumeCount ?? 1)
   const sleeping = args.sleeping ?? []
@@ -151,6 +186,7 @@ function testDeps(args: {
     updateTabPtyId,
     replaceTerminalLayoutPanePtyId,
     terminalLayoutsByTabId,
+    worktreesByRepo: { repo: args.worktrees ?? [] },
     unifiedTabsByWorktree: {
       [WORKTREE_ID]: args.structured
         ? [
@@ -280,6 +316,63 @@ describe('worktree agent activation gate', () => {
       recordInteraction: false
     })
     expect(resume).not.toHaveBeenCalled()
+  })
+
+  it('keeps a live PTY minted under the workspace prior id after an identity migration', async () => {
+    const { deps, createTab, resume } = testDeps({
+      sessions: [listed(MIGRATED_PTY_ID, PRIOR_WORKTREE_ID)],
+      worktrees: [workspaceRecord(WORKTREE_ID, [PRIOR_WORKTREE_ID])]
+    })
+    seedExistingSurface(deps.getState(), {
+      tabId: 'migrated-tab',
+      leafId: LIVE_LEAF_ID,
+      boundPtyId: MIGRATED_PTY_ID
+    })
+
+    // Why: without the alias the gate saw no live agent and resumed a second writer onto it.
+    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+
+    expect(createTab).not.toHaveBeenCalled()
+    expect(resume).not.toHaveBeenCalled()
+  })
+
+  it('does not claim a prior-id PTY that the host attributes to another workspace', async () => {
+    const { deps, createTab, resume } = testDeps({
+      sessions: [listed(MIGRATED_PTY_ID, 'other-repo::/elsewhere')],
+      worktrees: [workspaceRecord(WORKTREE_ID, [PRIOR_WORKTREE_ID])]
+    })
+
+    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('resumed')
+
+    expect(createTab).not.toHaveBeenCalled()
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('does not claim a prior-id PTY once a live workspace uses that id again', async () => {
+    const { deps, createTab, resume } = testDeps({
+      sessions: [listed(MIGRATED_PTY_ID)],
+      worktrees: [
+        workspaceRecord(WORKTREE_ID, [PRIOR_WORKTREE_ID]),
+        workspaceRecord(PRIOR_WORKTREE_ID)
+      ]
+    })
+
+    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('resumed')
+
+    expect(createTab).not.toHaveBeenCalled()
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('does not claim a foreign workspace PTY', async () => {
+    const { deps, createTab, resume } = testDeps({
+      sessions: [listed('other-repo::/elsewhere@@867d8f22')],
+      worktrees: [workspaceRecord(WORKTREE_ID, [PRIOR_WORKTREE_ID])]
+    })
+
+    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('resumed')
+
+    expect(createTab).not.toHaveBeenCalled()
+    expect(resume).toHaveBeenCalledOnce()
   })
 
   it('adopts a daemon PTY minted for a folder workspace', async () => {

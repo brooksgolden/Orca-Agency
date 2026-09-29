@@ -41,7 +41,10 @@ export function chatSidebarWorktrees(
   ]
 }
 
-export function chatFolderLabel(state: ChatSidebarState, worktree: Worktree): string {
+export function chatFolderLabel(
+  state: Pick<ChatSidebarState, 'repos' | 'projectGroups'>,
+  worktree: Worktree
+): string {
   const repo = state.repos.find((item) => item.id === worktree.repoId)
   const groupId = repo?.projectGroupId ?? projectGroupIdFromRepoId(worktree.repoId)
   return (
@@ -66,7 +69,8 @@ export function buildChatSidebarRows(
   sessions: readonly AiVaultSession[],
   now: number,
   /** Session id to its resolved workspace; computed per session when omitted. */
-  sessionWorktrees?: ReadonlyMap<string, AiVaultSessionWorktreeInfo>
+  sessionWorktrees?: ReadonlyMap<string, AiVaultSessionWorktreeInfo>,
+  includeAutomationRows = false
 ): ChatSidebarRow[] {
   const rows = new Map<string, ChatSidebarRow>()
   const worktrees = chatSidebarWorktrees(state)
@@ -75,22 +79,28 @@ export function buildChatSidebarRows(
   const hostOf = (worktree: Worktree) =>
     getWorktreeExecutionHostId(worktree, repoById.get(worktree.repoId), focusedHostId)
   const settings = state.settings?.chatSidebar
-  const sessionMap = new Map(
-    sessions.map((session) => [
-      chatSessionKey(session.executionHostId, session.agent, session.sessionId),
-      session
-    ])
-  )
-  // Why: a slow or failing scan must not hide chats that were already registered.
-  const remembered = chatSnapshotSessions(settings?.sessions, new Set(sessionMap.keys()))
-  for (const session of remembered) {
-    sessionMap.set(
-      chatSessionKey(session.executionHostId, session.agent, session.sessionId),
-      session
-    )
-  }
+  // Why: a cached scan may still return the old file after the live chat has moved.
+  const remembered = chatSnapshotSessions(settings?.sessions, new Set())
   const rememberedSessions = new Set(remembered)
+  const sessionMap = new Map<string, AiVaultSession>()
+  for (const session of [...sessions, ...remembered]) {
+    const key = chatSessionKey(session.executionHostId, session.agent, session.sessionId)
+    const previous = sessionMap.get(key)
+    // Why: provider renames from a fresh scan beat a remembered title for the same file.
+    if (previous?.filePath === session.filePath && rememberedSessions.has(session)) {
+      continue
+    }
+    // Why: a moved Claude session retains its original file; scan order must not choose that stale copy.
+    if (
+      !previous ||
+      (chatSessionTime(session) - chatSessionTime(previous) ||
+        (Date.parse(session.modifiedAt) || 0) - (Date.parse(previous.modifiedAt) || 0)) > 0
+    ) {
+      sessionMap.set(key, session)
+    }
+  }
   const hidden = new Set(settings?.hidden ?? [])
+  const automationChats = new Set(settings?.automationChats ?? [])
   const generatedTitles = state.settings?.tabAutoGenerateTitle === true
   const sleepingByTabId = new Map(
     Object.values(state.sleepingAgentSessionsByPaneKey).flatMap((record) =>
@@ -98,6 +108,7 @@ export function buildChatSidebarRows(
     )
   )
   const add = (row: ChatSidebarRow) => {
+    row.automated = [row.id, ...row.aliases].some((id) => automationChats.has(id))
     if ([row.id, ...row.aliases].some((id) => hidden.has(id))) {
       return
     }
@@ -187,7 +198,7 @@ export function buildChatSidebarRows(
   }
   const worktreeById = new Map(worktrees.map((worktree) => [worktree.id, worktree]))
   const claimed = new Set([...rows.values()].flatMap((row) => [row.id, ...row.aliases]))
-  for (const session of [...sessions, ...remembered]) {
+  for (const session of sessionMap.values()) {
     if (
       session.subagent ||
       (!rememberedSessions.has(session) && !isAiVaultSessionResumableContent(session))
@@ -216,7 +227,13 @@ export function buildChatSidebarRows(
             activeWorktreeId: null
           })
       )?.worktreeId
-    const worktree = worktreeId ? worktreeById.get(worktreeId) : undefined
+    const original = worktreeId ? worktreeById.get(worktreeId) : undefined
+    const assignment = settings?.folderAssignments?.[key]
+    const fallback =
+      assignment?.executionHostId === session.executionHostId
+        ? worktreeById.get(assignment.worktreeId)
+        : undefined
+    const worktree = original && !original.isArchived ? original : fallback
     // Why: archived workspaces cannot resume, and a chat must stay on the host that ran it.
     if (!worktree || worktree.isArchived || hostOf(worktree) !== session.executionHostId) {
       continue
@@ -246,12 +263,25 @@ export function buildChatSidebarRows(
   const result = [...rows.values()]
   const owners = chatWorkspaceNameOwners(state, result)
   for (const row of result) {
+    const assignment = chatPreference(settings?.folderAssignments, row)
+    const destination = assignment ? worktreeById.get(assignment.worktreeId) : undefined
+    if (
+      destination &&
+      !destination.isArchived &&
+      assignment?.executionHostId === row.hostId &&
+      hostOf(destination) === row.hostId
+    ) {
+      row.folderWorktree = destination
+      row.folder = chatFolderLabel(state, destination)
+    }
     row.ownsWorkspaceName = owners.get(row.worktree.id) === row
     const workspaceName = row.ownsWorkspaceName ? manualWorkspaceName(state, row.worktree) : null
     row.title =
       chatPreference(settings?.titles, row) ?? row.manualTitle ?? workspaceName ?? row.title
   }
-  return result.sort(compareChatSidebarRows)
+  return result
+    .filter((row) => includeAutomationRows || !row.automated)
+    .sort(compareChatSidebarRows)
 }
 
 export function compareChatSidebarRows(a: ChatSidebarRow, b: ChatSidebarRow): number {

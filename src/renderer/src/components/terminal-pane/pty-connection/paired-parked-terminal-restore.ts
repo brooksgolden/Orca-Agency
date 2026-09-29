@@ -6,6 +6,10 @@ import {
   isRuntimeHostContactRevoked,
   lastVerifiedRuntimeStatus
 } from '../../../../../shared/runtime-host-status'
+import {
+  isPtySessionMintedFor,
+  PTY_SESSION_ID_SEPARATOR
+} from '../../../../../shared/pty-session-id-format'
 
 export function isRemoteRuntimePtyId(ptyId: string | null | undefined): boolean {
   return typeof ptyId === 'string' && ptyId.startsWith(REMOTE_PTY_ID_PREFIX)
@@ -28,11 +32,11 @@ export function canRestorePairedParkedTerminal(ptyId: string): boolean {
 
 // Why: daemon session IDs use the format `${worktreeId}@@${shortUuid}`.
 // This validates that a session ID actually belongs to the given worktree,
-// preventing cross-workspace contamination during restore.
-export function isSessionOwnedByWorktree(sessionId: string, worktreeId: string): boolean {
-  const separatorIdx = sessionId.lastIndexOf('@@')
-  if (separatorIdx === -1) {
+// preventing cross-workspace contamination during restore. `ownerIds` comes from
+// ptySessionOwnerIds, so a migrated workspace still owns PTYs minted under its prior id.
+export function isSessionOwnedByWorktree(sessionId: string, ownerIds: readonly string[]): boolean {
+  if (sessionId.lastIndexOf(PTY_SESSION_ID_SEPARATOR) === -1) {
     return true
   }
-  return sessionId.slice(0, separatorIdx) === worktreeId
+  return isPtySessionMintedFor(sessionId, ownerIds)
 }

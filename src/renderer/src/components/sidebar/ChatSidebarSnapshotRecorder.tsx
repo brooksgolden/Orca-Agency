@@ -14,7 +14,7 @@ import { selectChatSidebarState } from './use-chat-sidebar-data'
 export default function ChatSidebarSnapshotRecorder(): null {
   const state = useAppStore(useShallow(selectChatSidebarState))
   const now = useNow(60_000)
-  const rows = useMemo(() => buildChatSidebarRows(state, [], now), [state, now])
+  const rows = useMemo(() => buildChatSidebarRows(state, [], now, undefined, true), [state, now])
   useEffect(() => {
     void updateChatSidebar((current) =>
       chatSidebarPreferencePatch(rows, current, Date.now(), { liveOnly: true })

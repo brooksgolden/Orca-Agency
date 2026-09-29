@@ -53,6 +53,7 @@ export const AiVaultListSessionsParams = z
   })
 
 export const AiVaultPrepareSessionResumeParams = z.object({
+  resumeCwd: z.string().min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH).optional(),
   agent: z.enum(AI_VAULT_AGENTS),
   sessionId: z.string().min(1).max(512).optional(),
   filePath: z.string().min(1).max(AI_VAULT_SCOPE_PATH_MAX_LENGTH),

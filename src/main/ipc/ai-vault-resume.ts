@@ -6,6 +6,7 @@ import type {
 } from '../../shared/ai-vault-resume-preparation'
 import { parseExecutionHostId } from '../../shared/execution-host'
 import { assertLegacyAiVaultResumeAllowed } from '../ai-vault/structured-session-ownership'
+import { prepareClaudeFolderResume } from '../ai-vault/claude-folder-resume'
 
 export type AiVaultResumeHandlerOptions = {
   ensureStructuredSessionOwnership?: () => Promise<void>
@@ -38,6 +39,9 @@ export async function prepareAiVaultSessionResume(
   // Why: the desktop process must never materialize transcript paths owned by an SSH host.
   if (executionHost?.kind === 'ssh') {
     return { useRealCodexHome: false }
+  }
+  if (args.agent === 'claude' && args.resumeCwd) {
+    return prepareClaudeFolderResume(args)
   }
   return options.prepareSessionResume?.(args) ?? { useRealCodexHome: false }
 }

@@ -23,6 +23,24 @@ const moved = { ...chatWorktree, id: 'repo::C:/dev/Uncategorized', path: 'C:\\de
 const leafId = '77777777-7777-4777-8777-777777777777'
 
 describe('resuming a chat from the list', () => {
+  it('uses a per-chat destination without changing the running workspace owner', () => {
+    const session = chatSession('a', { cwd: chatWorktree.path })
+    expect(chatResumeSession(chatRow({ session, folderWorktree: moved }))?.cwd).toBe(moved.path)
+    expect(
+      chatResumeSession(
+        chatRow({
+          session: { ...session, cwd: `${chatWorktree.path}/child` },
+          folderWorktree: chatWorktree
+        })
+      )?.cwd
+    ).toBe(chatWorktree.path)
+    const claude = { ...session, agent: 'claude' as const }
+    expect(chatResumeSession(chatRow({ session: claude, folderWorktree: moved }))).toMatchObject({
+      cwd: session.cwd,
+      resumeCwd: moved.path,
+      sessionId: 'a'
+    })
+  })
   it('starts a chat filed under another workspace in that workspace folder', () => {
     const session = chatSession('a', { cwd: 'C:\\dev\\General', resumeCommand: 'cd old && codex' })
     expect(chatResumeSession(chatRow({ session, worktree: moved }))).toMatchObject({
@@ -44,14 +62,20 @@ describe('resuming a chat from the list', () => {
       cwd: 'C:\\dev\\General',
       filePath: 'C:\\Users\\me\\.claude\\projects\\C--dev-General\\a.jsonl'
     })
-    expect(chatResumeSession(chatRow({ session: stale, worktree: moved }))).toBe(stale)
+    expect(chatResumeSession(chatRow({ session: stale, worktree: moved }))).toMatchObject({
+      resumeCwd: stale.cwd
+    })
     const relocated = {
       ...stale,
       filePath: 'C:\\Users\\me\\.claude\\projects\\C--dev-Uncategorized\\a.jsonl'
     }
-    expect(chatResumeSession(chatRow({ session: relocated, worktree: moved }))?.cwd).toBe(
+    expect(chatResumeSession(chatRow({ session: relocated, worktree: moved }))?.resumeCwd).toBe(
       moved.path
     )
+  })
+  it('checks the real Claude project folder even without an explicit move', () => {
+    const session = chatSession('a', { agent: 'claude', cwd: chatWorktree.path })
+    expect(chatResumeSession(chatRow({ session }))?.resumeCwd).toBe(chatWorktree.path)
   })
 })
 

@@ -38,17 +38,30 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       true
     )
     const page = await app.firstWindow()
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.setBackgroundThrottling(false)
+      }
+    })
     await page.waitForFunction(() => Boolean(window.api))
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     const folder = path.join(userDataDir, 'agency-project')
     mkdirSync(folder, { recursive: true })
+    const nextFolder = path.join(userDataDir, 'local-tools')
+    mkdirSync(nextFolder, { recursive: true })
     const capture = path.join(folder, 'resume-capture.txt')
     const stub = path.join(folder, 'claude-smoke.cmd')
     writeFileSync(stub, `@echo off\r\necho %CD% ^| %* >> "${capture}"\r\n`)
-    const ids = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']
-    const transcripts = ids.map((id) => path.join(folder, `${id}.jsonl`))
+    const ids = [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333'
+    ]
+    const projectBucket = path.join(userDataDir, 'projects', 'original-folder')
+    mkdirSync(projectBucket, { recursive: true })
+    const transcripts = ids.map((id) => path.join(projectBucket, `${id}.jsonl`))
     transcripts.forEach((file, index) =>
       writeFileSync(
         file,
@@ -56,7 +69,8 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       )
     )
     await page.evaluate(
-      async ({ folder, ids, transcripts, stub }) => {
+      async ({ folder, nextFolder, ids, transcripts, stub }) => {
+        await window.api.projectGroups.create({ name: 'Local tools', parentPath: nextFolder })
         const group = await window.api.projectGroups.create({
           name: 'Client folder',
           parentPath: folder
@@ -77,7 +91,12 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
                 executionHostPlatform: 'win32' as const,
                 agent: 'claude' as const,
                 sessionId: id,
-                title: index === 0 ? 'Latest client research' : 'Earlier client draft',
+                title:
+                  index === 0
+                    ? 'Latest client research'
+                    : index === 1
+                      ? 'Earlier client draft'
+                      : 'Scheduled audit',
                 cwd: folder,
                 filePath: transcripts[index],
                 codexHome: null,
@@ -93,10 +112,15 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
           terminalWindowsShell: 'powershell.exe',
           terminalWindowsPowerShellImplementation: 'powershell.exe',
           agentCmdOverrides: { claude: `& '${stub.replaceAll("'", "''")}'` },
-          chatSidebar: { view: 'chats', groupBy: 'status', sessions }
+          chatSidebar: {
+            view: 'chats',
+            groupBy: 'status',
+            sessions,
+            automationChats: [JSON.stringify(['local', 'claude', ids[2]])]
+          }
         })
       },
-      { folder, ids, transcripts, stub }
+      { folder, nextFolder, ids, transcripts, stub }
     )
     await page.reload()
     const rows = page.locator('[data-chat-sidebar-id]')
@@ -117,13 +141,19 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await expect(renamed).toBeVisible()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
     await renamed.getByRole('button', { name: 'Reopen Saved client name' }).click()
+    await renamed.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Change folder', exact: true }).hover()
+    await page.getByRole('menuitem', { name: 'Local tools', exact: true }).click()
+    await expect(renamed).toContainText('Local tools')
+    await expect(rows.filter({ hasText: 'Earlier client draft' })).toContainText('Client folder')
     await renamed.dblclick()
     await expect
       .poll(() => (existsSync(capture) ? readFileSync(capture, 'utf8') : ''), { timeout: 45_000 })
       .toContain(ids[0])
     const launched = readFileSync(capture, 'utf8').trim().split(/\r?\n/)
     expect(launched).toHaveLength(1)
-    expect(launched[0]).toContain(folder)
+    expect(launched[0]).toContain(nextFolder)
+    expect(existsSync(transcripts[0])).toBe(true)
     await expect(rows).toHaveCount(2)
     await expect(renamed).toHaveAttribute('aria-selected', 'true')
     await page.screenshot({ path: testInfo.outputPath('packaged-chat-sidebar.png') })

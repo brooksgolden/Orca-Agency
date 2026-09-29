@@ -3,6 +3,7 @@ import {
   selectAutomationRunOutputSnapshot
 } from '@/components/automations/automation-run-output-snapshot'
 import { useAppStore } from '@/store'
+import { registerAutomationChat } from '@/lib/register-automation-chat'
 import type {
   AutomationDispatchResult,
   AutomationPrecheckResult,
@@ -190,6 +191,12 @@ export function createAutomationDispatchCompletion(args: {
       if (!entry || entry.updatedAt < startedAfter) {
         return
       }
+      void registerAutomationChat(args.worktree.id, {
+        paneKey: targetPaneKey,
+        status: entry
+      }).catch((error: unknown) =>
+        console.error('[automations] Could not record chat ownership:', error)
+      )
       const historyOverlap = getAgentStateHistoryOverlap(observedStateHistory, entry.stateHistory)
       // Why: sawWorkingAfterStart stays monotonic — a recreated entry
       // (transport loss, PTY exit, cap eviction) arrives with an empty

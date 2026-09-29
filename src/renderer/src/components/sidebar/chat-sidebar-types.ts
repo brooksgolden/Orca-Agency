@@ -13,6 +13,7 @@ export type ChatSidebarRow = {
   /** A name the user gave the tab itself; outranks workspace and generated names. */
   manualTitle: string | null
   folder: string
+  folderWorktree?: Worktree
   worktree: Worktree
   hostId: ExecutionHostId
   tabId: string | null
@@ -29,6 +30,7 @@ export type ChatSidebarRow = {
   sessionKey: string | null
   /** Hook-reported provider session, enough to keep a Claude or Codex chat after its tab closes. */
   liveSession: ChatLiveSession | null
+  automated?: boolean
 }
 
 export type ChatLiveSession = {

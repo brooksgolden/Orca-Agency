@@ -5,6 +5,7 @@ import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { buildChatSidebarRows } from './chat-sidebar-rows'
 import { chatFallbackId, chatSessionKey } from './chat-sidebar-types'
 import { chatSession, chatState, chatTab, chatWorktree } from './chat-sidebar-test-fixtures'
+import { chatSessionSnapshot } from './chat-sidebar-session-snapshot'
 
 const leafId = '77777777-7777-4777-8777-777777777777'
 const otherLeafId = '88888888-8888-4888-8888-888888888888'
@@ -24,6 +25,36 @@ function statusEntry(key: string, overrides: Partial<AgentStatusEntry> = {}): Ag
 }
 
 describe('chat sidebar', () => {
+  it('uses the newest moved transcript regardless of scan order, before and after its tab closes', () => {
+    const state = chatState({ tabsByWorktree: { [chatWorktree.id]: [chatTab('moved')] } })
+    state.settings!.chatSidebar = { historySince: 0 }
+    const old = chatSession('session-moved', {
+      updatedAt: new Date(2_000).toISOString(),
+      filePath: '/old/session.jsonl'
+    })
+    const newer = {
+      ...old,
+      updatedAt: new Date(3_000).toISOString(),
+      filePath: '/new/session.jsonl'
+    }
+    for (const sessions of [
+      [newer, old],
+      [old, newer]
+    ]) {
+      expect(buildChatSidebarRows(state, sessions, 4_000)[0].session?.filePath).toBe(newer.filePath)
+    }
+    state.tabsByWorktree = {}
+    expect(buildChatSidebarRows(state, [newer, old], 4_000)[0].session?.filePath).toBe(
+      newer.filePath
+    )
+    state.settings!.chatSidebar.sessions = {
+      [chatSessionKey('local', 'codex', old.sessionId)]: {
+        worktreeId: chatWorktree.id,
+        snapshot: chatSessionSnapshot(newer)
+      }
+    }
+    expect(buildChatSidebarRows(state, [old], 4_000)[0].session?.filePath).toBe(newer.filePath)
+  })
   it('uses a provider title for an idle agent even while its terminal title is still generic', () => {
     const state = chatState({
       tabsByWorktree: {
@@ -451,7 +482,7 @@ describe('chat sidebar', () => {
     })
     const scanned = buildChatSidebarRows(
       state,
-      [chatSession('closed', { title: 'Renamed by provider' })],
+      [chatSession('closed', { title: 'Renamed by provider', filePath: snapshot.filePath })],
       10_000
     )
     expect(scanned.map((row) => row.title)).toEqual(['Renamed by provider'])

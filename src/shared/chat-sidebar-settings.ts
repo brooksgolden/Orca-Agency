@@ -36,6 +36,12 @@ export type ChatSidebarSessionEntry = {
 export type ChatSidebarSettings = {
   view?: 'chats' | 'workspaces'
   groupBy?: 'recent' | 'status' | 'folder'
+  /** Unchecked folder labels; new folders remain visible by default. */
+  hiddenFolders?: string[]
+  /** Automation-owned tab/pane and provider identities; retained after run cleanup. */
+  automationChats?: string[]
+  /** Next launch destination; never changes the owner of a running terminal. */
+  folderAssignments?: Record<string, { worktreeId: string; executionHostId: ExecutionHostId }>
   historySince?: number
   completed?: Record<string, ChatSidebarCompletion>
   defaultRepoId?: string

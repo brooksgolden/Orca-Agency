@@ -44,3 +44,28 @@ export function parsePtySessionId(sessionId: string): { worktreeId: string | nul
   }
   return { worktreeId: candidate }
 }
+
+type PtySessionOwnerRecord = { id: string; priorWorktreeIds?: readonly string[] }
+
+/**
+ * Ids a workspace's minted PTY sessions may carry: its own id plus earlier ids from an identity
+ * migration (`WorktreeMeta.priorWorktreeIds`), because a live PTY keeps the id it was minted with.
+ * Why the live filter: an earlier id that a live workspace now uses names that workspace's PTYs.
+ */
+export function ptySessionOwnerIds(
+  worktreeId: string,
+  worktreesByRepo: Readonly<Record<string, readonly PtySessionOwnerRecord[]>>
+): string[] {
+  const worktrees = Object.values(worktreesByRepo).flat()
+  const liveIds = new Set(worktrees.map((worktree) => worktree.id))
+  const candidates = worktrees.filter((worktree) => worktree.id === worktreeId)
+  // Why: duplicated ids across host catalogs cannot safely lend either host's aliases.
+  const priorIds = candidates.length === 1 ? (candidates[0].priorWorktreeIds ?? []) : []
+  return [worktreeId, ...priorIds.filter((id) => id !== worktreeId && !liveIds.has(id))]
+}
+
+/** True when a minted session id's owner prefix is exactly one of `ownerIds`. */
+export function isPtySessionMintedFor(sessionId: string, ownerIds: readonly string[]): boolean {
+  const idx = sessionId.lastIndexOf(PTY_SESSION_ID_SEPARATOR)
+  return idx > 0 && ownerIds.includes(sessionId.slice(0, idx))
+}
