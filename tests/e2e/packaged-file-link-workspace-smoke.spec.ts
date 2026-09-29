@@ -140,7 +140,11 @@ test('packaged file links and folder workspace splits retain their workspace', a
       .filter({ hasText: 'linked.md' })
       .first()
       .click({ button: 'right' })
-    await page.getByRole('menuitem', { name: 'Copy Path', exact: true }).click()
+    const copyPath = page.getByRole('menuitem', { name: 'Copy Path', exact: true })
+    await expect(copyPath).toBeVisible()
+    await expect(copyPath).toBeEnabled()
+    // Hidden Windows renderers can stop the pointer-stability animation frames.
+    await copyPath.click({ force: true })
     await expect
       .poll(() => app.evaluate(() => Reflect.get(globalThis, 'copiedFilePathSmoke')))
       .toBe(path.join(folders[0], 'linked.md'))
