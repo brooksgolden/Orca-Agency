@@ -36,6 +36,11 @@ test('packaged local Hermes scheduled task appears in Automations', async (// ox
   })
   try {
     const page = await app.firstWindow()
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.setBackgroundThrottling(false)
+      }
+    })
     await page.waitForFunction(() => Boolean(window.api))
     await page.getByRole('button', { name: 'Automations', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Automations', exact: true })).toBeVisible()

@@ -48,6 +48,11 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       true
     )
     const page = await app.firstWindow()
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.setBackgroundThrottling(false)
+      }
+    })
     await page.waitForFunction(() => Boolean(window.api))
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []

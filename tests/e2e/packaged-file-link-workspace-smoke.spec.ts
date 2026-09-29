@@ -85,6 +85,11 @@ test('packaged file links and folder workspace splits retain their workspace', a
   })
   try {
     const page = await app.firstWindow()
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.setBackgroundThrottling(false)
+      }
+    })
     await page.waitForFunction(() => Boolean(window.api))
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []
