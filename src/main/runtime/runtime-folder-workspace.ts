@@ -4,6 +4,7 @@ import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import type { Worktree } from '../../shared/worktree/types'
 import { FOLDER_WORKSPACE_INSTANCE_SEPARATOR } from '../../shared/worktree/id'
 import { normalizeWorkspaceCreatorProvenance } from '../../shared/workspace-creator-provenance'
+import { folderDisplayNameMode } from '../../shared/worktree/folder-display-name-mode'
 
 export function getRuntimeFolderWorkspaceRootId(repo: Repo): string {
   return `${repo.id}::${repo.path}`
@@ -43,6 +44,7 @@ export function mergeRuntimeFolderWorkspace(
     isBare: false,
     isMainWorktree: worktreeId === getRuntimeFolderWorkspaceRootId(repo),
     displayName: meta.displayName || repo.displayName,
+    displayNameMode: folderDisplayNameMode(meta),
     comment: meta.comment || '',
     linkedIssue: meta.linkedIssue ?? null,
     linkedPR: meta.linkedPR ?? null,

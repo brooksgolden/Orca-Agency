@@ -28,9 +28,7 @@ export function createFolderWorkspace(
       ? getProjectHostSetupWorktreeMeta(store.getProjectHostSetups(), repo)
       : {}),
     displayName: displayNameRequest.value || args.name,
-    ...(displayNameRequest.kind === 'user' && displayNameRequest.value
-      ? { displayNameIsPinned: true }
-      : {}),
+    displayNameIsPinned: displayNameRequest.kind === 'user' && Boolean(displayNameRequest.value),
     lastActivityAt: now,
     createdAt: now,
     orcaCreatedAt: now,

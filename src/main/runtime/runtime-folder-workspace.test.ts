@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import { FOLDER_WORKSPACE_INSTANCE_SEPARATOR } from '../../shared/worktree/id'
+import { mergeFolderWorkspace } from '../ipc/worktrees/folder-workspace-model'
 import {
   getRuntimeFolderWorkspaceInstanceId,
   getRuntimeFolderWorkspaceRootId,
@@ -94,6 +95,16 @@ describe('isRuntimeFolderWorkspaceIdForRepo', () => {
 })
 
 describe('mergeRuntimeFolderWorkspace', () => {
+  it.each([mergeFolderWorkspace, mergeRuntimeFolderWorkspace])(
+    'preserves name provenance in folder listings (%#)',
+    (merge) => {
+      const id = getRuntimeFolderWorkspaceInstanceId(repo(), 'coho-instance')
+      expect(merge(repo(), id, meta({ displayName: 'coho' })).displayNameMode).toBe('automatic')
+      expect(
+        merge(repo(), id, meta({ displayName: 'coho', displayNameIsPinned: true })).displayNameMode
+      ).toBe('fixed')
+    }
+  )
   it('projects repo + meta onto a branchless, headless worktree', () => {
     const merged = mergeRuntimeFolderWorkspace(repo(), 'repo-1::/Users/dev/projects/site', meta())
 
@@ -106,6 +117,7 @@ describe('mergeRuntimeFolderWorkspace', () => {
       isBare: false,
       isMainWorktree: true,
       displayName: 'site',
+      displayNameMode: 'automatic',
       comment: '',
       linkedIssue: null,
       linkedPR: null,

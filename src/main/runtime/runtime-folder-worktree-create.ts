@@ -70,9 +70,7 @@ export async function createRuntimeFolderWorktree(args: {
     instanceId,
     ...getProjectHostSetupWorktreeMeta(deps.store.getProjectHostSetups?.() ?? [], repo),
     displayName: resolvedFolderDisplayName ?? request.name,
-    ...(displayNameRequest.kind === 'user' && resolvedFolderDisplayName
-      ? { displayNameIsPinned: true }
-      : {}),
+    displayNameIsPinned: displayNameRequest.kind === 'user' && Boolean(resolvedFolderDisplayName),
     lastActivityAt: now,
     createdAt: now,
     orcaCreatedAt: now,

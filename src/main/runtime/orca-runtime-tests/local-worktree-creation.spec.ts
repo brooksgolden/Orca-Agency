@@ -109,7 +109,7 @@ describe('OrcaRuntimeService', () => {
       orcaCreationSource: 'runtime',
       createdWithAgent: 'codex'
     })
-    expect(metaById[result.worktree.id]).not.toHaveProperty('displayNameIsPinned')
+    expect(metaById[result.worktree.id]).toHaveProperty('displayNameIsPinned', false)
     await expect(runtime.showManagedWorktree(`id:${result.worktree.id}`)).resolves.toMatchObject({
       id: result.worktree.id,
       repoId: 'folder-repo',

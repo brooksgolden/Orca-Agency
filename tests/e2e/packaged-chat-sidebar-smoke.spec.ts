@@ -156,6 +156,45 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     expect(existsSync(transcripts[0])).toBe(true)
     await expect(rows).toHaveCount(2)
     await expect(renamed).toHaveAttribute('aria-selected', 'true')
+    const generatedWorkspace = await page.evaluate(async (folder) => {
+      const added = await window.api.repos.add({ path: folder, kind: 'folder' })
+      if ('error' in added) {
+        throw new Error(added.error)
+      }
+      const { worktree } = await window.api.worktrees.create({
+        repoId: added.repo.id,
+        name: 'coho',
+        nameWasGenerated: true
+      })
+      const settings = await window.api.settings.get()
+      const snapshot = Object.values(settings.chatSidebar?.sessions ?? {})[0].snapshot
+      if (!snapshot) {
+        throw new Error('Missing smoke session snapshot')
+      }
+      const sessionId = '44444444-4444-4444-8444-444444444444'
+      await window.api.settings.set({
+        chatSidebar: {
+          ...settings.chatSidebar,
+          sessions: {
+            ...settings.chatSidebar?.sessions,
+            [JSON.stringify(['local', 'claude', sessionId])]: {
+              worktreeId: worktree.id,
+              snapshot: { ...snapshot, sessionId, title: 'Set Krisp to record webinar' }
+            }
+          }
+        }
+      })
+      return { id: worktree.id, mode: worktree.displayNameMode }
+    }, folder)
+    expect(generatedWorkspace.mode).toBe('automatic')
+    await page.reload()
+    await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toBeVisible()
+    await page.evaluate(async (worktreeId) => {
+      await window.api.worktrees.updateMeta({ worktreeId, updates: { displayName: 'coho' } })
+    }, generatedWorkspace.id)
+    await page.reload()
+    await expect(rows.filter({ hasText: 'coho' })).toBeVisible()
+    await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toHaveCount(0)
     await page.screenshot({ path: testInfo.outputPath('packaged-chat-sidebar.png') })
     expect(errors).toEqual([])
     expect(
