@@ -1,3 +1,4 @@
+import type { ChatSidebarSettings } from './chat-sidebar-settings'
 import type { ExecutionHostId } from './execution-host'
 import type { GitHubProjectSettings } from './github/project-types'
 import type { VoiceSettings } from './speech-types'
@@ -56,6 +57,8 @@ export type WorktreeVisibilityDefaults = {
 }
 
 export type GlobalSettings = {
+  /** Conversation navigation in the custom sidebar; independent of workspace lifecycle. */
+  chatSidebar?: ChatSidebarSettings
   workspaceDir: string
   /** Host-owned defaults used when a repository has no explicit visibility override. */
   worktreeVisibilityDefaults?: WorktreeVisibilityDefaults

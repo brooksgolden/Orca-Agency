@@ -16,10 +16,9 @@ import EmulatorPaneOverlayLayer from './emulator-pane/EmulatorPaneOverlayLayer'
 import StructuredAgentSessionPaneOverlayLayer from './native-chat/StructuredAgentSessionPaneOverlayLayer'
 import AiVaultSessionDropLayer from './tab-group/AiVaultSessionDropLayer'
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
-import { findWorkspaceSplitPartner } from '@/lib/workspace-split-layout'
 import type { WorkspaceSplitEdge } from '@/lib/workspace-split-layout'
 import { useAppStore } from '@/store'
-import { X } from 'lucide-react'
+import { WorkspacePaneCloseButton } from './workspace-split/WorkspacePaneCloseButton'
 import type { WorkspacePaneRect } from './workspace-split/WorkspaceSplitLayoutSlots'
 
 export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
@@ -93,28 +92,6 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
         }
       }}
     >
-      {isPaintVisible && isMultiPane ? (
-        <button
-          type="button"
-          className="absolute right-1 top-1 z-50 flex size-6 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
-          aria-label="Remove workspace from split"
-          title="Remove workspace from split"
-          data-workspace-unsplit-button={worktreeId}
-          onClick={(event) => {
-            event.stopPropagation()
-            const state = useAppStore.getState()
-            const partnerId = findWorkspaceSplitPartner(state.workspaceSplitGroups, worktreeId)
-            if (
-              partnerId &&
-              activateAndRevealWorkspace(partnerId, { revealInSidebar: false }) !== false
-            ) {
-              useAppStore.getState().unsplitWorkspace(worktreeId)
-            }
-          }}
-        >
-          <X className="size-3.5" aria-hidden="true" />
-        </button>
-      ) : null}
       {hoverEdge ? (
         <div
           className={`pointer-events-none absolute z-50 border-2 border-primary bg-primary/15 ${
@@ -142,6 +119,7 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
           data-workspace-empty-pane={worktreeId}
         >
           <span>{worktreePath.split(/[\\/]/).findLast(Boolean) ?? worktreePath}</span>
+          <WorkspacePaneCloseButton worktreeId={worktreeId} />
           <button
             type="button"
             className="rounded border border-border bg-card px-3 py-1.5 text-foreground hover:bg-accent"

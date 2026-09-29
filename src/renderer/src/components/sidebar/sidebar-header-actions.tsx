@@ -7,6 +7,7 @@ import { formatOptionalPrimaryShortcutLabel } from '@/hooks/useShortcutLabel'
 import { translate } from '@/i18n/i18n'
 import { openWorkspaceCreationComposerWithTourHandoff } from '../contextual-tours/workspace-creation-tour-handoff'
 import SidebarWorkspaceOptionsMenu from './SidebarWorkspaceOptionsMenu'
+import { ChatSidebarOptions } from './ChatSidebarOptions'
 
 function AddProjectButton({
   preserveWorkspaceBoardOpen
@@ -86,15 +87,20 @@ export function SidebarHeaderActions({
   onWorkspaceBoardMenuOpenChange: (open: boolean) => void
   agentsViewActive?: boolean
 }): React.JSX.Element {
+  const chatsView = useAppStore((s) => s.settings?.chatSidebar?.view === 'chats')
   return (
     <div className="flex shrink-0 items-center gap-1" data-sidebar-header-actions="">
       {/* Why both hidden in the agents view: it lists activity, not projects. */}
       {agentsViewActive ? null : (
         <>
-          <SidebarWorkspaceOptionsMenu
-            preserveWorkspaceBoardOpen
-            onMenuOpenChange={onWorkspaceBoardMenuOpenChange}
-          />
+          {chatsView ? (
+            <ChatSidebarOptions />
+          ) : (
+            <SidebarWorkspaceOptionsMenu
+              preserveWorkspaceBoardOpen
+              onMenuOpenChange={onWorkspaceBoardMenuOpenChange}
+            />
+          )}
           <AddProjectButton preserveWorkspaceBoardOpen />
         </>
       )}

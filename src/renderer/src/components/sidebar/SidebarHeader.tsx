@@ -22,6 +22,7 @@ const SidebarHeader = React.memo(function SidebarHeader({
   useTranslation()
   const sidebarBody = useAppStore((s) => s.sidebarBody ?? 'workspaces')
   const groupBy = useAppStore((s) => s.groupBy)
+  const chatsView = useAppStore((s) => s.settings?.chatSidebar?.view === 'chats')
   const setSidebarBody = useAppStore((s) => s.setSidebarBody)
   const updateSettings = useAppStore((s) => s.updateSettings)
   const agentsViewActive = sidebarBody === 'agents'
@@ -37,9 +38,11 @@ const SidebarHeader = React.memo(function SidebarHeader({
     void updateSettings?.({ agentsSidebarIntroShown: true })
   }, [updateSettings])
   const sidebarTitle =
-    groupBy === 'repo'
-      ? translate('dashboard.sidebar.projects', 'Projects')
-      : translate('dashboard.sidebar.workspaces', 'Workspaces')
+    chatsView && !agentsViewActive
+      ? 'Chats'
+      : groupBy === 'repo'
+        ? translate('dashboard.sidebar.projects', 'Projects')
+        : translate('dashboard.sidebar.workspaces', 'Workspaces')
   const activityLabel = translate(
     agentsViewActive ? 'dashboard.sidebar.closeActivity' : 'dashboard.sidebar.openActivity',
     agentsViewActive ? 'Turn off activity view' : 'View activity'

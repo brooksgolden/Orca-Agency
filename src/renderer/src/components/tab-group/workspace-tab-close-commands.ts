@@ -3,6 +3,7 @@ import { useAppStore } from '../../store'
 import { requestEditorFileClose } from '../editor/editor-autosave'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { closeWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-close'
+import { collapseEmptyWorkspaceSplit } from '@/lib/collapse-empty-workspace-split'
 
 export function createWorkspaceTabCloseCommands({
   worktreeId,
@@ -37,12 +38,18 @@ export function createWorkspaceTabCloseCommands({
 
   const leaveWorktreeIfEmpty = () => {
     const state = useAppStore.getState()
+    if (collapseEmptyWorkspaceSplit(state, worktreeId)) {
+      return
+    }
     if (state.activeWorktreeId !== worktreeId) {
       return
     }
     // Why: split-group closes bypass legacy Terminal.tsx; deselect the emptied worktree here or the window goes blank instead of landing.
     const { renderableTabCount } = state.reconcileWorktreeTabModel(worktreeId)
     if (renderableTabCount === 0) {
+      if (collapseEmptyWorkspaceSplit(useAppStore.getState(), worktreeId)) {
+        return
+      }
       setActiveWorktree(null)
     }
   }

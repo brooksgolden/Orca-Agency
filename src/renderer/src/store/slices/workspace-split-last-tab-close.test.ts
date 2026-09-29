@@ -47,6 +47,15 @@ describe('closing tabs in a workspace split', () => {
     expect(store.getState().workspaceSplitGroups).toHaveLength(1)
   })
 
+  it('collapses when the terminal close path removes the last tab', () => {
+    const { store, right } = pairedStore()
+    const terminal = store.getState().createTab(RIGHT)
+    store.getState().closeUnifiedTab(right.id)
+    store.getState().closeTab(terminal.id)
+    expect(store.getState().workspaceSplitGroups).toEqual([])
+    expect(store.getState().activeWorktreeId).toBe(LEFT)
+  })
+
   it('keeps the split for a cleanup close that preserves workspace selection', () => {
     const { store, right } = pairedStore()
 

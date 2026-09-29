@@ -20,6 +20,10 @@ export function openWorkspaceCreationComposerWithTourHandoff(): void {
 
   state.openModal('new-workspace-composer', {
     telemetrySource: 'sidebar',
+    ...(state.settings?.chatSidebar?.view === 'chats' &&
+    state.repos.some((repo) => repo.id === state.settings?.chatSidebar?.defaultRepoId)
+      ? { initialRepoId: state.settings?.chatSidebar?.defaultRepoId }
+      : {}),
     ...(shouldHandoffFromAgentSessionsTour
       ? { contextualTourSource: 'workspace_creation_modal' }
       : {})

@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import TabBar from '../tab-bar/TabBar'
 
 import { TabBarQuickCommandsButton } from '../tab-bar/TabBarQuickCommandsButton'
+import { WorkspacePaneCloseButton } from '../workspace-split/WorkspacePaneCloseButton'
 import { useTabGroupWorkspaceModel } from './useTabGroupWorkspaceModel'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { resolveGroupTabFromVisibleId } from './tab-group-visible-id'
@@ -317,6 +318,9 @@ export default function TabGroupPanel({
                 </Tooltip>
               ) : null}
             </div>
+            {reserveClosedExplorerToggleSpace ? (
+              <WorkspacePaneCloseButton worktreeId={worktreeId} />
+            ) : null}
           </div>
           {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the floating right-sidebar toggle + window controls clickable. */}
           {reserveClosedExplorerToggleSpace && !rightSidebarOpen ? (

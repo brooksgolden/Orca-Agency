@@ -7,6 +7,7 @@ import {
 import { launchAiVaultSessionInNewTab } from '@/lib/launch-ai-vault-session'
 import { useAppStore } from '@/store'
 import type { AiVaultAgent, AiVaultSession } from '../../../../shared/ai-vault-types'
+import { isAiVaultTitleAgent } from '../../../../shared/ai-vault-session-title'
 import { prepareAiVaultSessionForResume } from '@/lib/ai-vault-session-resume-preparation'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { translate } from '@/i18n/i18n'
@@ -25,6 +26,10 @@ import {
   resolveAiVaultSessionLaunchTarget,
   resolveAiVaultTargetWorkspacePath
 } from './ai-vault-session-launch-target'
+
+// Why module scope: the chat sidebar and AI Vault panel can resume the same session.
+const pendingResumes = new Set<string>()
+const RESUME_SETTLE_MS = 10_000
 
 export function useAiVaultSessionLaunchActions({
   activeWorktree,
@@ -100,6 +105,13 @@ export function useAiVaultSessionLaunchActions({
         return
       }
 
+      const resumeKey = JSON.stringify([session.executionHostId, session.agent, session.sessionId])
+      if (pendingResumes.has(resumeKey)) {
+        return
+      }
+      pendingResumes.add(resumeKey)
+      let settleMs = 0
+
       const showQueuedToast = (): void => {
         toast.success(
           translate(
@@ -110,38 +122,39 @@ export function useAiVaultSessionLaunchActions({
         )
       }
       void prepareAiVaultSessionForResume(session)
-        .then((preparedSession) => {
+        .then(async (preparedSession) => {
           const launchResult = launchAiVaultSessionInNewTab({
             agent: session.agent,
             worktreeId: targetId.worktreeId,
             ...buildResumeStartup(preparedSession, targetId.worktreeId)
           })
           if (launchResult.tabId === null) {
-            void launchResult.runtimeLaunch.then((outcome) => {
-              if (outcome.status === 'failed') {
-                toast.error(
-                  outcome.message ||
-                    translate(
-                      'auto.lib.launch.agent.in.new.tab.11cce5cc77',
-                      'Could not launch {{value0}} in a new terminal.',
-                      { value0: agentLabel(session.agent) }
-                    )
-                )
-                return
-              }
-              if (useAppStore.getState().activeWorktreeId !== targetId.worktreeId) {
-                activateAiVaultResumeWorkspace(targetId.worktreeId)
-              }
-              showQueuedToast()
-            })
-            return
+            const outcome = await launchResult.runtimeLaunch
+            if (outcome.status === 'failed') {
+              toast.error(
+                outcome.message ||
+                  translate(
+                    'auto.lib.launch.agent.in.new.tab.11cce5cc77',
+                    'Could not launch {{value0}} in a new terminal.',
+                    { value0: agentLabel(session.agent) }
+                  )
+              )
+              return
+            }
+          } else {
+            linkResumedTab(launchResult.tabId, session)
           }
+          // Why: until the agent reports its session, a repeat click must not start a second copy.
+          settleMs = RESUME_SETTLE_MS
           if (useAppStore.getState().activeWorktreeId !== targetId.worktreeId) {
             activateAiVaultResumeWorkspace(targetId.worktreeId)
           }
           showQueuedToast()
         })
         .catch(notifyAiVaultSessionPreparationFailure)
+        .finally(() => {
+          setTimeout(() => pendingResumes.delete(resumeKey), settleMs)
+        })
     },
     [activeWorktree?.id, activeWorktreeId, buildResumeStartup, targetState]
   )
@@ -217,6 +230,16 @@ export function useAiVaultSessionLaunchActions({
     handleContinueInNewSession,
     continuationRequest,
     handleContinuationDialogOpenChange
+  }
+}
+
+/** Seeds the provider link title sync adds once the agent reports, so the new tab is this chat now. */
+function linkResumedTab(tabId: string, session: AiVaultSession): void {
+  const title = session.title.trim()
+  if (isAiVaultTitleAgent(session.agent) && title) {
+    useAppStore
+      .getState()
+      .setAiVaultTabTitle(tabId, { agent: session.agent, sessionId: session.sessionId, title })
   }
 }
 
