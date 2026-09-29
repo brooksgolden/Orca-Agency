@@ -10,6 +10,13 @@ function Get-ReviewedFullPath([string] $Path) {
   return $full.TrimEnd('\')
 }
 
+function Get-ReviewedNativePath([string] $Path) {
+  $full = Get-ReviewedFullPath $Path
+  if ($full.StartsWith('\\?\')) { return $full }
+  if ($full.StartsWith('\\')) { return '\\?\UNC\' + $full.Substring(2) }
+  return '\\?\' + $full
+}
+
 function Write-ReviewedBackupMarker([string] $Backup, [string] $SourceRoot, [string] $Kind) {
   @{
     owner = 'orca-reviewed-installer'
@@ -106,18 +113,20 @@ function Remove-ExpiredReviewedBackups([string] $SourceRoot, [string] $Kind, [st
     if ((Split-Path -Parent $resolved) -ne $parent -or $resolved -eq $sourcePath) {
       throw 'Backup cleanup escaped its expected parent directory.'
     }
-    if (Get-ChildItem -LiteralPath $resolved -Recurse -Force | Where-Object {
+    # Encoded terminal-history filenames can exceed Windows PowerShell's normal path limit.
+    $nativePath = Get-ReviewedNativePath $resolved
+    if (Get-ChildItem -LiteralPath $nativePath -Recurse -Force | Where-Object {
       $_.Attributes -band [IO.FileAttributes]::ReparsePoint
     } | Select-Object -First 1) {
       Write-Warning "Backup contains a link and was preserved: $resolved"
       continue
     }
     # Why marker last: an interrupted delete stays marked, so the next install can finish it.
-    foreach ($child in Get-ChildItem -LiteralPath $resolved -Force) {
+    foreach ($child in Get-ChildItem -LiteralPath $nativePath -Force) {
       if ($child.Name -ne $script:ReviewedBackupMarker) {
         Remove-Item -LiteralPath $child.FullName -Recurse -Force
       }
     }
-    Remove-Item -LiteralPath $resolved -Recurse -Force
+    Remove-Item -LiteralPath $nativePath -Recurse -Force
   }
 }

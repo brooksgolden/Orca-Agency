@@ -193,6 +193,19 @@ $result = Invoke-FixtureInstall $common
 Test-Expectation ($result.Error -like "*'conflict' would replace a file*No files were changed*" -and (Get-TreeSignature $root) -eq $before) 'a file/folder clash is refused with nothing changed'
 Remove-Item -LiteralPath (Join-Path $package 'conflict') -Recurse -Force
 
+# 7. Encoded terminal-history paths exceed MAX_PATH in real Orca backups.
+. (Join-Path $PSScriptRoot 'install-reviewed-orca-backups.ps1')
+$longBackup = Join-Path $programs 'orca-backup-20230101-000000-001'
+New-FixtureBackup $longBackup $target 'app'
+$longDirectory = Join-Path $longBackup ('terminal-history\' + ('encoded-workspace-' * 9))
+$nativeDirectory = Get-ReviewedNativePath $longDirectory
+[IO.Directory]::CreateDirectory($nativeDirectory) | Out-Null
+[IO.File]::WriteAllText([IO.Path]::Combine($nativeDirectory, 'screen.bin'), 'obsolete screen buffer')
+Test-Expectation ((Join-Path $longDirectory 'screen.bin').Length -gt 260) 'long-path fixture exceeds the normal Windows path limit'
+Remove-ExpiredReviewedBackups $target 'app'
+Test-Expectation (-not (Test-Path -LiteralPath $longBackup)) 'retention deletes obsolete backups containing long encoded workspace paths'
+Test-Expectation (Test-Path -LiteralPath (Join-Path $root 'link-target\sentinel.txt')) 'long-path cleanup still preserves linked targets'
+
 Write-Host ''
 if ($failures) { throw "$failures installer expectation(s) failed." }
 Write-Host 'All installer backup expectations passed.'
