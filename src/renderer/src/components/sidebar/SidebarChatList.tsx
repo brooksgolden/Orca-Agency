@@ -21,7 +21,7 @@ import { useAiVaultSessionLaunchActions } from '../right-sidebar/ai-vault-sessio
 import { ChatSidebarRow } from './ChatSidebarRow'
 import type { ChatSidebarRow as Row } from './chat-sidebar-types'
 import { useChatSidebarData } from './use-chat-sidebar-data'
-import { setChatSidebarTitle, setChatCompleted } from './chat-sidebar-preferences'
+import { setChatSidebarTitle } from './chat-sidebar-preferences'
 import { activeChatTarget, isChatRowSelected } from './chat-sidebar-selection'
 import { chatResumeSession } from './chat-sidebar-resume'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
@@ -75,13 +75,8 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     (row: Row) => {
       const resumeSession = row.tabId ? null : chatResumeSession(row)
       if (resumeSession) {
-        // Why: persist the legacy Done default before a resume makes the row resident.
-        void (row.completed ? setChatCompleted(row, true) : Promise.resolve())
-          .then(() => {
-            handleResume(resumeSession, (row.folderWorktree ?? row.worktree).id)
-            onOpen?.()
-          })
-          .catch(() => toast.error('Could not save the chat status before reopening.'))
+        handleResume(resumeSession, (row.folderWorktree ?? row.worktree).id)
+        onOpen?.()
         return
       }
       if (

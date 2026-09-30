@@ -85,11 +85,6 @@ export function chatSidebarPreferencePatch(
     (a, b) => Number(a.id !== a.sessionKey) - Number(b.id !== b.sessionKey)
   )
   for (const row of ordered) {
-    if (!row.tabId && row.completed && !chatPreference(current.completed, row)) {
-      // Why: remember the legacy Done default so reopening without a prompt keeps its section.
-      completed[row.id] = { at: row.timestamp, activityAt: row.timestamp, done: true }
-      completedChanged = true
-    }
     if (row.tabId && row.folderWorktree) {
       const workspaceKey = JSON.stringify([row.hostId, row.worktree.id])
       const assigned = workspaceFolderAssignments[workspaceKey] ?? {

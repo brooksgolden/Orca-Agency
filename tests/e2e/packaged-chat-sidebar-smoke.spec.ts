@@ -134,14 +134,12 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       'data-chat-sub-tab',
       'true'
     )
-    await expect(latest).toHaveAttribute('data-chat-completed', 'true')
+    await expect(latest).toHaveAttribute('data-chat-completed', 'false')
     await latest.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Rename chat', exact: true }).click()
     await page.getByRole('textbox', { name: 'Chat name', exact: true }).fill('Saved client name')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     const renamed = rows.filter({ hasText: 'Saved client name' })
-    await renamed.getByRole('button', { name: 'Reopen Saved client name' }).click()
-    await expect(renamed).toHaveAttribute('data-chat-completed', 'false')
     await renamed.getByRole('button', { name: 'Mark Saved client name done' }).click()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
     await page.reload()

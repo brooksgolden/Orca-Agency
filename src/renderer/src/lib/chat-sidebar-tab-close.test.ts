@@ -12,19 +12,20 @@ import {
 } from '@/components/sidebar/chat-sidebar-test-fixtures'
 
 describe('closed chat sidebar lifecycle', () => {
-  it('keeps an older saved chat Done when it is reopened without a prompt', () => {
+  it('preserves existing history status until the user closes or completes a chat', () => {
     const session = chatSession('session-b')
     const state = chatState()
     state.settings!.chatSidebar = { historySince: 0 }
     const saved = buildChatSidebarRows(state, [session], 10_000)
-    expect(saved[0].completed).toBe(true)
+    expect(saved[0].completed).toBe(false)
     state.settings!.chatSidebar = {
       ...state.settings!.chatSidebar,
       ...chatSidebarPreferencePatch(saved, state.settings!.chatSidebar, 10_000)
     }
     state.tabsByWorktree[chatWorktree.id] = [chatTab('b', { createdAt: 10_000 })]
     const resumed = buildChatSidebarRows(state, [session], 10_000)
-    expect(resumed[0]).toMatchObject({ completed: true, timestamp: 2_000 })
+    expect(resumed[0]).toMatchObject({ completed: false, timestamp: 2_000 })
+    expect(state.settings!.chatSidebar.completed).toBeUndefined()
   })
   it('keeps closed chats as separate Done entries without changing their activity time', () => {
     const session = chatSession('session-b')

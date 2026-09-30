@@ -111,8 +111,7 @@ export function buildChatSidebarRows(
       return
     }
     const completion = chatPreference(settings?.completed, row)
-    // Why: older closed chats predate explicit close tracking; saved history belongs in Done.
-    row.completed = !row.tabId && !completion ? true : isChatCompleted(row, completion)
+    row.completed = isChatCompleted(row, completion)
     const previous = rows.get(row.id)
     if (!previous || outranks(row, previous)) {
       rows.set(row.id, row)
