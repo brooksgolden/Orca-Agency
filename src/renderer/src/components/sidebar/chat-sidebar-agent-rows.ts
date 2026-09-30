@@ -149,7 +149,7 @@ export function buildAgentChatRows(args: {
       paneKey: resident ? agent.paneKey : null,
       session,
       timestamp: rowTimestamp(agent, sessionAt),
-      turnStartedAt: agent.startedAt === 0 ? sessionAt : latestTurnStart(agent.entry),
+      turnStartedAt: agent.startedAt === 0 ? 0 : latestTurnStart(agent.entry),
       activityFromState: agent.startedAt === 0,
       state: agent.state,
       completed: false,

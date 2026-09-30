@@ -38,7 +38,10 @@ test('startup preserves saved statuses before terminal tabs and live activity re
                 filePath: `/sessions/${sessionId}.jsonl`,
                 codexHome: null,
                 createdAt: new Date(now - 3600_000).toISOString(),
-                updatedAt: new Date(now - (index + 1) * 30_000).toISOString(),
+                // Transcript metadata may advance after Done without a submitted prompt.
+                updatedAt: new Date(
+                  now - (index === 2 ? 5_000 : (index + 1) * 30_000)
+                ).toISOString(),
                 modifiedAt: new Date(now - (index + 1) * 30_000).toISOString()
               }
             }
@@ -58,7 +61,9 @@ test('startup preserves saved statuses before terminal tabs and live activity re
   await expect(idle).toHaveAttribute('data-chat-completed', 'false')
   await expect(closed).toHaveAttribute('data-chat-completed', 'true')
   await expect
-    .poll(() => orcaPage.evaluate(() => window.__store!.getState().settings.chatSidebar?.completed))
+    .poll(() =>
+      orcaPage.evaluate(() => window.__store!.getState().settings?.chatSidebar?.completed)
+    )
     .toEqual(seed.completed)
   await orcaPage.evaluate(({ worktreeId, now }) => {
     const state = window.__store!.getState()
@@ -104,7 +109,9 @@ test('startup preserves saved statuses before terminal tabs and live activity re
   await expect(idle).toBeVisible()
   await expect(closed).toBeVisible()
   await expect
-    .poll(() => orcaPage.evaluate(() => window.__store!.getState().settings.chatSidebar?.completed))
+    .poll(() =>
+      orcaPage.evaluate(() => window.__store!.getState().settings?.chatSidebar?.completed)
+    )
     .toEqual(seed.completed)
   await orcaPage.screenshot({ path: testInfo.outputPath('chat-sidebar-restored-statuses.png') })
   await expect

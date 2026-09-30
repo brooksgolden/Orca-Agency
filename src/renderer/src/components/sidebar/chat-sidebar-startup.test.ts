@@ -6,6 +6,91 @@ import { chatSession, chatState, chatTab, chatWorktree } from './chat-sidebar-te
 import { chatSessionKey } from './chat-sidebar-types'
 
 describe('chat sidebar startup restoration', () => {
+  it.each(['history', 'reopened-tab', 'title-only-tab'] as const)(
+    'keeps an explicit Done status and activity time when %s metadata advances without a prompt',
+    (surface) => {
+      const key = chatSessionKey('local', 'codex', 'session-closed')
+      const state = chatState()
+      state.settings!.chatSidebar = {
+        historySince: 0,
+        completed: { [key]: { at: 3_000, activityAt: 2_000, done: true } }
+      }
+      if (surface !== 'history') {
+        state.tabsByWorktree[chatWorktree.id] = [chatTab('closed', { createdAt: 9_000 })]
+      }
+      if (surface === 'title-only-tab') {
+        const leafId = '77777777-7777-4777-8777-777777777777'
+        state.ptyIdsByTabId = { closed: ['pty-closed'] }
+        state.runtimePaneTitlesByTabId = { closed: { 1: 'Codex' } }
+        state.terminalLayoutsByTabId = {
+          closed: { root: { type: 'leaf', leafId }, activeLeafId: leafId, expandedLeafId: null }
+        }
+      }
+      const rows = buildChatSidebarRows(
+        state,
+        [
+          chatSession('session-closed', {
+            updatedAt: new Date(8_000).toISOString(),
+            modifiedAt: new Date(8_000).toISOString()
+          })
+        ],
+        10_000
+      )
+      expect(rows[0]).toMatchObject({ id: key, completed: true, timestamp: 2_000 })
+    }
+  )
+
+  it('keeps a completed new session separate from the previous session in the same pane', () => {
+    const key = chatSessionKey('local', 'codex', 'session-new')
+    const previousKey = chatSessionKey('local', 'codex', 'session-previous')
+    const paneKey = 'closed:77777777-7777-4777-8777-777777777777'
+    const state = chatState({
+      tabsByWorktree: {
+        [chatWorktree.id]: [
+          chatTab('closed', {
+            aiVaultTitle: { agent: 'codex', sessionId: 'session-previous', title: 'Previous chat' }
+          })
+        ]
+      },
+      agentStatusByPaneKey: {
+        [paneKey]: {
+          paneKey,
+          tabId: 'closed',
+          worktreeId: chatWorktree.id,
+          state: 'done',
+          sessionBoundary: true,
+          agentType: 'codex',
+          prompt: '',
+          stateStartedAt: 10_000,
+          updatedAt: 10_000,
+          stateHistory: [],
+          providerSession: { key: 'session_id', id: 'session-new' }
+        }
+      }
+    })
+    state.settings!.chatSidebar = {
+      historySince: 0,
+      completed: { [key]: { at: 3_000, activityAt: 2_000, done: true } }
+    }
+    const rows = buildChatSidebarRows(
+      state,
+      [
+        chatSession('session-new', { updatedAt: new Date(8_000).toISOString() }),
+        chatSession('session-previous', { updatedAt: new Date(9_000).toISOString() })
+      ],
+      10_000
+    )
+    expect(rows.find((row) => row.id === key)).toMatchObject({
+      tabId: 'closed',
+      completed: true,
+      timestamp: 2_000
+    })
+    expect(rows.find((row) => row.id === previousKey)).toMatchObject({
+      tabId: null,
+      completed: false
+    })
+  })
+
   it.each(['history-first', 'tabs-first'] as const)(
     'preserves existing completion and working state when restoring %s',
     (order) => {

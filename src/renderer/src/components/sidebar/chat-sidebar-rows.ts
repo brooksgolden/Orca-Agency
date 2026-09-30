@@ -112,6 +112,9 @@ export function buildChatSidebarRows(
     }
     const completion = chatPreference(settings?.completed, row)
     row.completed = isChatCompleted(row, completion)
+    if (row.completed && completion) {
+      row.timestamp = completion.activityAt
+    }
     const previous = rows.get(row.id)
     if (!previous || outranks(row, previous)) {
       rows.set(row.id, row)
@@ -156,7 +159,8 @@ export function buildChatSidebarRows(
         paneKey: sleeping?.paneKey ?? null,
         session,
         timestamp: sleeping?.updatedAt ?? sessionAt,
-        turnStartedAt: sessionAt,
+        // Why: transcript updates and tab creation do not prove a submitted prompt.
+        turnStartedAt: 0,
         activityFromState: false,
         state: 'idle',
         completed: false,
@@ -186,7 +190,7 @@ export function buildChatSidebarRows(
         paneKey: null,
         session,
         timestamp: sessionAt,
-        turnStartedAt: sessionAt,
+        turnStartedAt: 0,
         activityFromState: false,
         state: 'idle',
         completed: false,
@@ -261,7 +265,7 @@ export function buildChatSidebarRows(
       paneKey: null,
       session,
       timestamp: sessionAt,
-      turnStartedAt: sessionAt,
+      turnStartedAt: 0,
       activityFromState: false,
       state: 'idle',
       completed: false,
