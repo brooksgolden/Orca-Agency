@@ -1,4 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads'
+import { isAiVaultSessionResumableContent } from '../../shared/ai-vault-types'
 import type {
   AiVaultSessionTitle,
   AiVaultSessionTitleRequest
@@ -69,7 +70,11 @@ async function handleRequest(request: AiVaultWorkerRequest): Promise<AiVaultWork
     const startedAt = performance.now()
     const result = await scanAiVaultSessions({ ...request.options, signal: controller.signal })
     for (const session of result.sessions) {
-      if ((session.agent === 'claude' || session.agent === 'codex') && session.title.trim()) {
+      if (
+        (session.agent === 'claude' || session.agent === 'codex') &&
+        session.title.trim() &&
+        isAiVaultSessionResumableContent(session)
+      ) {
         storeTitle({
           agent: session.agent,
           sessionId: session.sessionId,

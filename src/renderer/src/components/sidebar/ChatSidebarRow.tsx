@@ -71,7 +71,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
           data-chat-sub-tab={subTab ? 'true' : undefined}
           className={cn(
             'relative flex min-w-0 items-start gap-1 rounded-md px-1 hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-            showFolder ? 'h-9' : 'h-6',
+            showFolder ? 'h-9' : 'h-5',
             subTab && 'pl-7',
             selected && 'bg-sidebar-accent'
           )}
@@ -101,8 +101,8 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
               data-chat-split-bracket=""
               className={cn(
                 'pointer-events-none absolute bottom-0 left-0 top-0 w-1 border-l border-muted-foreground/40',
-                splitStart && 'top-3 border-t',
-                splitEnd && 'bottom-auto h-3 border-b'
+                splitStart && 'top-2.5 border-t',
+                splitEnd && 'bottom-auto h-2.5 border-b'
               )}
             />
           ) : null}
@@ -110,12 +110,13 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
             <span
               aria-hidden="true"
               data-chat-sub-tab-elbow=""
-              className="pointer-events-none absolute left-5 top-1 size-2 border-b border-l border-muted-foreground/40"
+              className="pointer-events-none absolute left-5 top-0.5 size-2 border-b border-l border-muted-foreground/40"
             />
           ) : null}
           <Button
             variant="ghost"
             size="icon-xs"
+            className="h-5"
             // Why: keyboard users toggle via Delete and the context menu; one tab stop per row.
             tabIndex={-1}
             aria-label={row.completed ? `Reopen ${row.title}` : `Mark ${row.title} done`}
@@ -127,7 +128,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
             {row.completed ? <Check className="size-3.5" /> : <AgentStateDot state={row.state} />}
           </Button>
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1 leading-6">
+            <div className="flex h-5 min-w-0 items-center gap-1 leading-4">
               <span
                 className={cn('min-w-0 flex-1 truncate', subTab ? 'text-[11px]' : 'text-xs')}
                 data-chat-title=""
@@ -147,7 +148,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
               </span>
             </div>
             {showFolder ? (
-              <div className="absolute bottom-0 left-8 right-1 flex min-w-0 items-center gap-2 text-[11px] leading-3 text-muted-foreground">
+              <div className="absolute left-8 right-1 top-[18px] flex min-w-0 items-center gap-2 text-[11px] leading-3 text-muted-foreground">
                 <span
                   data-chat-folder=""
                   className="min-w-0 flex-1 truncate"

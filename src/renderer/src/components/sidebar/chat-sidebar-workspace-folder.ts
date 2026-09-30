@@ -48,7 +48,8 @@ export function chatWorkspaceFolders(
     rows.flatMap((row) => {
       const target = row.tabId
         ? assignments.get(chatWorkspaceFolderKey(row))
-        : valid(chatPreference(settings?.folderAssignments, row), row)
+        : (valid(chatPreference(settings?.folderAssignments, row), row) ??
+          valid(settings?.workspaceFolderAssignments?.[chatWorkspaceFolderKey(row)], row))
       return target ? [[row.id, target] as const] : []
     })
   )

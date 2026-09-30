@@ -29,6 +29,21 @@ async function transcriptPath(): Promise<string> {
 }
 
 describe('readAiVaultSessionTitlesFromFiles', () => {
+  it('does not publish a placeholder title from an unprompted session', async () => {
+    const path = await transcriptPath()
+    parseAgentSessionFileCached.mockResolvedValue({
+      agent: 'claude',
+      sessionId: 'empty',
+      title: 'New chat',
+      messageCount: 0,
+      previewMessages: []
+    })
+    await expect(
+      readAiVaultSessionTitlesFromFiles([
+        { agent: 'claude', sessionId: 'empty', transcriptPath: path }
+      ])
+    ).resolves.toEqual({ titles: [] })
+  })
   it('probes exact transcript paths in the background-scanner layer', async () => {
     const path = await transcriptPath()
 
@@ -48,7 +63,9 @@ describe('readAiVaultSessionTitlesFromFiles', () => {
     parseAgentSessionFileCached.mockResolvedValue({
       agent: 'codex',
       sessionId: 'session-1',
-      title: '  Exact title  '
+      title: '  Exact title  ',
+      messageCount: 2,
+      previewMessages: []
     })
 
     await expect(

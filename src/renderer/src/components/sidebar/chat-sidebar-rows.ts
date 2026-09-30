@@ -20,21 +20,17 @@ import {
   type ChatSidebarState
 } from './chat-sidebar-types'
 import { buildAgentChatRows } from './chat-sidebar-agent-rows'
-import { chatPreference, isChatCompleted } from './chat-sidebar-identity'
+import { chatPreference, isChatCompleted, outranksChatRow } from './chat-sidebar-identity'
 import { chatWorkspaceNameOwners, manualWorkspaceName } from './chat-sidebar-workspace-names'
-import { chatLiveSession, chatSnapshotSessions } from './chat-sidebar-session-snapshot'
+import {
+  chatLiveSession,
+  chatSnapshotSessions,
+  chatSessionMap
+} from './chat-sidebar-session-snapshot'
 import { chatWorkspaceFolders } from './chat-sidebar-workspace-folder'
 import { chatSidebarWorktrees, chatFolderLabel } from './chat-sidebar-worktrees'
+import { hasChatConversation } from './chat-sidebar-conversation'
 export { chatSidebarWorktrees, chatFolderLabel } from './chat-sidebar-worktrees'
-
-/** Resident tabs beat historical copies; then a working copy; then the newest. */
-function outranks(row: ChatSidebarRow, previous: ChatSidebarRow): boolean {
-  return (
-    (Number(Boolean(row.tabId)) - Number(Boolean(previous.tabId)) ||
-      Number(row.state === 'working') - Number(previous.state === 'working') ||
-      row.timestamp - previous.timestamp) > 0
-  )
-}
 
 export function buildChatSidebarRows(
   state: ChatSidebarState,
@@ -58,26 +54,9 @@ export function buildChatSidebarRows(
   const hostOf = (worktree: Worktree) =>
     getWorktreeExecutionHostId(worktree, repoById.get(worktree.repoId), focusedHostId)
   const settings = state.settings?.chatSidebar
-  // Why: a cached scan may still return the old file after the live chat has moved.
   const remembered = chatSnapshotSessions(settings?.sessions, new Set())
   const rememberedSessions = new Set(remembered)
-  const sessionMap = new Map<string, AiVaultSession>()
-  for (const session of [...sessions, ...remembered]) {
-    const key = chatSessionKey(session.executionHostId, session.agent, session.sessionId)
-    const previous = sessionMap.get(key)
-    // Why: provider renames from a fresh scan beat a remembered title for the same file.
-    if (previous?.filePath === session.filePath && rememberedSessions.has(session)) {
-      continue
-    }
-    // Why: a moved Claude session retains its original file; scan order must not choose that stale copy.
-    if (
-      !previous ||
-      (chatSessionTime(session) - chatSessionTime(previous) ||
-        (Date.parse(session.modifiedAt) || 0) - (Date.parse(previous.modifiedAt) || 0)) > 0
-    ) {
-      sessionMap.set(key, session)
-    }
-  }
+  const sessionMap = chatSessionMap(sessions, rememberedSessions)
   const hidden = new Set(settings?.hidden ?? [])
   const automationChats = new Set(settings?.automationChats ?? [])
   const generatedTitles = state.settings?.tabAutoGenerateTitle === true
@@ -116,7 +95,7 @@ export function buildChatSidebarRows(
       row.timestamp = completion.activityAt
     }
     const previous = rows.get(row.id)
-    if (!previous || outranks(row, previous)) {
+    if (!previous || outranksChatRow(row, previous)) {
       rows.set(row.id, row)
     }
   }
@@ -137,6 +116,16 @@ export function buildChatSidebarRows(
       const sessionId = tab.aiVaultTitle?.sessionId ?? sleeping?.providerSession.id
       const key = sessionId ? chatSessionKey(hostId, agent, sessionId) : null
       const session = key ? (sessionMap.get(key) ?? null) : null
+      if (
+        !hasChatConversation({
+          session,
+          saved: key ? settings?.sessions?.[key] : undefined,
+          providerTitle: tab.aiVaultTitle?.title,
+          savedPrompt: sleeping?.providerSession.id === sessionId ? sleeping?.prompt : undefined
+        })
+      ) {
+        continue
+      }
       const fallbackIds = [
         chatFallbackId(hostId, tab.id),
         ...(sleeping ? [chatFallbackId(hostId, sleeping.paneKey)] : [])
@@ -176,6 +165,19 @@ export function buildChatSidebarRows(
       }
       const key = chatSessionKey(hostId, tab.agentSessionAgent ?? 'unknown', tab.entityId)
       const session = sessionMap.get(key) ?? null
+      if (
+        !hasChatConversation({
+          session,
+          saved: settings?.sessions?.[key],
+          providerTitle:
+            tab.aiVaultTitle?.sessionId === tab.entityId &&
+            tab.aiVaultTitle?.agent === tab.agentSessionAgent
+              ? tab.aiVaultTitle?.title
+              : undefined
+        })
+      ) {
+        continue
+      }
       const sessionAt = session ? chatSessionTime(session) : tab.createdAt
       residentRows.push({
         id: key,

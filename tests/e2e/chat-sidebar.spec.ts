@@ -1,5 +1,97 @@
 import { expect, test } from './helpers/orca-app'
 
+test('unused Claude tabs stay absent, then appear on prompt and become Done only after real work', async ({
+  orcaPage,
+  electronApp
+}) => {
+  test.setTimeout(180_000)
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.setBackgroundThrottling(false)
+    }
+  })
+  const ids = await orcaPage.evaluate(async () => {
+    const s = window.__store!.getState()
+    const worktree = Object.values(s.worktreesByRepo).flat()[0]
+    const worktreeId = worktree.id
+    const tab = s.createTab(worktreeId)
+    const paneKey = `${tab.id}:77777777-7777-4777-8777-777777777777`
+    const key = JSON.stringify(['local', 'claude', 'unused-regression'])
+    window.__store!.setState((current) => ({
+      tabsByWorktree: {
+        ...current.tabsByWorktree,
+        [worktreeId]: current.tabsByWorktree[worktreeId].map((t) =>
+          t.id === tab.id ? { ...t, launchAgent: 'claude', title: 'Claude Code' } : t
+        )
+      },
+      agentStatusByPaneKey: {
+        ...current.agentStatusByPaneKey,
+        [paneKey]: {
+          paneKey,
+          tabId: tab.id,
+          worktreeId,
+          state: 'done',
+          agentType: 'claude',
+          prompt: '',
+          stateStartedAt: Date.now(),
+          updatedAt: Date.now(),
+          stateHistory: [],
+          sessionBoundary: true,
+          providerSession: {
+            key: 'session_id',
+            id: 'unused-regression',
+            transcriptPath: `/claude/projects/${worktree.path.replace(/[^a-zA-Z0-9]/g, '-')}/unused-regression.jsonl`
+          }
+        }
+      }
+    }))
+    await s.updateSettings({ chatSidebar: { view: 'chats', groupBy: 'status' } })
+    return { tabId: tab.id, paneKey, key }
+  })
+  const rows = orcaPage.locator('[data-chat-sidebar-id]')
+  await expect(rows).toHaveCount(0)
+  await expect
+    .poll(() =>
+      orcaPage.evaluate(
+        (key) => window.__store!.getState().settings?.chatSidebar?.sessions?.[key],
+        ids.key
+      )
+    )
+    .toBeUndefined()
+  await orcaPage.evaluate(
+    ({ paneKey }) =>
+      window.__store!.setState((s) => ({
+        agentStatusByPaneKey: {
+          ...s.agentStatusByPaneKey,
+          [paneKey]: {
+            ...s.agentStatusByPaneKey[paneKey],
+            state: 'working',
+            sessionBoundary: undefined,
+            prompt: 'Explain renewal terms',
+            stateStartedAt: Date.now()
+          }
+        }
+      })),
+    ids
+  )
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toContainText('Explain renewal terms')
+  await orcaPage.evaluate(
+    ({ tabId }) =>
+      window.__store!.getState().setAiVaultTabTitle(tabId, {
+        agent: 'claude',
+        sessionId: 'unused-regression',
+        title: 'Renewal review'
+      }),
+    ids
+  )
+  await expect(rows).toContainText('Renewal review')
+  await orcaPage.evaluate(({ tabId }) => window.__store!.getState().closeTab(tabId), ids)
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toHaveAttribute('data-chat-completed', 'true')
+  await expect(rows).not.toHaveAttribute('data-chat-sub-tab', 'true')
+})
+
 test('workspace groups retain chat names, status, ordering and exact tab navigation', async ({
   orcaPage,
   electronApp
@@ -65,10 +157,10 @@ test('workspace groups retain chat names, status, ordering and exact tab navigat
   await expect(first).toHaveAttribute('data-chat-state', 'working')
   await expect(rows.first()).toHaveAttribute('data-chat-sidebar-id', ids.first)
   const firstBounds = await first.boundingBox()
-  expect(firstBounds!.height).toBe(24)
+  expect(firstBounds!.height).toBe(20)
   await expect(second).toHaveAttribute('data-chat-sub-tab', 'true')
   const secondBounds = await second.boundingBox()
-  expect(secondBounds!.y - firstBounds!.y).toBe(24)
+  expect(secondBounds!.y - firstBounds!.y).toBe(20)
   const elbow = await second.locator('[data-chat-sub-tab-elbow]').boundingBox()
   expect(elbow!.width).toBe(elbow!.height)
   const titleBounds = await first.locator('[data-chat-title]').boundingBox()

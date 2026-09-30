@@ -19,7 +19,14 @@ export async function prepareClaudeFolderResume(
   ) {
     throw new Error('Invalid Claude folder resume request.')
   }
-  const source = await realpath(args.filePath)
+  const source = await realpath(args.filePath).catch((error: unknown) => {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      throw new Error(
+        'The saved Claude conversation file is missing. This chat cannot be resumed from its recorded location.'
+      )
+    }
+    throw error
+  })
   const projects = path.dirname(path.dirname(source))
   if (path.basename(projects) !== 'projects') {
     throw new Error('Could not locate the original Claude session. Its files were not changed.')

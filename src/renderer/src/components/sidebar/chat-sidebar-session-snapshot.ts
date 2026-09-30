@@ -7,7 +7,36 @@ import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import type { AgentProviderSessionMetadata } from '../../../../shared/agent-session-resume'
 import { isAiVaultTitleAgent } from '../../../../shared/ai-vault-session-title'
 import { isClaudeTranscriptInProjectBucket } from '../../../../shared/claude-project-path'
-import { chatSessionKey, type ChatLiveSession, type ChatSidebarRow } from './chat-sidebar-types'
+import {
+  chatSessionKey,
+  chatSessionTime,
+  type ChatLiveSession,
+  type ChatSidebarRow
+} from './chat-sidebar-types'
+
+export function chatSessionMap(
+  sessions: readonly AiVaultSession[],
+  remembered: ReadonlySet<AiVaultSession>
+): Map<string, AiVaultSession> {
+  const result = new Map<string, AiVaultSession>()
+  for (const session of [...sessions, ...remembered]) {
+    const key = chatSessionKey(session.executionHostId, session.agent, session.sessionId)
+    const previous = result.get(key)
+    // Why: provider renames from a fresh scan beat a remembered title for the same file.
+    if (previous?.filePath === session.filePath && remembered.has(session)) {
+      continue
+    }
+    // Why: a moved Claude session retains its original file; scan order must not choose that stale copy.
+    if (
+      !previous ||
+      (chatSessionTime(session) - chatSessionTime(previous) ||
+        (Date.parse(session.modifiedAt) || 0) - (Date.parse(previous.modifiedAt) || 0)) > 0
+    ) {
+      result.set(key, session)
+    }
+  }
+  return result
+}
 
 // Why: live activity refreshes a remembered chat's time at most once a minute, not per hook ping.
 const LIVE_SNAPSHOT_REFRESH_MS = 60_000

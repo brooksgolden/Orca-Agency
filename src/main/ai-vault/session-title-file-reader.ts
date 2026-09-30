@@ -6,6 +6,7 @@ import {
   type AiVaultSessionTitlesResult
 } from '../../shared/ai-vault-session-title'
 import { parseAgentSessionFileCached } from './session-scanner-parse-cache'
+import { isAiVaultSessionResumableContent } from '../../shared/ai-vault-types'
 
 const TITLE_PARSE_CONCURRENCY = 4
 
@@ -51,6 +52,7 @@ async function readOneTitle(
       signal?.aborted ||
       session?.agent !== request.agent ||
       session.sessionId !== request.sessionId ||
+      !isAiVaultSessionResumableContent(session) ||
       !session.title.trim()
     ) {
       return null

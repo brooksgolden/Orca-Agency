@@ -58,6 +58,12 @@ describe('Claude chat folder resume preparation', () => {
     ).toBe('subagent history')
     expect(await prepareClaudeFolderResume(f.args)).toEqual(result)
   })
+  it('explains a missing transcript without creating a replacement conversation', async () => {
+    const f = await fixture()
+    await expect(
+      prepareClaudeFolderResume({ ...f.args, filePath: path.join(f.projects, 'missing.jsonl') })
+    ).rejects.toThrow('The saved Claude conversation file is missing')
+  })
   it('uses the real folder behind a junction or symbolic link', async () => {
     const f = await fixture()
     const alias = path.join(f.root, 'Shortcut')

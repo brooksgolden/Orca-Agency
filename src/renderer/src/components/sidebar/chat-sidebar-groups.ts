@@ -136,5 +136,5 @@ export function chatSidebarItemHeight(item: ChatSidebarListItem): number {
   if (item.kind === 'heading') {
     return 28
   }
-  return item.showFolder ? 36 : 24
+  return item.showFolder ? 36 : 20
 }

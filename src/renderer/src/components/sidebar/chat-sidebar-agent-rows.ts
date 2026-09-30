@@ -20,6 +20,7 @@ import {
   type ChatSidebarState
 } from './chat-sidebar-types'
 import { chatLiveSession } from './chat-sidebar-session-snapshot'
+import { hasChatConversation } from './chat-sidebar-conversation'
 
 /** When the latest working turn began; heartbeats and session-boundary snapshots never move it. */
 function latestTurnStart(entry: AgentStatusEntry): number {
@@ -110,6 +111,23 @@ export function buildAgentChatRows(args: {
       continue
     }
     representedTabIds.add(agent.tab.id)
+    const sleeping = state.sleepingAgentSessionsByPaneKey[agent.paneKey]
+    if (
+      !hasChatConversation({
+        session,
+        saved: sessionKey ? state.settings?.chatSidebar?.sessions?.[sessionKey] : undefined,
+        // Why: title-only rows put agent identity and Idle into prompt/reply fields.
+        entry: agent.startedAt === 0 ? undefined : agent.entry,
+        savedPrompt: sleeping?.providerSession.id === sessionId ? sleeping?.prompt : undefined,
+        providerTitle:
+          agent.tab.aiVaultTitle?.sessionId === sessionId &&
+          agent.tab.aiVaultTitle?.agent === sessionAgent
+            ? agent.tab.aiVaultTitle?.title
+            : undefined
+      })
+    ) {
+      continue
+    }
     const fallbackIds = [
       ...(structuredKey ? [structuredKey] : []),
       ...(soleChat ? [chatFallbackId(hostId, agent.tab.id)] : []),

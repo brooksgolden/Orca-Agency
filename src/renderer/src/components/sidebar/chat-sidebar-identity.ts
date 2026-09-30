@@ -12,6 +12,13 @@ import {
 
 type RowIds = Pick<ChatSidebarRow, 'id' | 'aliases'>
 
+/** Resident tabs beat historical copies; then a working copy; then the newest. */
+export function outranksChatRow(row: ChatSidebarRow, previous: ChatSidebarRow): boolean {
+  const resident = Number(Boolean(row.tabId)) - Number(Boolean(previous.tabId))
+  const working = Number(row.state === 'working') - Number(previous.state === 'working')
+  return (resident || working || row.timestamp - previous.timestamp) > 0
+}
+
 function storedKey(values: Record<string, unknown>, row: RowIds): string | undefined {
   return [...row.aliases, row.id].find((id) => Object.hasOwn(values, id))
 }
@@ -85,6 +92,14 @@ export function chatSidebarPreferencePatch(
     (a, b) => Number(a.id !== a.sessionKey) - Number(b.id !== b.sessionKey)
   )
   for (const row of ordered) {
+    // Older closed chats may only have their workspace's folder; retain it on the chat now.
+    if (!row.tabId && row.folderWorktree && !chatPreference(folderAssignments, row)) {
+      folderAssignments[row.id] = {
+        worktreeId: row.folderWorktree.id,
+        executionHostId: row.hostId
+      }
+      foldersChanged = true
+    }
     if (row.tabId && row.folderWorktree) {
       const workspaceKey = JSON.stringify([row.hostId, row.worktree.id])
       const assigned = workspaceFolderAssignments[workspaceKey] ?? {

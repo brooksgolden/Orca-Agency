@@ -1,4 +1,5 @@
 import { requestSessionSearchRoots } from './session-scanner-service-root-request'
+import { isAiVaultSessionResumableContent } from '../../shared/ai-vault-types'
 import type { AiVaultSessionTitle } from '../../shared/ai-vault-session-title'
 import { readAiVaultFirstUserPrompt } from './session-first-user-prompt-read'
 import {
@@ -92,7 +93,11 @@ async function executeRequest(request: AiVaultServiceRequest): Promise<AiVaultSe
     const startedAt = performance.now()
     const result = await scanAiVaultSessions({ ...request.options, signal: controller.signal })
     for (const session of result.sessions) {
-      if ((session.agent === 'claude' || session.agent === 'codex') && session.title.trim()) {
+      if (
+        (session.agent === 'claude' || session.agent === 'codex') &&
+        session.title.trim() &&
+        isAiVaultSessionResumableContent(session)
+      ) {
         cacheServiceTitle(titleIndex, {
           agent: session.agent,
           sessionId: session.sessionId,

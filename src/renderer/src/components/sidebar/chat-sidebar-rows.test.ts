@@ -73,7 +73,7 @@ describe('chat sidebar', () => {
     })
     expect(buildChatSidebarRows(state, [], 10_000)[0].title).toBe('Recently finished task')
   })
-  it('shows every agent tab in one workspace and excludes plain terminals and files', () => {
+  it('shows conversations and excludes unused agent launches and plain terminals', () => {
     const rows = buildChatSidebarRows(
       chatState({
         tabsByWorktree: {
@@ -87,7 +87,7 @@ describe('chat sidebar', () => {
       [],
       10_000
     )
-    expect(rows.map((row) => row.tabId).sort()).toEqual(['a', 'b'])
+    expect(rows.map((row) => row.tabId).sort()).toEqual(['a'])
     expect(rows.every((row) => row.folder === 'Acme')).toBe(true)
   })
 
@@ -428,7 +428,7 @@ describe('chat sidebar', () => {
     expect(rows.map((row) => row.session?.sessionId)).toEqual(['mapped'])
   })
 
-  it('names a chat with no title or prompt instead of leaving it blank', () => {
+  it('does not list a startup working event without a prompt or conversation', () => {
     const state = chatState({
       tabsByWorktree: {
         [chatWorktree.id]: [chatTab('running', { aiVaultTitle: null, title: 'Terminal 1' })]
@@ -437,7 +437,7 @@ describe('chat sidebar', () => {
         [paneKey]: statusEntry(paneKey, { state: 'working', prompt: '' })
       }
     })
-    expect(buildChatSidebarRows(state, [], 10_000)[0].title).toBe('New chat')
+    expect(buildChatSidebarRows(state, [], 10_000)).toEqual([])
   })
   it('lists and resumes a registered closed chat from its snapshot while the scan is pending', () => {
     const snapshot = {
