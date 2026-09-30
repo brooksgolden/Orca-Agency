@@ -13,10 +13,10 @@ import {
 type RowIds = Pick<ChatSidebarRow, 'id' | 'aliases'>
 
 function storedKey(values: Record<string, unknown>, row: RowIds): string | undefined {
-  return [row.id, ...row.aliases].find((id) => Object.hasOwn(values, id))
+  return [...row.aliases, row.id].find((id) => Object.hasOwn(values, id))
 }
 
-/** Reads a per-chat preference by current id, then by an id it was stored under earlier. */
+/** Pending instance edits take precedence until they migrate to the provider session. */
 export function chatPreference<T>(
   values: Record<string, T> | undefined,
   row: RowIds
@@ -51,6 +51,9 @@ function moveAliases<T>(values: Record<string, T>, row: RowIds, target: string):
     }
     if (!Object.hasOwn(values, target)) {
       values[target] = values[alias]
+    } else if (JSON.stringify(values[target]) !== JSON.stringify(values[alias])) {
+      // Why: a briefly missing resident row must not erase either copy's explicit edits.
+      continue
     }
     delete values[alias]
     changed = true
@@ -67,16 +70,47 @@ export function chatSidebarPreferencePatch(
   options: { liveOnly?: boolean } = {}
 ): Partial<ChatSidebarSettings> | null {
   const sessions = { ...current.sessions }
+  const recordedSessions = new Set<string>()
   const titles = { ...current.titles }
   const completed = { ...current.completed }
   const folderAssignments = { ...current.folderAssignments }
+  const workspaceFolderAssignments = { ...current.workspaceFolderAssignments }
   let foldersChanged = false
-  let sessionsChanged = false
+  let workspaceFoldersChanged = false
   let titlesChanged = false
   let completedChanged = false
   const automationChats = new Set(current.automationChats ?? [])
   let automationChanged = false
-  for (const row of rows) {
+  const ordered = [...rows].sort(
+    (a, b) => Number(a.id !== a.sessionKey) - Number(b.id !== b.sessionKey)
+  )
+  for (const row of ordered) {
+    if (!row.tabId && row.completed && !chatPreference(current.completed, row)) {
+      // Why: remember the legacy Done default so reopening without a prompt keeps its section.
+      completed[row.id] = { at: row.timestamp, activityAt: row.timestamp, done: true }
+      completedChanged = true
+    }
+    if (row.tabId && row.folderWorktree) {
+      const workspaceKey = JSON.stringify([row.hostId, row.worktree.id])
+      const assigned = workspaceFolderAssignments[workspaceKey] ?? {
+        worktreeId: row.folderWorktree.id,
+        executionHostId: row.hostId
+      }
+      if (
+        assigned.worktreeId === row.folderWorktree.id &&
+        JSON.stringify(folderAssignments[row.id]) !== JSON.stringify(assigned)
+      ) {
+        folderAssignments[row.id] = assigned
+        foldersChanged = true
+      }
+      if (!workspaceFolderAssignments[workspaceKey]) {
+        workspaceFolderAssignments[workspaceKey] = {
+          worktreeId: row.folderWorktree.id,
+          executionHostId: row.hostId
+        }
+        workspaceFoldersChanged = true
+      }
+    }
     if (row.automated) {
       for (const id of [row.id, ...row.aliases]) {
         if (!automationChats.has(id)) {
@@ -91,32 +125,39 @@ export function chatSidebarPreferencePatch(
     if (row.sessionKey) {
       const stored = sessions[row.sessionKey]
       const createdAt = stored?.createdAt ?? row.createdAt
-      const ownsWorkspaceName =
-        row.ownsWorkspaceName ||
-        (stored?.worktreeId === row.worktree.id && stored.ownsWorkspaceName === true)
+      const canonical = row.id === row.sessionKey
+      const worktreeId = canonical || !stored ? row.worktree.id : stored.worktreeId
+      const ownsWorkspaceName = canonical
+        ? row.ownsWorkspaceName ||
+          (stored?.worktreeId === row.worktree.id && stored.ownsWorkspaceName === true)
+        : stored?.ownsWorkspaceName === true
       const snapshot = freshestChatSnapshot(
-        row.session ? chatSessionSnapshot(row.session) : stored?.snapshot,
+        freshestChatSnapshot(
+          row.session ? chatSessionSnapshot(row.session) : stored?.snapshot,
+          recordedSessions.has(row.sessionKey) ? (stored?.snapshot ?? null) : null,
+          false
+        ),
         chatLiveSessionSnapshot(row, now),
         // Why: working rows carry their turn start and done rows their finish; both are real events.
         row.state !== 'working' && row.state !== 'done'
       )
+      recordedSessions.add(row.sessionKey)
       if (
-        stored?.worktreeId !== row.worktree.id ||
+        stored?.worktreeId !== worktreeId ||
         stored?.createdAt !== createdAt ||
         (stored.ownsWorkspaceName === true) !== ownsWorkspaceName ||
         (snapshot !== undefined && !sameChatSessionSnapshot(stored.snapshot, snapshot))
       ) {
         sessions[row.sessionKey] = {
-          worktreeId: row.worktree.id,
+          worktreeId,
           ...(createdAt !== undefined ? { createdAt } : {}),
           ...(ownsWorkspaceName ? { ownsWorkspaceName: true } : {}),
           ...(snapshot ? { snapshot } : {})
         }
-        sessionsChanged = true
       }
-      titlesChanged = moveAliases(titles, row, row.sessionKey) || titlesChanged
-      completedChanged = moveAliases(completed, row, row.sessionKey) || completedChanged
-      foldersChanged = moveAliases(folderAssignments, row, row.sessionKey) || foldersChanged
+      titlesChanged = moveAliases(titles, row, row.id) || titlesChanged
+      completedChanged = moveAliases(completed, row, row.id) || completedChanged
+      foldersChanged = moveAliases(folderAssignments, row, row.id) || foldersChanged
     }
     if (!row.activityFromState) {
       continue
@@ -134,11 +175,14 @@ export function chatSidebarPreferencePatch(
       completedChanged = true
     }
   }
+  // Why: merging several resident copies can change an intermediate snapshot without changing the final registry.
+  const sessionsChanged = JSON.stringify(sessions) !== JSON.stringify(current.sessions ?? {})
   if (
     !sessionsChanged &&
     !titlesChanged &&
     !completedChanged &&
     !foldersChanged &&
+    !workspaceFoldersChanged &&
     !automationChanged
   ) {
     return null
@@ -148,6 +192,26 @@ export function chatSidebarPreferencePatch(
     ...(sessionsChanged ? { sessions } : {}),
     ...(titlesChanged ? { titles } : {}),
     ...(foldersChanged ? { folderAssignments } : {}),
+    ...(workspaceFoldersChanged ? { workspaceFolderAssignments } : {}),
     ...(completedChanged ? { completed } : {})
   }
+}
+
+export function chatCompletionEdit(
+  row: Pick<ChatSidebarRow, 'id' | 'aliases' | 'timestamp' | 'state'>,
+  current: ChatSidebarSettings,
+  done: boolean,
+  now: number
+): Partial<ChatSidebarSettings> {
+  const completed = { ...current.completed }
+  for (const alias of row.aliases) {
+    delete completed[alias]
+  }
+  completed[row.id] = {
+    activityAt: row.timestamp,
+    at: now,
+    done,
+    ...(row.state === 'working' ? { working: true } : {})
+  }
+  return { completed }
 }

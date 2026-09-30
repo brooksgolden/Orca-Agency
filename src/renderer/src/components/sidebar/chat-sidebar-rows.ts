@@ -1,8 +1,5 @@
 import { getAgentRowConversationName } from '../../../../shared/agent-row-conversation-name'
-import {
-  folderWorkspaceToWorktree,
-  projectGroupIdFromRepoId
-} from '../../../../shared/folder-workspace-worktree'
+import type { Worktree } from '../../../../shared/worktree/types'
 import {
   getWorktreeExecutionHostId,
   getSettingsFocusedExecutionHostId
@@ -15,7 +12,6 @@ import {
   isAiVaultSessionResumableContent,
   type AiVaultSession
 } from '../../../../shared/ai-vault-types'
-import type { Worktree } from '../../../../shared/worktree/types'
 import {
   chatFallbackId,
   chatSessionKey,
@@ -27,35 +23,9 @@ import { buildAgentChatRows } from './chat-sidebar-agent-rows'
 import { chatPreference, isChatCompleted } from './chat-sidebar-identity'
 import { chatWorkspaceNameOwners, manualWorkspaceName } from './chat-sidebar-workspace-names'
 import { chatLiveSession, chatSnapshotSessions } from './chat-sidebar-session-snapshot'
-import { basename } from '@/lib/path'
-
-export function chatSidebarWorktrees(
-  state: Pick<ChatSidebarState, 'worktreesByRepo' | 'folderWorkspaces'>
-): Worktree[] {
-  return [
-    ...new Map(
-      [
-        ...Object.values(state.worktreesByRepo).flat(),
-        ...state.folderWorkspaces.map(folderWorkspaceToWorktree)
-      ].map((worktree) => [worktree.id, worktree])
-    ).values()
-  ]
-}
-
-export function chatFolderLabel(
-  state: Pick<ChatSidebarState, 'repos' | 'projectGroups'>,
-  worktree: Worktree
-): string {
-  const repo = state.repos.find((item) => item.id === worktree.repoId)
-  const groupId = repo?.projectGroupId ?? projectGroupIdFromRepoId(worktree.repoId)
-  const group = state.projectGroups.find((item) => item.id === groupId)
-  return (
-    (group?.parentPath ? basename(group.parentPath) || group.parentPath : group?.name) ??
-    repo?.displayName ??
-    worktree.path.split(/[\\/]/).findLast(Boolean) ??
-    'Folder'
-  )
-}
+import { chatWorkspaceFolders } from './chat-sidebar-workspace-folder'
+import { chatSidebarWorktrees, chatFolderLabel } from './chat-sidebar-worktrees'
+export { chatSidebarWorktrees, chatFolderLabel } from './chat-sidebar-worktrees'
 
 /** Resident tabs beat historical copies; then a working copy; then the newest. */
 function outranks(row: ChatSidebarRow, previous: ChatSidebarRow): boolean {
@@ -75,6 +45,13 @@ export function buildChatSidebarRows(
   includeAutomationRows = false
 ): ChatSidebarRow[] {
   const rows = new Map<string, ChatSidebarRow>()
+  const residentRows: ChatSidebarRow[] = []
+  const tabCreatedAt = new Map(
+    [
+      ...Object.values(state.tabsByWorktree).flat(),
+      ...Object.values(state.unifiedTabsByWorktree).flat()
+    ].map((tab) => [tab.id, tab.createdAt])
+  )
   const worktrees = chatSidebarWorktrees(state)
   const repoById = new Map(state.repos.map((repo) => [repo.id, repo]))
   const focusedHostId = getSettingsFocusedExecutionHostId(state.settings)
@@ -110,6 +87,17 @@ export function buildChatSidebarRows(
     )
   )
   const add = (row: ChatSidebarRow) => {
+    const incumbent = rows.get(row.id)
+    // Why: two resident terminals can resume the same provider session. Keep both navigable.
+    if (
+      row.tabId &&
+      incumbent?.tabId &&
+      (row.tabId !== incumbent.tabId ||
+        (row.paneKey && incumbent.paneKey && row.paneKey !== incumbent.paneKey))
+    ) {
+      row.id = chatFallbackId(row.hostId, row.paneKey ?? row.tabId)
+      row.aliases = row.aliases.filter((alias) => alias !== row.id)
+    }
     const tab =
       state.tabsByWorktree[row.worktree.id]?.find((item) => item.id === row.tabId) ??
       state.unifiedTabsByWorktree[row.worktree.id]?.find((item) => item.id === row.tabId)
@@ -117,11 +105,14 @@ export function buildChatSidebarRows(
     row.createdAt =
       chatPreference(settings?.sessions, row)?.createdAt ??
       (Number.isFinite(sessionCreatedAt) ? sessionCreatedAt : tab?.createdAt)
-    row.automated = [row.id, ...row.aliases].some((id) => automationChats.has(id))
-    if ([row.id, ...row.aliases].some((id) => hidden.has(id))) {
+    const identities = [row.id, ...row.aliases, ...(row.sessionKey ? [row.sessionKey] : [])]
+    row.automated = identities.some((id) => automationChats.has(id))
+    if (identities.some((id) => hidden.has(id))) {
       return
     }
-    row.completed = isChatCompleted(row, chatPreference(settings?.completed, row))
+    const completion = chatPreference(settings?.completed, row)
+    // Why: older closed chats predate explicit close tracking; saved history belongs in Done.
+    row.completed = !row.tabId && !completion ? true : isChatCompleted(row, completion)
     const previous = rows.get(row.id)
     if (!previous || outranks(row, previous)) {
       rows.set(row.id, row)
@@ -131,7 +122,7 @@ export function buildChatSidebarRows(
     const hostId = hostOf(worktree)
     const folder = chatFolderLabel(state, worktree)
     const live = buildAgentChatRows({ state, worktree, hostId, folder, sessions: sessionMap, now })
-    live.rows.forEach(add)
+    residentRows.push(...live.rows)
     for (const tab of state.tabsByWorktree[worktree.id] ?? []) {
       const sleeping = sleepingByTabId.get(`${worktree.id}\n${tab.id}`)
       if (
@@ -153,7 +144,7 @@ export function buildChatSidebarRows(
         getAgentRowConversationName(tab, agent, generatedTitles, undefined, sessionId) ??
         session?.title ??
         tab.title
-      add({
+      residentRows.push({
         id: key ?? fallbackIds[0],
         aliases: key ? fallbackIds : fallbackIds.slice(1),
         sessionKey: key,
@@ -183,7 +174,7 @@ export function buildChatSidebarRows(
       const key = chatSessionKey(hostId, tab.agentSessionAgent ?? 'unknown', tab.entityId)
       const session = sessionMap.get(key) ?? null
       const sessionAt = session ? chatSessionTime(session) : tab.createdAt
-      add({
+      residentRows.push({
         id: key,
         aliases: [chatFallbackId(hostId, tab.id)],
         sessionKey: key,
@@ -205,6 +196,16 @@ export function buildChatSidebarRows(
       })
     }
   }
+  // Why: activity order must not transfer a duplicate session's names or completion to another tab.
+  residentRows
+    .sort(
+      (a, b) =>
+        (tabCreatedAt.get(a.tabId ?? '') ?? Number.MAX_SAFE_INTEGER) -
+          (tabCreatedAt.get(b.tabId ?? '') ?? Number.MAX_SAFE_INTEGER) ||
+        (a.tabId ?? '').localeCompare(b.tabId ?? '') ||
+        (a.paneKey ?? '').localeCompare(b.paneKey ?? '')
+    )
+    .forEach(add)
   const worktreeById = new Map(worktrees.map((worktree) => [worktree.id, worktree]))
   const claimed = new Set([...rows.values()].flatMap((row) => [row.id, ...row.aliases]))
   for (const session of sessionMap.values()) {
@@ -271,15 +272,10 @@ export function buildChatSidebarRows(
   }
   const result = [...rows.values()]
   const owners = chatWorkspaceNameOwners(state, result)
+  const folders = chatWorkspaceFolders(result, settings, worktreeById, hostOf, tabCreatedAt)
   for (const row of result) {
-    const assignment = chatPreference(settings?.folderAssignments, row)
-    const destination = assignment ? worktreeById.get(assignment.worktreeId) : undefined
-    if (
-      destination &&
-      !destination.isArchived &&
-      assignment?.executionHostId === row.hostId &&
-      hostOf(destination) === row.hostId
-    ) {
+    const destination = folders.get(row.id)
+    if (destination) {
       row.folderWorktree = destination
       row.folder = chatFolderLabel(state, destination)
     }

@@ -16,6 +16,9 @@ export function chatSidebarSplitGroups(
   const hosts = new Map<string, Set<string>>()
   for (const group of groups) {
     const row = group.members[0]
+    if (!row.tabId) {
+      continue
+    }
     const known = hosts.get(row.worktree.id) ?? new Set<string>()
     known.add(row.hostId)
     hosts.set(row.worktree.id, known)
@@ -30,7 +33,8 @@ export function chatSidebarSplitGroups(
   }
   const sets = new Map<string, { splitId?: string; groups: ChatWorkspaceGroup[] }>()
   for (const group of groups) {
-    const link = links.get(group.members[0].worktree.id)
+    const row = group.members[0]
+    const link = row.tabId ? links.get(row.worktree.id) : undefined
     const key = link ? `split:${link.id}` : group.id
     const set = sets.get(key) ?? { splitId: link?.id, groups: [] }
     set.groups.push(group)

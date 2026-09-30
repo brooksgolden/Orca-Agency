@@ -2,37 +2,20 @@ import { useAppStore } from '@/store'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { ChatSidebarRow } from './chat-sidebar-types'
 import type { Worktree } from '../../../../shared/worktree/types'
+import { updateChatSidebarSettings } from '@/lib/chat-sidebar-settings-update'
+import { chatWorkspaceFolderKey } from './chat-sidebar-workspace-folder'
+import { chatCompletionEdit } from './chat-sidebar-identity'
 
 type Preferences = NonNullable<GlobalSettings['chatSidebar']>
-let pendingUpdate = Promise.resolve()
 
 export function updateChatSidebar(
   patch: Partial<Preferences> | ((current: Preferences) => Partial<Preferences> | null)
 ) {
-  const update = pendingUpdate.then(async () => {
-    const state = useAppStore.getState()
-    const current = state.settings?.chatSidebar ?? {}
-    const next = typeof patch === 'function' ? patch(current) : patch
-    if (next) {
-      await state.updateSettings({ chatSidebar: { ...current, ...next } })
-    }
-  })
-  pendingUpdate = update.catch(() => {})
-  return update
+  return updateChatSidebarSettings(useAppStore.getState, patch)
 }
 
 export function setChatCompleted(row: ChatSidebarRow, completed: boolean) {
-  return updateChatSidebar((current) => ({
-    completed: {
-      ...current.completed,
-      [row.id]: {
-        activityAt: row.timestamp,
-        at: Date.now(),
-        done: completed,
-        ...(row.state === 'working' ? { working: true } : {})
-      }
-    }
-  }))
+  return updateChatSidebar((current) => chatCompletionEdit(row, current, completed, Date.now()))
 }
 
 export function setChatSidebarTitle(row: Pick<ChatSidebarRow, 'id' | 'aliases'>, title: string) {
@@ -56,6 +39,16 @@ export function setChatFolder(row: ChatSidebarRow, destination: Worktree) {
       delete folderAssignments[id]
     }
     folderAssignments[row.id] = { worktreeId: destination.id, executionHostId: row.hostId }
-    return { folderAssignments }
+    return {
+      folderAssignments,
+      ...(row.tabId
+        ? {
+            workspaceFolderAssignments: {
+              ...current.workspaceFolderAssignments,
+              [chatWorkspaceFolderKey(row)]: folderAssignments[row.id]
+            }
+          }
+        : {})
+    }
   })
 }

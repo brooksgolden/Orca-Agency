@@ -22,18 +22,8 @@ import {
   WORKSPACE_PANE_POINTER_MOVE,
   readWorkspacePanePointerDetail
 } from './workspace-split/workspace-pane-pointer-drag'
-
-function nearestEdge(element: HTMLElement, x: number, y: number): WorkspaceSplitEdge {
-  const bounds = element.getBoundingClientRect()
-  const distances = [
-    { edge: 'left', value: x - bounds.left },
-    { edge: 'right', value: bounds.right - x },
-    { edge: 'top', value: y - bounds.top },
-    { edge: 'bottom', value: bounds.bottom - y }
-  ] as const
-  return distances.reduce((best, candidate) => (candidate.value < best.value ? candidate : best))
-    .edge
-}
+import { workspaceDropTarget } from './workspace-split/workspace-drop-target'
+import { WorkspaceDropPreview } from './workspace-split/WorkspaceDropPreview'
 
 export function TerminalSplitWorkspaceSurfaces({
   controller
@@ -59,7 +49,11 @@ export function TerminalSplitWorkspaceSurfaces({
   } = controller
   const rootRef = useRef<HTMLDivElement>(null)
   const [paneRects, setPaneRects] = useState<Map<string, WorkspacePaneRect>>(() => new Map())
-  const [hover, setHover] = useState<{ id: string; edge: WorkspaceSplitEdge } | null>(null)
+  const [hover, setHover] = useState<{
+    id: string
+    edge: WorkspaceSplitEdge
+    wholeWindow: boolean
+  } | null>(null)
   const onRatioChange = useCallback(
     (path: readonly ('first' | 'second')[], ratio: number) => {
       if (visibleWorkspaceSplitGroup) {
@@ -101,6 +95,16 @@ export function TerminalSplitWorkspaceSurfaces({
       return
     }
     const ids = new Set(visibleIdsKey.split('\u0000').filter(Boolean))
+    const dropTarget = (surface: HTMLElement, x: number, y: number) => ({
+      id: surface.dataset.workspaceSurfaceId!,
+      ...workspaceDropTarget(
+        root.getBoundingClientRect(),
+        surface.getBoundingClientRect(),
+        x,
+        y,
+        ids.size > 1
+      )
+    })
     const targetSurface = (event: DragEvent): HTMLElement | null => {
       if (!Array.from(event.dataTransfer?.types ?? []).includes(WORKSPACE_STATUS_DRAG_TYPE)) {
         return null
@@ -134,7 +138,10 @@ export function TerminalSplitWorkspaceSurfaces({
         return
       }
       if (activateAndRevealWorkspace(sourceId, { revealInSidebar: false }) !== false) {
-        useAppStore.getState().placeWorkspaceAtEdge(sourceId, targetId, nearestEdge(surface, x, y))
+        const target = dropTarget(surface, x, y)
+        useAppStore
+          .getState()
+          .placeWorkspaceAtEdge(sourceId, targetId, target.edge, target.wholeWindow)
       }
     }
     const onDragOver = (event: DragEvent) => {
@@ -145,12 +152,13 @@ export function TerminalSplitWorkspaceSurfaces({
       }
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
-      const next = {
-        id: surface.dataset.workspaceSurfaceId!,
-        edge: nearestEdge(surface, event.clientX, event.clientY)
-      }
+      const next = dropTarget(surface, event.clientX, event.clientY)
       setHover((previous) =>
-        previous?.id === next.id && previous.edge === next.edge ? previous : next
+        previous?.id === next.id &&
+        previous.edge === next.edge &&
+        previous.wholeWindow === next.wholeWindow
+          ? previous
+          : next
       )
     }
     const onDrop = (event: DragEvent) => {
@@ -180,9 +188,13 @@ export function TerminalSplitWorkspaceSurfaces({
         setHover(null)
         return
       }
-      const next = { id: surface.dataset.workspaceSurfaceId!, edge: nearestEdge(surface, x, y) }
+      const next = dropTarget(surface, x, y)
       setHover((previous) =>
-        previous?.id === next.id && previous.edge === next.edge ? previous : next
+        previous?.id === next.id &&
+        previous.edge === next.edge &&
+        previous.wholeWindow === next.wholeWindow
+          ? previous
+          : next
       )
     }
     const onPointerDrop = (event: Event) => {
@@ -236,7 +248,7 @@ export function TerminalSplitWorkspaceSurfaces({
         isVisible={isVisible}
         isFocused={isVisible && workspace.id === renderedActiveWorktreeId}
         isMultiPane={group !== null && isVisible}
-        hoverEdge={hover?.id === workspace.id ? hover.edge : null}
+        hoverEdge={hover?.id === workspace.id && !hover.wholeWindow ? hover.edge : null}
         paneRect={group && isVisible ? paneRects.get(workspace.id) : undefined}
         shouldMeasureHiddenWorktree={shouldMeasureHiddenWorktree}
         shouldColdParkTerminalPanes={shouldColdParkTerminalPanes}
@@ -276,6 +288,7 @@ export function TerminalSplitWorkspaceSurfaces({
               : workspace.id === renderedActiveWorktreeId)
         )
       )}
+      {hover?.wholeWindow ? <WorkspaceDropPreview edge={hover.edge} /> : null}
     </div>
   )
 }

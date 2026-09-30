@@ -23,14 +23,15 @@ export function createUiTaskActions(set: UISliceSet, get: UISliceGet): Partial<U
   return {
     activeView: 'terminal',
     workspaceSplitGroups: readWorkspaceSplitGroups(),
-    placeWorkspaceAtEdge: (source, target, edge) =>
+    placeWorkspaceAtEdge: (source, target, edge, wholeWindow) =>
       set((state) => {
         const workspaceSplitGroups = placeWorkspaceAtEdge(
           state.workspaceSplitGroups,
           source,
           target,
           edge,
-          crypto.randomUUID()
+          crypto.randomUUID(),
+          wholeWindow
         )
         writeWorkspaceSplitGroups(workspaceSplitGroups)
         return { workspaceSplitGroups }

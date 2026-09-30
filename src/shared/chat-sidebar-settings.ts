@@ -44,6 +44,11 @@ export type ChatSidebarSettings = {
   automationChats?: string[]
   /** Next launch destination; never changes the owner of a running terminal. */
   folderAssignments?: Record<string, { worktreeId: string; executionHostId: ExecutionHostId }>
+  /** All resident chats in a workspace share this folder, including newly created tabs. */
+  workspaceFolderAssignments?: Record<
+    string,
+    { worktreeId: string; executionHostId: ExecutionHostId }
+  >
   historySince?: number
   completed?: Record<string, ChatSidebarCompletion>
   defaultRepoId?: string

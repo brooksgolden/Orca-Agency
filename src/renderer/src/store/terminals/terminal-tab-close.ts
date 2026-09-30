@@ -20,6 +20,7 @@ import { pruneSessionGridTabOrder } from '../slices/session-grid-tab-order'
 import { pruneSessionGridHiddenTabIds } from '../slices/session-grid-hidden-tabs'
 import { removePaneKeysByTabPrefix } from '../slices/agent-status-pane-keyed-records'
 import { omitRecordKeys } from '../slices/worktrees/teardown/record-key-omission'
+import { completeClosedChatTab } from '@/lib/chat-sidebar-tab-close'
 
 export function createTerminalTabCloseActions(
   set: TerminalStoreSet,
@@ -29,6 +30,9 @@ export function createTerminalTabCloseActions(
     closeTab: (tabId, opts) => {
       const closeReason = opts?.reason ?? 'user'
       const retiresSession = closeReason === 'user' || closeReason === 'cleanup'
+      if (closeReason === 'user') {
+        completeClosedChatTab(get, tabId)
+      }
       const retirementPlan =
         opts?.precomputedRetirementPlan?.tabId === tabId
           ? opts.precomputedRetirementPlan

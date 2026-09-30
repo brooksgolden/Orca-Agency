@@ -16,6 +16,25 @@ describe('workspace chat groups', () => {
   })
   const other = chatRow({ id: 'other', worktree: { ...chatWorktree, id: 'other' }, timestamp: 100 })
 
+  it('adds an older reopened session after the existing resident main and sub-tab', () => {
+    const reopenedState = chatState({
+      tabsByWorktree: {
+        [chatWorktree.id]: [chatTab('a'), chatTab('b'), chatTab('old', { createdAt: 9_000 })]
+      }
+    })
+    const reopened = chatRow({ id: 'old', tabId: 'old', createdAt: 1 })
+    const items = chatSidebarListItems(
+      [{ ...main, createdAt: 5_000 }, { ...child, createdAt: 6_000 }, reopened],
+      reopenedState,
+      ''
+    ).filter((item) => item.kind === 'chat')
+    expect(items.map((item) => [item.id, item.subTab])).toEqual([
+      ['main', false],
+      ['child', true],
+      ['old', true]
+    ])
+  })
+
   it('brackets split workspaces together and restores independent sorting after unsplitting', () => {
     const older = { ...other, timestamp: 1, completed: true }
     const middle = {
@@ -124,7 +143,7 @@ describe('workspace chat groups', () => {
     expect(items.filter((item) => item.kind === 'chat').every((item) => !item.subTab)).toBe(true)
   })
 
-  it('keeps a closed main chat ahead of later open or resumed siblings', () => {
+  it('keeps closed history separate from the LLM tabs currently open in a workspace', () => {
     const items = chatSidebarListItems(
       [
         { ...main, createdAt: 100, tabId: null },
@@ -134,9 +153,23 @@ describe('workspace chat groups', () => {
       ''
     )
     expect(items.filter((item) => item.kind === 'chat').map((item) => item.id)).toEqual([
-      'main',
-      'child'
+      'child',
+      'main'
     ])
+    expect(items.filter((item) => item.kind === 'chat').every((item) => !item.subTab)).toBe(true)
+  })
+
+  it('does not bracket historical chats merely because their old workspace is split', () => {
+    const splits = placeWorkspaceAtEdge([], other.worktree.id, main.worktree.id, 'right', 'joined')
+    const items = chatSidebarListItems(
+      [main, child, other, { ...child, id: 'closed', tabId: null, state: 'idle' }],
+      state,
+      '',
+      splits
+    )
+    const closed = items.find((item) => item.kind === 'chat' && item.id === 'closed')
+    expect(closed).toMatchObject({ subTab: false, showFolder: true, splitId: undefined })
+    expect(items.filter((item) => item.kind === 'chat' && item.splitId)).toHaveLength(3)
   })
 
   it('does not group workspaces on different hosts or merge distinct workspaces in the same directory', () => {
@@ -144,9 +177,12 @@ describe('workspace chat groups', () => {
     expect(items.filter((item) => item.kind === 'chat').every((item) => !item.subTab)).toBe(true)
   })
 
-  it('shows individual folders when siblings have been filed in different folders', () => {
-    const items = chatSidebarListItems([main, { ...child, folder: 'Other' }], state, '')
-    expect(items.filter((item) => item.kind === 'chat').every((item) => item.showFolder)).toBe(true)
+  it('shows one folder footer beneath the resident workspace group', () => {
+    const items = chatSidebarListItems([main, child], state, '')
+    expect(items.filter((item) => item.kind === 'chat').map((item) => item.showFolder)).toEqual([
+      false,
+      true
+    ])
   })
 
   it('keeps every LLM tab and excludes plain terminals, Markdown and browser tabs', () => {

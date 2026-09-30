@@ -129,7 +129,7 @@ describe('project group store routing', () => {
           activeRuntimeEnvironmentId: parentPath ? 'env-1' : null
         }
       })
-      const options = parentPath ? { parentPath, hostId: 'local' } : undefined
+      const options = parentPath ? { parentPath, hostId: 'local' as const } : undefined
 
       await expect(store.getState().createProjectGroup('Platform', options)).resolves.toEqual({
         ...folder,

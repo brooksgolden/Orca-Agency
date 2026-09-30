@@ -20,6 +20,7 @@ import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus
 import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
 import { findWorkspaceSplitPartner } from '@/lib/workspace-split-layout'
 import { parseWorkspaceKey } from '../../../../../shared/workspace-scope'
+import { completeClosedChatTab } from '@/lib/chat-sidebar-tab-close'
 
 export function createTabsCloseActions(
   set: TabsSliceSet,
@@ -51,6 +52,7 @@ export function createTabsCloseActions(
       const remainingOrder = dedupeTabOrder(dedupedGroupOrder.filter((id) => id !== tabId))
       const wasLastTab = remainingOrder.length === 0
       if (tab.contentType === 'agent-session') {
+        completeClosedChatTab(get, tabId)
         const provisional =
           shouldRetainStructuredAgentSessionLaunchTab(worktreeId, tab.entityId) ||
           hasStructuredAgentSessionLaunchCancellationTombstone(worktreeId, tab.entityId)

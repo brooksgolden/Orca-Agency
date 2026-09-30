@@ -38,7 +38,11 @@ function rowTimestamp(agent: DashboardAgentRow, sessionAt: number): number {
     return sessionAt
   }
   if (agent.state === 'done') {
-    return lastEnteredDoneAt(agent) ?? agentStatusEvidenceObservedAt(agent.entry)
+    // Why: resuming an idle session emits done without completing a new turn.
+    return (
+      lastEnteredDoneAt(agent) ??
+      (agent.entry.sessionBoundary ? sessionAt : agentStatusEvidenceObservedAt(agent.entry))
+    )
   }
   // Why: updatedAt moves on heartbeats and relay restamps; state start and evidence time do not.
   return agent.state === 'working'

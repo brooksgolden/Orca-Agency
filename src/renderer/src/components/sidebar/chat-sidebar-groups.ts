@@ -11,7 +11,6 @@ export type ChatSidebarListItem =
       id: string
       groupId: string
       subTab: boolean
-      lastSubTab: boolean
       showFolder: boolean
       splitId?: string
       splitStart?: boolean
@@ -42,7 +41,9 @@ export function chatSidebarListItems(
     const key = JSON.stringify([
       row.hostId,
       row.worktree.id,
-      groupBy === 'folder' ? row.folder : null
+      groupBy === 'folder' ? row.folder : null,
+      // Why: history belongs in the list, but only resident tabs share a visible workspace.
+      row.tabId ? null : row.id
     ])
     const siblings = byWorkspace.get(key) ?? []
     siblings.push(row)
@@ -60,10 +61,9 @@ export function chatSidebarListItems(
     ]
     const order = new Map(tabs.map((tab, index) => [tab.id, index]))
     const createdAt = (row: ChatSidebarRow) =>
+      tabs.find((tab) => tab.id === row.tabId)?.createdAt ??
       row.createdAt ??
-      (Date.parse(row.session?.createdAt ?? '') ||
-        tabs.find((tab) => tab.id === row.tabId)?.createdAt ||
-        Number.MAX_SAFE_INTEGER)
+      (Date.parse(row.session?.createdAt ?? '') || Number.MAX_SAFE_INTEGER)
     const members = [...siblings].sort(
       (a, b) =>
         Number(b.ownsWorkspaceName) - Number(a.ownsWorkspaceName) ||
@@ -109,7 +109,6 @@ export function chatSidebarListItems(
       const start = items.length
       for (const group of set.groups) {
         const members = group.members
-        const sameFolder = members.every((row) => row.folder === members[0].folder)
         members.forEach((row, index) =>
           items.push({
             kind: 'chat',
@@ -117,8 +116,7 @@ export function chatSidebarListItems(
             id: row.id,
             groupId: group.id,
             subTab: index > 0,
-            lastSubTab: index === members.length - 1,
-            showFolder: !sameFolder || index === members.length - 1,
+            showFolder: index === members.length - 1,
             splitId: set.splitId
           })
         )
@@ -138,5 +136,5 @@ export function chatSidebarItemHeight(item: ChatSidebarListItem): number {
   if (item.kind === 'heading') {
     return 28
   }
-  return item.showFolder ? 44 : 28
+  return item.showFolder ? 36 : 24
 }

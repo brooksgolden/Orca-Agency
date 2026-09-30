@@ -37,7 +37,7 @@ describe('per-chat folder assignment', () => {
     return state
   }
 
-  it('changes only the chosen chat label and next destination, preserving both terminal owners', () => {
+  it('shares the chosen folder with every resident chat, preserving both terminal owners', () => {
     const state = stateFor()
     const rows = buildChatSidebarRows(state, [], 10_000)
     expect(rows.find((row) => row.id === id)).toMatchObject({
@@ -47,7 +47,7 @@ describe('per-chat folder assignment', () => {
       tabId: 'a'
     })
     expect(rows.find((row) => row.tabId === 'b')).toMatchObject({
-      folder: 'Acme',
+      folder: 'Other',
       worktree: chatWorktree
     })
     expect(state.tabsByWorktree[chatWorktree.id][0].ptyId).toBe('original-pty')
@@ -55,6 +55,17 @@ describe('per-chat folder assignment', () => {
       chatSidebarPreferencePatch(rows, state.settings!.chatSidebar!, 10_000)?.sessions?.[id]
         ?.worktreeId
     ).toBe(chatWorktree.id)
+  })
+
+  it('keeps the shared folder for new tabs after the original chat closes', () => {
+    const state = stateFor()
+    const rows = buildChatSidebarRows(state, [], 10_000)
+    state.settings!.chatSidebar = {
+      ...state.settings!.chatSidebar,
+      ...chatSidebarPreferencePatch(rows, state.settings!.chatSidebar!, 10_000)
+    }
+    state.tabsByWorktree[chatWorktree.id] = [chatTab('new')]
+    expect(buildChatSidebarRows(state, [], 10_000)[0].folder).toBe('Other')
   })
 
   it('does not assign a folder on another execution host', () => {
@@ -71,6 +82,10 @@ describe('per-chat folder assignment', () => {
     const rows = buildChatSidebarRows(state, [], 10_000)
     expect(rows.find((row) => row.id === id)?.folder).toBe('Other')
     const patch = chatSidebarPreferencePatch(rows, state.settings!.chatSidebar!, 10_000)
-    expect(patch?.folderAssignments).toEqual({ [id]: assignment })
+    expect(patch?.folderAssignments?.[id]).toEqual(assignment)
+    expect(patch?.folderAssignments?.[chatSessionKey('local', 'codex', 'session-b')]).toEqual(
+      assignment
+    )
+    expect(patch?.folderAssignments?.[alias]).toBeUndefined()
   })
 })

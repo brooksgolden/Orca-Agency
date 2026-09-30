@@ -70,9 +70,69 @@ test('split windows stay bracketed and adjacent until unsplit', async ({
   const first = await rows.nth(0).boundingBox()
   const second = await rows.nth(1).boundingBox()
   expect(Math.abs(second!.y - first!.y - first!.height)).toBeLessThan(1)
+  const joinedTitle = await rows.nth(0).locator('[data-chat-title]').boundingBox()
+  const independentTitle = await rows.nth(2).locator('[data-chat-title]').boundingBox()
+  expect(joinedTitle!.x).toBe(independentTitle!.x)
+  const bracket = rows.nth(0).locator('[data-chat-split-bracket]')
+  expect((await bracket.boundingBox())!.width).toBe(4)
   await orcaPage.screenshot({ path: testInfo.outputPath('split-chat-bracket.png') })
   await orcaPage.evaluate((id) => window.__store!.getState().unsplitWorkspace(id), ids[1])
   await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(0)
   await expect(rows.nth(1)).toContainText('Recent independent chat')
   await expect(rows.nth(2)).toContainText('Old split partner')
+  await orcaPage.evaluate(([first, second]) => {
+    const s = window.__store!.getState()
+    s.placeWorkspaceAtEdge(second, first, 'right')
+    s.setActiveWorktree(first)
+    s.setActiveView('terminal')
+  }, ids)
+  const pane = (id: string) => orcaPage.locator(`[data-workspace-surface-id="${id}"]`)
+  await expect(pane(ids[0])).toBeVisible()
+  await expect(pane(ids[1])).toBeVisible()
+  await pane(ids[0]).evaluate((surface, sourceId) => {
+    const rect = surface.getBoundingClientRect()
+    const dataTransfer = new DataTransfer()
+    dataTransfer.setData('application/x-orca-worktree-id', sourceId)
+    surface.dispatchEvent(
+      new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.bottom - 5
+      })
+    )
+  }, ids[2])
+  await expect(orcaPage.locator('[data-workspace-window-drop="bottom"]')).toBeVisible()
+  await pane(ids[0]).evaluate((surface, sourceId) => {
+    const rect = surface.getBoundingClientRect()
+    const dataTransfer = new DataTransfer()
+    dataTransfer.setData('application/x-orca-worktree-id', sourceId)
+    surface.dispatchEvent(
+      new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.bottom - 5
+      })
+    )
+  }, ids[2])
+  await expect(pane(ids[2])).toBeVisible()
+  await expect
+    .poll(async () => {
+      const a = await pane(ids[0]).boundingBox(),
+        b = await pane(ids[1]).boundingBox(),
+        c = await pane(ids[2]).boundingBox()
+      return !!(
+        a &&
+        b &&
+        c &&
+        Math.abs(a.y - b.y) < 1 &&
+        c.y >= a.y + a.height &&
+        Math.abs(c.width - a.width - b.width - 4) < 2
+      )
+    })
+    .toBe(true)
+  await orcaPage.screenshot({ path: testInfo.outputPath('workspace-full-width-bottom.png') })
 })

@@ -21,7 +21,7 @@ import { useAiVaultSessionLaunchActions } from '../right-sidebar/ai-vault-sessio
 import { ChatSidebarRow } from './ChatSidebarRow'
 import type { ChatSidebarRow as Row } from './chat-sidebar-types'
 import { useChatSidebarData } from './use-chat-sidebar-data'
-import { setChatSidebarTitle } from './chat-sidebar-preferences'
+import { setChatSidebarTitle, setChatCompleted } from './chat-sidebar-preferences'
 import { activeChatTarget, isChatRowSelected } from './chat-sidebar-selection'
 import { chatResumeSession } from './chat-sidebar-resume'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
@@ -61,7 +61,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const moveChat = useCallback((row: Row, folder: ChatFolderDestination) => {
     void changeChatFolder(row, folder)
       .then(() => {
-        toast.success(`Chat filed under ${folder.label}`, {
+        toast.success(`${row.tabId ? 'Workspace' : 'Chat'} filed under ${folder.label}`, {
           description: row.tabId
             ? 'Running work continues. The new working folder applies when you reopen the chat.'
             : undefined
@@ -75,8 +75,13 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     (row: Row) => {
       const resumeSession = row.tabId ? null : chatResumeSession(row)
       if (resumeSession) {
-        handleResume(resumeSession, (row.folderWorktree ?? row.worktree).id)
-        onOpen?.()
+        // Why: persist the legacy Done default before a resume makes the row resident.
+        void (row.completed ? setChatCompleted(row, true) : Promise.resolve())
+          .then(() => {
+            handleResume(resumeSession, (row.folderWorktree ?? row.worktree).id)
+            onOpen?.()
+          })
+          .catch(() => toast.error('Could not save the chat status before reopening.'))
         return
       }
       if (
@@ -215,7 +220,6 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
                   <ChatSidebarRow
                     row={entry.row}
                     subTab={entry.subTab}
-                    lastSubTab={entry.lastSubTab}
                     showFolder={entry.showFolder}
                     groupId={entry.groupId}
                     splitId={entry.splitId}

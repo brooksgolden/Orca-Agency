@@ -157,7 +157,12 @@ export type UISliceCore = {
   clearManuallyUnreadTurns: (paneKeys: string[]) => void
   activeView: TopLevelView
   workspaceSplitGroups: WorkspaceSplitGroup[]
-  placeWorkspaceAtEdge: (source: string, target: string, edge: WorkspaceSplitEdge) => void
+  placeWorkspaceAtEdge: (
+    source: string,
+    target: string,
+    edge: WorkspaceSplitEdge,
+    wholeWindow?: boolean
+  ) => void
   unsplitWorkspace: (workspaceId: string) => void
   setWorkspaceSplitRatio: (groupId: string, path: WorkspaceLayoutPath, ratio: number) => void
   previousViewBeforeTasks: Exclude<UiViewHistory, 'tasks'>

@@ -91,7 +91,8 @@ export function placeWorkspaceAtEdge(
   sourceId: string,
   targetId: string,
   edge: WorkspaceSplitEdge,
-  newGroupId: string
+  newGroupId: string,
+  wholeWindow = false
 ): WorkspaceSplitGroup[] {
   if (!sourceId || !targetId || sourceId === targetId) {
     return [...groups]
@@ -110,7 +111,24 @@ export function placeWorkspaceAtEdge(
   if (targetAfterMove) {
     return remaining.map((group) =>
       group.id === targetAfterMove.id
-        ? { ...group, layout: splitLeaf(group.layout, targetId, sourceId, edge) }
+        ? {
+            ...group,
+            layout: wholeWindow
+              ? {
+                  type: 'split',
+                  direction: edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical',
+                  first:
+                    edge === 'left' || edge === 'top'
+                      ? { type: 'leaf', workspaceId: sourceId }
+                      : group.layout,
+                  second:
+                    edge === 'left' || edge === 'top'
+                      ? group.layout
+                      : { type: 'leaf', workspaceId: sourceId },
+                  ratio: 0.5
+                }
+              : splitLeaf(group.layout, targetId, sourceId, edge)
+          }
         : group
     )
   }
