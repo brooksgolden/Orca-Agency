@@ -170,7 +170,7 @@ $appBefore = Get-TreeSignature $target
 # Why an exclusive handle on a package-only file: the install fails mid-copy, yet every app file stays writable for the restore.
 $lock = [IO.File]::Open((Join-Path $package 'zzz-unreadable.bin'), 'Open', 'Read', 'None')
 try { $result = Invoke-FixtureInstall $common } finally { $lock.Dispose() }
-Test-Expectation ($result.Error -like '*previous app files were restored*') "failed install reports a completed restore ($($result.Error))"
+Test-Expectation ($result.Error -like '*previous app files remain intact*') "failed staging reports an intact original app ($($result.Error))"
 Test-Expectation ((Get-TreeSignature $target) -eq $appBefore) 'rollback leaves the app exactly as before, with no marker or added files'
 
 # 5. An interrupted delete keeps its marker, so a later install finishes it instead of orphaning it.
@@ -195,6 +195,7 @@ Remove-Item -LiteralPath (Join-Path $package 'conflict') -Recurse -Force
 
 # 7. Encoded terminal-history paths exceed MAX_PATH in real Orca backups.
 . (Join-Path $PSScriptRoot 'install-reviewed-orca-backups.ps1')
+. (Join-Path $PSScriptRoot 'install-reviewed-orca-transaction.ps1')
 $longBackup = Join-Path $programs 'orca-backup-20230101-000000-001'
 New-FixtureBackup $longBackup $target 'app'
 $longDirectory = Join-Path $longBackup ('terminal-history\' + ('encoded-workspace-' * 9))
@@ -205,6 +206,61 @@ Test-Expectation ((Join-Path $longDirectory 'screen.bin').Length -gt 260) 'long-
 Remove-ExpiredReviewedBackups $target 'app'
 Test-Expectation (-not (Test-Path -LiteralPath $longBackup)) 'retention deletes obsolete backups containing long encoded workspace paths'
 Test-Expectation (Test-Path -LiteralPath (Join-Path $root 'link-target\sentinel.txt')) 'long-path cleanup still preserves linked targets'
+
+# 8. A late app/file lock cannot leave a partially overwritten installation.
+$appBefore = Get-TreeSignature $target
+$lockHolder = @{ Handle = $null }
+try {
+  $result = Invoke-FixtureInstall ($common + @{ BeforeReplace = {
+    $lockHolder.Handle = [IO.File]::Open((Join-Path $target 'resources\app.asar'), 'Open', 'Read', 'None')
+  } })
+} finally { if ($lockHolder.Handle) { $lockHolder.Handle.Dispose() } }
+Test-Expectation ($result.Error -like '*previous app files remain intact*' -and
+  (Get-TreeSignature $target) -eq $appBefore -and
+  -not (Get-ChildItem -LiteralPath $programs -Directory | Where-Object Name -like 'orca-stage-*')) 'a late lock leaves a complete app and no staging copy'
+
+# 9. Failed directory promotion restores the old tree by rename.
+$missingStage = "$target-stage-20260101-000000-001"
+$promotionBackup = "$target-backup-20260101-000000-002"
+$originalMoved = $false
+try { Switch-ReviewedAppStage $missingStage $target $promotionBackup ([ref]$originalMoved) } catch { $promotionError = $_ }
+Test-Expectation ($originalMoved -and $promotionError.Exception.InnerException -is [IO.DirectoryNotFoundException] -and
+  (Get-TreeSignature $target) -eq $appBefore -and -not (Test-Path -LiteralPath $promotionBackup)) 'failed promotion really moves and restores the complete previous app'
+
+# 10. A shutdown timeout aborts after staging, before any installed file changes.
+$callbackState = @{ Invoked = $false; OriginalIntact = $false }
+$result = Invoke-FixtureInstall ($common + @{ BeforeReplace = {
+  $callbackState.Invoked = $true
+  $callbackState.OriginalIntact = (Get-TreeSignature $target) -eq $appBefore
+  throw 'Fixture desktop did not close'
+} })
+Test-Expectation ($callbackState.Invoked -and $callbackState.OriginalIntact -and $result.Error -like '*Fixture desktop did not close*') 'shutdown runs only after preparation, with the original app intact'
+Test-Expectation ((Get-TreeSignature $target) -eq $appBefore -and -not (Get-ChildItem -LiteralPath $programs -Directory | Where-Object Name -like 'orca-stage-*')) 'shutdown failure leaves the installed app unchanged and removes its staging copy'
+
+# 11. Another directory appearing at the chosen backup path does not become ours to restore.
+$collision = @{ Path = '' }
+$result = Invoke-FixtureInstall ($common + @{ BeforeReplace = {
+  $collision.Path = $backup
+  New-FixtureFile (Join-Path $collision.Path 'foreign.txt') 'preserve this directory'
+} })
+Test-Expectation ($result.Error -like '*backup must be a new sibling*' -and
+  (Get-TreeSignature $target) -eq $appBefore -and
+  (Test-Path -LiteralPath (Join-Path $collision.Path 'foreign.txt'))) 'a backup-name collision preserves both the installed app and the unrelated directory'
+
+# 12. A locked staged file permits the first rename but blocks promotion and cleanup.
+$stageLock = @{ Handle = $null; Path = ''; Backup = '' }
+try {
+  $result = Invoke-FixtureInstall ($common + @{ BeforeReplace = {
+    $stageLock.Path = $stage
+    $stageLock.Backup = $backup
+    $stageLock.Handle = [IO.File]::Open((Join-Path $stage 'resources\app.asar'), 'Open', 'Read', 'None')
+  } })
+} finally { if ($stageLock.Handle) { $stageLock.Handle.Dispose() } }
+Test-Expectation ($result.Error -like '*previous app files remain intact*' -and
+  (Get-TreeSignature $target) -eq $appBefore -and -not (Test-Path -LiteralPath $stageLock.Backup)) 'a locked stage restores the moved original app'
+Test-Expectation (@($result.Warnings | Where-Object { "$_" -like '*Stage cleanup was deferred*' }).Count -eq 1) 'locked-stage cleanup preserves the original failure message and reports its path'
+Remove-ReviewedAppStage $stageLock.Path $target
+Test-Expectation (-not (Test-Path -LiteralPath $stageLock.Path)) 'the retained stage can be cleaned after its file lock is released'
 
 Write-Host ''
 if ($failures) { throw "$failures installer expectation(s) failed." }

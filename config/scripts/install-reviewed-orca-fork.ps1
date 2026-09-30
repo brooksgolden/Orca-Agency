@@ -3,15 +3,20 @@ param(
   [Parameter(Mandatory)][string] $Source,
   [string] $Target = "$env:LOCALAPPDATA\Programs\orca",
   [string] $UserData = "$env:APPDATA\orca",
-  [string] $ExistingUserDataBackup = ''
+  [string] $ExistingUserDataBackup = '',
+  [scriptblock] $BeforeReplace
 )
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'install-reviewed-orca-backups.ps1')
+. (Join-Path $PSScriptRoot 'install-reviewed-orca-transaction.ps1')
 $sourcePath = (Resolve-Path -LiteralPath $Source).Path
 $targetPath = (Resolve-Path -LiteralPath $Target).Path
 $userDataPath = Get-ReviewedFullPath $UserData
-if ($sourcePath -eq $targetPath) { throw 'Source and installed app must be different directories.' }
+if ($sourcePath -eq $targetPath -or $sourcePath.StartsWith("$targetPath\", [StringComparison]::OrdinalIgnoreCase) -or
+  $targetPath.StartsWith("$sourcePath\", [StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Source and installed app must be separate, non-nested directories.'
+}
 $manifest = Get-Content -LiteralPath (Join-Path $sourcePath 'reviewed-build.json') -Raw | ConvertFrom-Json
 if ($manifest.smokeTest -ne 'passed') { throw 'The source package has no passing smoke-test record.' }
 
@@ -46,7 +51,7 @@ $desktopAppRunning = Get-Process -Name 'Orca' -ErrorAction SilentlyContinue | Wh
     $false
   }
 }
-if (-not $WhatIfPreference -and $desktopAppRunning) {
+if (-not $WhatIfPreference -and $desktopAppRunning -and -not $BeforeReplace) {
   throw 'Close Orca completely before installing. No files were changed.'
 }
 if (-not $PSCmdlet.ShouldProcess($targetPath, 'Back up Orca and its user data, then install the smoke-tested build')) {
@@ -55,38 +60,56 @@ if (-not $PSCmdlet.ShouldProcess($targetPath, 'Back up Orca and its user data, t
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $backup = "$targetPath-backup-$stamp"
-Copy-Item -LiteralPath $targetPath -Destination $backup -Recurse
-Write-ReviewedBackupMarker $backup $targetPath 'app'
+$stage = "$targetPath-stage-$stamp"
+$stageCreated = $false
+$backupCreated = $false
+$recoveryFailed = $false
 $userDataBackup = $null
-if ($ExistingUserDataBackup) {
-  $userDataBackup = (Resolve-Path -LiteralPath $ExistingUserDataBackup).Path
-  if (-not [string]::Equals(
-    (Split-Path -Parent $userDataBackup),
-    (Split-Path -Parent $userDataPath),
-    [System.StringComparison]::OrdinalIgnoreCase
-  ) -or -not (Split-Path -Leaf $userDataBackup).StartsWith(
-    "$(Split-Path -Leaf $userDataPath)-backup-",
-    [System.StringComparison]::OrdinalIgnoreCase
-  )) {
-    throw 'Existing user data backup must be a sibling Orca backup directory.'
-  }
-} elseif (Test-Path -LiteralPath $userDataPath) {
-  $userDataBackup = "$userDataPath-backup-$stamp"
-  New-ReviewedDataBackup $userDataPath $userDataBackup
-}
 try {
-  foreach ($entry in Get-ChildItem -LiteralPath $sourcePath -Force) {
-    Copy-Item -LiteralPath $entry.FullName -Destination $targetPath -Recurse -Force
+  Write-Host 'Preparing and verifying the complete update while the installed app remains untouched.'
+  New-ReviewedAppStage $sourcePath $targetPath $stage ([ref]$stageCreated)
+  Assert-ReviewedFiles $stage
+  if ($BeforeReplace) { & $BeforeReplace }
+  Assert-ReviewedDesktopClosed $targetExecutable
+  if ($ExistingUserDataBackup) {
+    $userDataBackup = (Resolve-Path -LiteralPath $ExistingUserDataBackup).Path
+    if (-not [string]::Equals(
+      (Split-Path -Parent $userDataBackup),
+      (Split-Path -Parent $userDataPath),
+      [System.StringComparison]::OrdinalIgnoreCase
+    ) -or -not (Split-Path -Leaf $userDataBackup).StartsWith(
+      "$(Split-Path -Leaf $userDataPath)-backup-",
+      [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+      throw 'Existing user data backup must be a sibling Orca backup directory.'
+    }
+  } elseif (Test-Path -LiteralPath $userDataPath) {
+    $userDataBackup = "$userDataPath-backup-$stamp"
+    New-ReviewedDataBackup $userDataPath $userDataBackup
   }
+  # Why: the app may have reopened while the settings backup was being copied.
+  Assert-ReviewedDesktopClosed $targetExecutable
+  Switch-ReviewedAppStage $stage $targetPath $backup ([ref]$backupCreated)
   Assert-ReviewedFiles $targetPath
+  Write-ReviewedBackupMarker $backup $targetPath 'app'
 } catch {
   $installError = $_
-  try {
-    Restore-ReviewedAppBackup $backup $targetPath $sourcePath
-  } catch {
-    throw "Installation failed and the automatic restore also failed. Restore the app manually from $backup. Install error: $installError Restore error: $_"
+  if ($backupCreated -and (Test-Path -LiteralPath $backup -PathType Container)) {
+    try {
+      if (Test-Path -LiteralPath $targetPath) { Move-ReviewedAppDirectory $targetPath $stage }
+      Move-ReviewedAppDirectory $backup $targetPath
+    } catch {
+      $recoveryFailed = $true
+      throw "Installation stopped. Complete app trees remain at $targetPath, $backup or $stage; do not launch until restored. Install error: $installError Restore error: $_"
+    }
   }
-  throw "Installation failed; the previous app files were restored. Backup: $backup. Error: $installError"
+  throw "Installation failed; the previous app files remain intact. Error: $installError"
+} finally {
+  if (-not $recoveryFailed -and $stageCreated -and (Test-Path -LiteralPath $stage) -and (Test-Path -LiteralPath $targetPath)) {
+    try { Remove-ReviewedAppStage $stage $targetPath } catch {
+      Write-Warning "Stage cleanup was deferred; the install outcome is unchanged. Preserved: $stage. Error: $_"
+    }
+  }
 }
 try {
   Remove-ExpiredReviewedBackups $targetPath 'app' @($backup)
