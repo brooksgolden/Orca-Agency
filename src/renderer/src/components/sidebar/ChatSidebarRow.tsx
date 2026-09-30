@@ -100,7 +100,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
               aria-hidden="true"
               data-chat-split-bracket=""
               className={cn(
-                'pointer-events-none absolute bottom-0 left-0 top-0 w-1 border-l border-sidebar-border',
+                'pointer-events-none absolute bottom-0 left-0 top-0 w-1 border-l border-muted-foreground/40',
                 splitStart && 'top-3 border-t',
                 splitEnd && 'bottom-auto h-3 border-b'
               )}
@@ -110,7 +110,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
             <span
               aria-hidden="true"
               data-chat-sub-tab-elbow=""
-              className="pointer-events-none absolute left-5 top-1 size-2 border-b border-l border-sidebar-border"
+              className="pointer-events-none absolute left-5 top-1 size-2 border-b border-l border-muted-foreground/40"
             />
           ) : null}
           <Button

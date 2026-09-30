@@ -35,6 +35,14 @@ test('split windows stay bracketed and adjacent until unsplit', async ({
       ids.push(id)
       const tab = s.createTab(id)
       s.setAiVaultTabTitle(tab.id, { agent: 'codex', sessionId: tab.id, title: names[index] })
+      if (index === 0) {
+        const review = s.createTab(id)
+        s.setAiVaultTabTitle(review.id, {
+          agent: 'claude',
+          sessionId: review.id,
+          title: 'Review of working chat'
+        })
+      }
       window.__store!.setState((current) => ({
         agentStatusByPaneKey: {
           ...current.agentStatusByPaneKey,
@@ -51,35 +59,60 @@ test('split windows stay bracketed and adjacent until unsplit', async ({
         }
       }))
     }
-    await s.updateSettings({ chatSidebar: { view: 'chats', groupBy: 'recent' } })
+    await s.updateSettings({ theme: 'dark', chatSidebar: { view: 'chats', groupBy: 'status' } })
     return ids
   })
   const rows = orcaPage.locator('[data-chat-sidebar-id]')
-  await expect(rows).toHaveCount(3)
+  const working = rows.filter({ hasText: 'Working split chat' })
+  const review = rows.filter({ hasText: 'Review of working chat' })
+  const partner = rows.filter({ hasText: 'Old split partner' })
+  const independent = rows.filter({ hasText: 'Recent independent chat' })
+  await expect(orcaPage.getByText('In progress (4)', { exact: true })).toBeVisible()
+  await expect(rows).toHaveCount(4)
   await expect(rows.nth(0)).toContainText('Working split chat')
-  await expect(rows.nth(1)).toContainText('Recent independent chat')
+  await expect(rows.nth(1)).toContainText('Review of working chat')
+  await expect(rows.nth(2)).toContainText('Recent independent chat')
   await orcaPage.evaluate(
     ([first, second]) => window.__store!.getState().placeWorkspaceAtEdge(second, first, 'right'),
     ids
   )
-  await expect(rows.nth(1)).toContainText('Old split partner')
-  await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(2)
-  expect(await rows.nth(0).getAttribute('data-chat-split-group')).toBe(
-    await rows.nth(1).getAttribute('data-chat-split-group')
+  await expect(rows.nth(2)).toContainText('Old split partner')
+  await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(3)
+  expect(await working.getAttribute('data-chat-split-group')).toBe(
+    await partner.getAttribute('data-chat-split-group')
   )
-  const first = await rows.nth(0).boundingBox()
-  const second = await rows.nth(1).boundingBox()
-  expect(Math.abs(second!.y - first!.y - first!.height)).toBeLessThan(1)
-  const joinedTitle = await rows.nth(0).locator('[data-chat-title]').boundingBox()
-  const independentTitle = await rows.nth(2).locator('[data-chat-title]').boundingBox()
+  await expect(review).toHaveAttribute('data-chat-sub-tab', 'true')
+  const first = await working.boundingBox()
+  const child = await review.boundingBox()
+  const second = await partner.boundingBox()
+  expect(first!.height).toBe(24)
+  expect(child!.height).toBe(36)
+  expect(child!.y).toBe(first!.y + first!.height)
+  expect(second!.y).toBe(child!.y + child!.height)
+  await expect(working.locator('[data-chat-folder]')).toHaveCount(0)
+  const joinedTitle = await working.locator('[data-chat-title]').boundingBox()
+  const independentTitle = await independent.locator('[data-chat-title]').boundingBox()
+  const folder = await review.locator('[data-chat-folder]').boundingBox()
   expect(joinedTitle!.x).toBe(independentTitle!.x)
-  const bracket = rows.nth(0).locator('[data-chat-split-bracket]')
+  expect(folder!.x).toBe(joinedTitle!.x)
+  const bracket = working.locator('[data-chat-split-bracket]')
+  const elbow = review.locator('[data-chat-sub-tab-elbow]')
   expect((await bracket.boundingBox())!.width).toBe(4)
+  expect((await elbow.boundingBox())!.width).toBe(8)
+  expect((await elbow.boundingBox())!.height).toBe(8)
+  const elbowColor = await elbow.evaluate((node) => getComputedStyle(node).borderLeftColor)
+  await expect(bracket).toHaveCSS('border-left-color', elbowColor)
   await orcaPage.screenshot({ path: testInfo.outputPath('split-chat-bracket.png') })
+  await orcaPage.evaluate(() => window.__store!.getState().updateSettings({ theme: 'light' }))
+  await expect(orcaPage.locator('html')).not.toHaveClass(/dark/)
+  await orcaPage.screenshot({ path: testInfo.outputPath('split-chat-bracket-light.png') })
+  await orcaPage.evaluate(() => window.__store!.getState().updateSettings({ theme: 'dark' }))
+  await expect(orcaPage.locator('html')).toHaveClass(/dark/)
   await orcaPage.evaluate((id) => window.__store!.getState().unsplitWorkspace(id), ids[1])
   await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(0)
-  await expect(rows.nth(1)).toContainText('Recent independent chat')
-  await expect(rows.nth(2)).toContainText('Old split partner')
+  await expect(rows.nth(1)).toContainText('Review of working chat')
+  await expect(rows.nth(2)).toContainText('Recent independent chat')
+  await expect(rows.nth(3)).toContainText('Old split partner')
   await orcaPage.evaluate(([first, second]) => {
     const s = window.__store!.getState()
     s.placeWorkspaceAtEdge(second, first, 'right')
@@ -89,50 +122,62 @@ test('split windows stay bracketed and adjacent until unsplit', async ({
   const pane = (id: string) => orcaPage.locator(`[data-workspace-surface-id="${id}"]`)
   await expect(pane(ids[0])).toBeVisible()
   await expect(pane(ids[1])).toBeVisible()
-  await pane(ids[0]).evaluate((surface, sourceId) => {
-    const rect = surface.getBoundingClientRect()
-    const dataTransfer = new DataTransfer()
-    dataTransfer.setData('application/x-orca-worktree-id', sourceId)
-    surface.dispatchEvent(
-      new DragEvent('dragover', {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.bottom - 5
-      })
-    )
-  }, ids[2])
-  await expect(orcaPage.locator('[data-workspace-window-drop="bottom"]')).toBeVisible()
-  await pane(ids[0]).evaluate((surface, sourceId) => {
-    const rect = surface.getBoundingClientRect()
-    const dataTransfer = new DataTransfer()
-    dataTransfer.setData('application/x-orca-worktree-id', sourceId)
-    surface.dispatchEvent(
-      new DragEvent('drop', {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.bottom - 5
-      })
-    )
-  }, ids[2])
-  await expect(pane(ids[2])).toBeVisible()
-  await expect
-    .poll(async () => {
-      const a = await pane(ids[0]).boundingBox(),
-        b = await pane(ids[1]).boundingBox(),
-        c = await pane(ids[2]).boundingBox()
-      return !!(
-        a &&
-        b &&
-        c &&
-        Math.abs(a.y - b.y) < 1 &&
-        c.y >= a.y + a.height &&
-        Math.abs(c.width - a.width - b.width - 4) < 2
+  for (const edge of ['bottom', 'top'] as const) {
+    await expect(pane(ids[0])).toBeVisible()
+    await expect(pane(ids[1])).toBeVisible()
+    for (const event of ['dragover', 'drop']) {
+      await pane(ids[0]).evaluate(
+        (surface, { sourceId, edge, event }) => {
+          const rect = surface.getBoundingClientRect()
+          const dataTransfer = new DataTransfer()
+          dataTransfer.setData('application/x-orca-worktree-id', sourceId)
+          surface.dispatchEvent(
+            new DragEvent(event, {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer,
+              clientX: rect.left + rect.width / 2,
+              clientY: edge === 'bottom' ? rect.bottom - 5 : rect.top + 5
+            })
+          )
+        },
+        { sourceId: ids[2], edge, event }
       )
-    })
-    .toBe(true)
-  await orcaPage.screenshot({ path: testInfo.outputPath('workspace-full-width-bottom.png') })
+      if (event === 'dragover') {
+        await expect(orcaPage.locator(`[data-workspace-window-drop="${edge}"]`)).toBeVisible()
+      }
+    }
+    await expect(pane(ids[2])).toBeVisible()
+    await expect
+      .poll(async () => {
+        const a = await pane(ids[0]).boundingBox(),
+          b = await pane(ids[1]).boundingBox(),
+          c = await pane(ids[2]).boundingBox()
+        return !!(
+          a &&
+          b &&
+          c &&
+          Math.abs(a.y - b.y) < 1 &&
+          (edge === 'bottom' ? c.y >= a.y + a.height : a.y >= c.y + c.height) &&
+          Math.abs(c.width - a.width - b.width - 4) < 2
+        )
+      })
+      .toBe(true)
+    await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(4)
+    await expect(orcaPage.locator('[data-chat-sub-tab-elbow]')).toHaveCount(1)
+    const pairTitles = ['Working split chat', 'Review of working chat', 'Old split partner']
+    await expect(rows.locator('[data-chat-title]')).toHaveText(
+      edge === 'bottom'
+        ? [...pairTitles, 'Recent independent chat']
+        : ['Recent independent chat', ...pairTitles]
+    )
+    await orcaPage.screenshot({ path: testInfo.outputPath(`workspace-full-width-${edge}.png`) })
+    if (edge === 'bottom') {
+      await orcaPage.evaluate(([first, , third]) => {
+        const s = window.__store!.getState()
+        s.unsplitWorkspace(third)
+        s.setActiveWorktree(first)
+      }, ids)
+    }
+  }
 })
