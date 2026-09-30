@@ -129,22 +129,24 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await expect(rows).toHaveCount(2)
     await expect(rows.first()).toContainText('Latest client research')
     await expect(rows.filter({ hasText: 'Earlier client draft' })).toContainText('agency-project')
-    expect((await latest.boundingBox())?.height).toBe(28)
-    await expect(rows.filter({ hasText: 'Earlier client draft' })).toHaveAttribute(
+    expect((await latest.boundingBox())?.height).toBe(36)
+    await expect(rows.filter({ hasText: 'Earlier client draft' })).not.toHaveAttribute(
       'data-chat-sub-tab',
       'true'
     )
+    await expect(latest).toHaveAttribute('data-chat-completed', 'true')
     await latest.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Rename chat', exact: true }).click()
     await page.getByRole('textbox', { name: 'Chat name', exact: true }).fill('Saved client name')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     const renamed = rows.filter({ hasText: 'Saved client name' })
+    await renamed.getByRole('button', { name: 'Reopen Saved client name' }).click()
+    await expect(renamed).toHaveAttribute('data-chat-completed', 'false')
     await renamed.getByRole('button', { name: 'Mark Saved client name done' }).click()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
     await page.reload()
     await expect(renamed).toBeVisible()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
-    await renamed.getByRole('button', { name: 'Reopen Saved client name' }).click()
     await renamed.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Change folder', exact: true }).hover()
     await page.getByRole('menuitem', { name: 'local-tools', exact: true }).click()
@@ -160,6 +162,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     expect(existsSync(transcripts[0])).toBe(true)
     await expect(rows).toHaveCount(2)
     await expect(renamed).toHaveAttribute('aria-selected', 'true')
+    await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
     const generatedWorkspace = await page.evaluate(async (folder) => {
       const added = await window.api.repos.add({ path: folder, kind: 'folder' })
       if ('error' in added) {
