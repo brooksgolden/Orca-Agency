@@ -94,6 +94,9 @@ export function placeWorkspaceAtEdge(
   newGroupId: string,
   wholeWindow = false
 ): WorkspaceSplitGroup[] {
+  if (sourceId === targetId && wholeWindow) {
+    targetId = findWorkspaceSplitPartner(groups, sourceId) ?? targetId
+  }
   if (!sourceId || !targetId || sourceId === targetId) {
     return [...groups]
   }

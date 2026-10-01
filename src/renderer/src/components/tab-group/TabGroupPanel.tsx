@@ -2,6 +2,7 @@ import { Suspense, useMemo } from 'react'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { useDroppable } from '@dnd-kit/core'
 import { Ellipsis, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useAppStore } from '../../store'
 import {
   DropdownMenu,
@@ -14,6 +15,7 @@ import TabBar from '../tab-bar/TabBar'
 
 import { TabBarQuickCommandsButton } from '../tab-bar/TabBarQuickCommandsButton'
 import { WorkspacePaneCloseButton } from '../workspace-split/WorkspacePaneCloseButton'
+import { useWorkspaceHeaderDrag } from '../workspace-split/use-workspace-header-drag'
 import { useTabGroupWorkspaceModel } from './useTabGroupWorkspaceModel'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { resolveGroupTabFromVisibleId } from './tab-group-visible-id'
@@ -64,6 +66,8 @@ export default function TabGroupPanel({
 }): React.JSX.Element {
   const rightSidebarOpen = useAppStore((state) => state.rightSidebarOpen)
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
+  const showCommandButton = useAppStore((state) => state.settings?.showPaneCommandButton === true)
+  const dragWorkspace = useWorkspaceHeaderDrag(worktreeId)
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
   const {
     activeTab,
@@ -245,12 +249,14 @@ export default function TabGroupPanel({
       onFocusCapture={commands.focusGroup}
     >
       {/* Why: each split group needs its own tab row because multiple groups can show at once but the titlebar has only one shared center slot. */}
-      {/* Why: macOS hiddenInset titleBarStyle makes -webkit-app-region: drag the only way to move the window from this tab row. */}
+      {/* The band above moves the native window; unused header space moves the workspace. */}
       <div
         className="h-[32px] shrink-0 border-b border-border bg-card"
         data-tab-group-strip-id={groupId}
         data-terminal-focus-release-surface="true"
         data-worktree-id={worktreeId}
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        onPointerDownCapture={dragWorkspace}
       >
         <div className="flex h-full items-stretch pr-1.5">
           {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the collapsed left-sidebar's floating toggle clickable. */}
@@ -271,7 +277,7 @@ export default function TabGroupPanel({
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             <div className={focusedActionChromeClassName}>
-              {isFocused ? (
+              {isFocused && showCommandButton ? (
                 <TabBarQuickCommandsButton worktreeId={worktreeId} groupId={groupId} />
               ) : null}
               {isFocused && hasSplitGroups ? (
@@ -295,6 +301,7 @@ export default function TabGroupPanel({
                       </DropdownMenuTrigger>
                     </TooltipTrigger>
                     <DropdownMenuContent align="end" side="bottom" sideOffset={4}>
+                      <WorkspacePaneCloseButton worktreeId={worktreeId} menuItem />
                       <DropdownMenuItem
                         variant="destructive"
                         onSelect={() => {
@@ -318,9 +325,27 @@ export default function TabGroupPanel({
                 </Tooltip>
               ) : null}
             </div>
-            {reserveClosedExplorerToggleSpace ? (
+            {hasSplitGroups ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Close split pane"
+                    data-tab-group-close-button={groupId}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      commands.closeGroup()
+                    }}
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Close split pane</TooltipContent>
+              </Tooltip>
+            ) : (
               <WorkspacePaneCloseButton worktreeId={worktreeId} />
-            ) : null}
+            )}
           </div>
           {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the floating right-sidebar toggle + window controls clickable. */}
           {reserveClosedExplorerToggleSpace && !rightSidebarOpen ? (

@@ -7,6 +7,8 @@ import TabDragPreview from '../tab-bar/TabDragPreview'
 import { TabDragProvider } from './tab-drag-context'
 import TabPaneColumnSplitDragOverlay from './TabPaneColumnSplitDragOverlay'
 import { type HoveredTabInsertion, useTabDragSplit } from './useTabDragSplit'
+import { findWorkspaceSplitGroup } from '@/lib/workspace-split-layout'
+import { workspaceTouchesWindowEdge } from '../workspace-split/workspace-window-edges'
 
 const MIN_RATIO = 0.15
 const MAX_RATIO = 0.85
@@ -153,6 +155,7 @@ function SplitNode({
   touchesRightEdge,
   touchesLeftEdge,
   touchesBottomEdge,
+  windowEdges,
   suppressLeftBorder,
   suppressRightBorder,
   suppressBottomBorder,
@@ -170,6 +173,7 @@ function SplitNode({
   touchesRightEdge: boolean
   touchesLeftEdge: boolean
   touchesBottomEdge: boolean
+  windowEdges: { top: boolean; left: boolean; right: boolean }
   suppressLeftBorder: boolean
   suppressRightBorder: boolean
   suppressBottomBorder: boolean
@@ -197,8 +201,12 @@ function SplitNode({
         suppressLeftBorder={suppressLeftBorder}
         suppressRightBorder={suppressRightBorder}
         suppressBottomBorder={suppressBottomBorder}
-        reserveClosedExplorerToggleSpace={touchesTopEdge && touchesRightEdge}
-        reserveCollapsedSidebarHeaderSpace={touchesTopEdge && touchesLeftEdge}
+        reserveClosedExplorerToggleSpace={
+          touchesTopEdge && touchesRightEdge && windowEdges.top && windowEdges.right
+        }
+        reserveCollapsedSidebarHeaderSpace={
+          touchesTopEdge && touchesLeftEdge && windowEdges.top && windowEdges.left
+        }
         isTabDragActive={isTabDragActive}
         hoveredTabInsertion={
           hoveredTabInsertion?.groupId === node.groupId ? hoveredTabInsertion : null
@@ -225,6 +233,7 @@ function SplitNode({
           isWorktreeFocused={isWorktreeFocused}
           hasSplitGroups={hasSplitGroups}
           touchesTopEdge={touchesTopEdge}
+          windowEdges={windowEdges}
           touchesRightEdge={isHorizontal ? false : touchesRightEdge}
           touchesLeftEdge={touchesLeftEdge}
           touchesBottomEdge={isHorizontal ? touchesBottomEdge : false}
@@ -252,6 +261,7 @@ function SplitNode({
           isWorktreeFocused={isWorktreeFocused}
           hasSplitGroups={hasSplitGroups}
           touchesTopEdge={isHorizontal ? touchesTopEdge : false}
+          windowEdges={windowEdges}
           touchesRightEdge={touchesRightEdge}
           touchesLeftEdge={isHorizontal ? false : touchesLeftEdge}
           touchesBottomEdge={touchesBottomEdge}
@@ -281,6 +291,10 @@ export default function TabGroupSplitLayout({
 }): React.JSX.Element {
   const dragSplit = useTabDragSplit({ worktreeId, enabled: isWorktreeFocused })
   const hasSplits = layout.type === 'split'
+  const workspaceSplits = useAppStore((state) => state.workspaceSplitGroups)
+  const workspaceSplit = findWorkspaceSplitGroup(workspaceSplits, worktreeId)
+  const windowEdge = (edge: 'left' | 'right' | 'top') =>
+    !workspaceSplit || workspaceTouchesWindowEdge(workspaceSplit.layout, worktreeId, edge)
 
   return (
     <TabDragProvider
@@ -322,7 +336,14 @@ export default function TabGroupSplitLayout({
           ref={dragSplit.setDragRootNode}
           className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden border-l border-border"
         >
-          <div className="h-[4px] shrink-0 bg-card" data-terminal-focus-release-surface="true" />
+          <div
+            className="h-[4px] shrink-0 bg-card"
+            data-terminal-focus-release-surface="true"
+            style={
+              // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Electron extends CSS with the native window drag-region property.
+              { WebkitAppRegion: windowEdge('top') ? 'drag' : 'no-drag' } as React.CSSProperties
+            }
+          />
           <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
             <SplitNode
               node={layout}
@@ -335,6 +356,11 @@ export default function TabGroupSplitLayout({
               touchesTopEdge={true}
               touchesRightEdge={true}
               touchesLeftEdge={true}
+              windowEdges={{
+                top: windowEdge('top'),
+                left: windowEdge('left'),
+                right: windowEdge('right')
+              }}
               touchesBottomEdge={false}
               suppressLeftBorder={false}
               suppressRightBorder={false}

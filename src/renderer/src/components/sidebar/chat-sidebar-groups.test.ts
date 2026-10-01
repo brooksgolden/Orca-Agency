@@ -5,6 +5,24 @@ import { chatRow, chatState, chatTab, chatWorktree } from './chat-sidebar-test-f
 import { placeWorkspaceAtEdge, removeWorkspaceFromSplit } from '@/lib/workspace-split-layout'
 
 describe('workspace chat groups', () => {
+  it('keeps restored idle tabs nested before any provider status or history scan arrives', () => {
+    const source = chatState({
+      tabsByWorktree: { [chatWorktree.id]: [chatTab('a'), chatTab('b'), chatTab('c')] }
+    })
+    const persisted = JSON.parse(JSON.stringify(source.tabsByWorktree))
+    const restored = chatState({ tabsByWorktree: persisted })
+    const items = chatSidebarListItems(
+      buildChatSidebarRows(restored, [], 10_000),
+      restored,
+      ''
+    ).filter((item) => item.kind === 'chat')
+    expect(items.map((item) => [item.row.tabId, item.subTab, item.row.state])).toEqual([
+      ['a', false, 'idle'],
+      ['b', true, 'idle'],
+      ['c', true, 'idle']
+    ])
+    expect(items.filter((item) => item.showFolder)).toHaveLength(1)
+  })
   const state = chatState({ tabsByWorktree: { [chatWorktree.id]: [chatTab('a'), chatTab('b')] } })
   const main = chatRow({ id: 'main', tabId: 'a', completed: true, timestamp: 10 })
   const child = chatRow({

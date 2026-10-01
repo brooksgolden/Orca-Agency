@@ -124,7 +124,8 @@ export function TerminalSplitWorkspaceSurfaces({
     }
     const placeWorkspace = (sourceId: string, surface: HTMLElement, x: number, y: number) => {
       const targetId = surface.dataset.workspaceSurfaceId!
-      if (sourceId === targetId) {
+      const target = dropTarget(surface, x, y)
+      if (sourceId === targetId && !target.wholeWindow) {
         return
       }
       const state = useAppStore.getState()
@@ -138,7 +139,6 @@ export function TerminalSplitWorkspaceSurfaces({
         return
       }
       if (activateAndRevealWorkspace(sourceId, { revealInSidebar: false }) !== false) {
-        const target = dropTarget(surface, x, y)
         useAppStore
           .getState()
           .placeWorkspaceAtEdge(sourceId, targetId, target.edge, target.wholeWindow)
@@ -169,9 +169,8 @@ export function TerminalSplitWorkspaceSurfaces({
       }
       event.preventDefault()
       event.stopPropagation()
-      const targetId = surface.dataset.workspaceSurfaceId!
       const sourceId = readWorkspaceDragData(event.dataTransfer)
-      if (!sourceId || sourceId === targetId) {
+      if (!sourceId) {
         return
       }
       placeWorkspace(sourceId, surface, event.clientX, event.clientY)
@@ -184,11 +183,15 @@ export function TerminalSplitWorkspaceSurfaces({
       }
       const { sourceId, x, y } = detail
       const surface = pointerSurface(x, y)
-      if (!surface || surface.dataset.workspaceSurfaceId === sourceId) {
+      if (!surface) {
         setHover(null)
         return
       }
       const next = dropTarget(surface, x, y)
+      if (next.id === sourceId && !next.wholeWindow) {
+        setHover(null)
+        return
+      }
       setHover((previous) =>
         previous?.id === next.id &&
         previous.edge === next.edge &&
@@ -205,7 +208,7 @@ export function TerminalSplitWorkspaceSurfaces({
       const { sourceId, x, y } = detail
       const surface = pointerSurface(x, y)
       setHover(null)
-      if (!surface || surface.dataset.workspaceSurfaceId === sourceId) {
+      if (!surface) {
         return
       }
       event.preventDefault()

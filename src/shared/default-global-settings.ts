@@ -102,6 +102,7 @@ export function buildDefaultSettings(args: {
     terminalWindowsPowerShellImplementation: 'auto',
     terminalMouseHideWhileTyping: false,
     terminalQuickCommands: getDefaultTerminalQuickCommands(),
+    showPaneCommandButton: false,
     // Why: opt-in only, matching Ghostty's default (upgrades never enable it unexpectedly).
     terminalFocusFollowsMouse: false,
     windowBackgroundBlur: false,

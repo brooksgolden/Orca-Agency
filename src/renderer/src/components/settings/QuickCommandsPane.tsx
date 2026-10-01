@@ -14,6 +14,7 @@ import { getSettingOwnershipSummary } from './setting-ownership'
 import { translate } from '@/i18n/i18n'
 import { QuickCommandsList } from './QuickCommandsList'
 import { QuickCommandsToolbar } from './QuickCommandsToolbar'
+import { SettingsSwitchRow } from './SettingsFormControls'
 import { GLOBAL_SCOPE_KEY } from './QuickCommandsScopeFilter'
 import {
   getRepoExecutionHostId,
@@ -289,6 +290,22 @@ export function QuickCommandsPane({
         <p className="text-xs text-muted-foreground">{ownership.description}</p>
       ) : null}
 
+      <SettingsSwitchRow
+        label={translate(
+          'settings.quickCommands.showPaneButton',
+          'Show Command button in pane headers'
+        )}
+        description={translate(
+          'settings.quickCommands.showPaneButtonDescription',
+          'Show the saved-command launcher in the focused project pane. Folder-only panes do not use this button.'
+        )}
+        checked={settings.showPaneCommandButton === true}
+        onChange={() =>
+          useAppStore.getState().updateSettings({
+            showPaneCommandButton: settings.showPaneCommandButton !== true
+          })
+        }
+      />
       <QuickCommandsToolbar
         query={query}
         setQuery={setQuery}

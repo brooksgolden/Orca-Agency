@@ -19,6 +19,13 @@ import {
 import type { ColdRestoreAgentResumeStartup } from './fresh-spawn-types'
 
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
+import { savedTabResume } from './saved-tab-resume'
+import { savedResumePaths } from './saved-resume-paths'
+import { parseWslUncPath } from '../../../../../shared/wsl-paths'
+import {
+  buildAiVaultResumeShellCommand,
+  realHomeCodexResumeEnvDeletion
+} from '../../../../../shared/ai-vault-resume-command'
 
 export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySession): void {
   session.buildColdRestoreAgentResumeStartup = (): ColdRestoreAgentResumeStartup | null => {
@@ -31,12 +38,34 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
     const sleepingRecord = sleepingRecordEntry?.record
 
     const useLiveEntry = entry && entry.state !== 'done'
-    const agent = useLiveEntry ? entry.agentType : sleepingRecord?.agent
+    const saved =
+      !useLiveEntry &&
+      !sleepingRecord &&
+      !session.paneStartup?.command &&
+      session.manager.getPanes().length === 1
+        ? savedTabResume(
+            state,
+            session.deps.worktreeId,
+            session.deps.tabId,
+            session.executionHostId
+          )
+        : null
+    if (
+      saved &&
+      entry?.providerSession &&
+      (entry.agentType !== saved.agent || entry.providerSession.id !== saved.sessionId)
+    ) {
+      return null
+    }
+    const agent = useLiveEntry ? entry.agentType : (sleepingRecord?.agent ?? saved?.agent)
     if (!agent || !isResumableTuiAgent(agent)) {
       return null
     }
     const providerSession = normalizeAgentProviderSession(
-      useLiveEntry ? entry.providerSession : sleepingRecord?.providerSession
+      useLiveEntry
+        ? entry.providerSession
+        : (sleepingRecord?.providerSession ??
+            (saved ? { key: 'session_id', id: saved.sessionId } : undefined))
     )
     if (!providerSession) {
       return null
@@ -80,6 +109,20 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
       terminalWindowsShell: state.settings?.terminalWindowsShell,
       tabShellOverride: session.shellOverride
     })
+    const savedPaths = saved
+      ? savedResumePaths(
+          saved,
+          session.worktree?.path,
+          resumeTarget.platform,
+          session.projectRuntime?.status === 'resolved' &&
+            session.projectRuntime.runtime.kind === 'wsl'
+            ? session.projectRuntime.runtime.distro
+            : parseWslUncPath(session.worktree?.path ?? '')?.distro
+        )
+      : null
+    if (saved && !savedPaths) {
+      return null
+    }
     const startupPlan = buildAgentResumeStartupPlan({
       agent,
       providerSession,
@@ -107,7 +150,16 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
     // session is still resumable, so the replacement spawn must launch it.
     return {
       agent,
-      command: startupPlan.launchCommand,
+      command: saved
+        ? buildAiVaultResumeShellCommand({
+            resumeCommand: startupPlan.launchCommand,
+            cwd: savedPaths?.cwd ?? null,
+            platform: resumeTarget.platform,
+            shell: resumeTarget.shell,
+            codexHome: savedPaths?.codexHome ?? null,
+            clearEnvNames: realHomeCodexResumeEnvDeletion(saved).envToDelete
+          })
+        : startupPlan.launchCommand,
       env: {
         ...startupPlan.env,
         ORCA_AGENT_LAUNCH_TOKEN: coldRestoreLaunchToken

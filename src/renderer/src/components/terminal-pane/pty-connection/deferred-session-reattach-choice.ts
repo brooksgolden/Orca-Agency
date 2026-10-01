@@ -17,6 +17,7 @@ import { startDeferredSessionReattach } from './deferred-session-reattach-connec
 import { ptySessionOwnerIds } from '../../../../../shared/pty-session-id-format'
 
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
+import { savedTabResume } from './saved-tab-resume'
 
 export function runDeferredSessionReattachChoice(session: ConnectPanePtySession): void {
   // Why: re-read session IDs here rather than at connect scheduling — cleanup during the caller's one-frame gap could otherwise reattach a dead session.
@@ -29,6 +30,17 @@ export function runDeferredSessionReattachChoice(session: ConnectPanePtySession)
     (t) => t.id === session.deps.tabId
   )?.ptyId
   const hasSleepingAgentSession = Boolean(session.getSleepingRecordForPane(storeSnapshot))
+  const hasSavedConversation =
+    !session.paneStartup?.command &&
+    !session.pendingStartupCommand &&
+    Boolean(
+      savedTabResume(
+        storeSnapshot,
+        session.deps.worktreeId,
+        session.deps.tabId,
+        session.executionHostId
+      )
+    )
 
   // Why: the tab-level fallback must not steal a PTY a setup sibling already published while the main pane waited for split geometry.
   const tabFallbackPtyId =
@@ -175,7 +187,7 @@ export function runDeferredSessionReattachChoice(session: ConnectPanePtySession)
                 `Pending PTY spawn for tab ${session.deps.tabId} resolved without a PTY id, retrying fresh spawn`
               )
             }
-            if (sleptRemoteColdRestoreStartup || hasSleepingAgentSession) {
+            if (sleptRemoteColdRestoreStartup || hasSleepingAgentSession || hasSavedConversation) {
               session.startFreshColdRestoreAgentResume(sleptRemoteColdRestoreStartup ?? undefined)
             } else {
               session.startFreshSpawn()
@@ -206,7 +218,7 @@ export function runDeferredSessionReattachChoice(session: ConnectPanePtySession)
         })
     } else {
       recordPtyConnectDiagnostic(`pane=${session.pane.id} -> FRESH SPAWN`)
-      if (sleptRemoteColdRestoreStartup || hasSleepingAgentSession) {
+      if (sleptRemoteColdRestoreStartup || hasSleepingAgentSession || hasSavedConversation) {
         session.startFreshColdRestoreAgentResume(sleptRemoteColdRestoreStartup ?? undefined)
       } else {
         session.startFreshSpawn()

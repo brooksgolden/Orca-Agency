@@ -1,6 +1,8 @@
 import type { vi } from 'vitest'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
+import type { AiVaultSessionTitle } from '../../../../shared/ai-vault-session-title'
+import type { ChatSidebarSettings } from '../../../../shared/chat-sidebar-settings'
 import { resolveWindowsShiftEnterEncodingForPane } from './terminal-windows-shift-enter'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 
@@ -12,6 +14,7 @@ export type StoreState = {
       id: string
       ptyId: string | null
       title?: string
+      aiVaultTitle?: AiVaultSessionTitle | null
       launchAgent?: string
       shellOverride?: string
       forceHostRuntime?: boolean
@@ -61,6 +64,7 @@ export type StoreState = {
   transientClearedAgentStatusConnectionIds: Record<string, true>
   cacheTimerByKey: Record<string, number | null>
   settings: {
+    chatSidebar?: ChatSidebarSettings
     theme?: 'system' | 'dark' | 'light'
     promptCacheTimerEnabled?: boolean
     activeRuntimeEnvironmentId?: string | null

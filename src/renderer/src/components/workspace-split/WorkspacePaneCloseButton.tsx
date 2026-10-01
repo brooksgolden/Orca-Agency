@@ -4,13 +4,28 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAppStore } from '@/store'
 import { findWorkspaceSplitPartner } from '@/lib/workspace-split-layout'
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 
-export function WorkspacePaneCloseButton({ worktreeId }: { worktreeId: string }) {
+export function WorkspacePaneCloseButton({
+  worktreeId,
+  menuItem = false
+}: {
+  worktreeId: string
+  menuItem?: boolean
+}) {
   const partnerId = useAppStore((state) =>
     findWorkspaceSplitPartner(state.workspaceSplitGroups, worktreeId)
   )
   if (!partnerId) {
     return null
+  }
+  const unsplit = () => {
+    if (activateAndRevealWorkspace(partnerId, { revealInSidebar: false }) !== false) {
+      useAppStore.getState().unsplitWorkspace(worktreeId)
+    }
+  }
+  if (menuItem) {
+    return <DropdownMenuItem onSelect={unsplit}>Remove workspace from split</DropdownMenuItem>
   }
   return (
     <Tooltip>
@@ -22,9 +37,7 @@ export function WorkspacePaneCloseButton({ worktreeId }: { worktreeId: string })
           data-workspace-unsplit-button={worktreeId}
           onClick={(event) => {
             event.stopPropagation()
-            if (activateAndRevealWorkspace(partnerId, { revealInSidebar: false }) !== false) {
-              useAppStore.getState().unsplitWorkspace(worktreeId)
-            }
+            unsplit()
           }}
         >
           <X className="size-3.5" aria-hidden="true" />
