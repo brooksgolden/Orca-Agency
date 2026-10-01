@@ -108,6 +108,8 @@ docs/**
 !docs/audits/plugin-uninstall-log-retirement/**
 !docs/readme/
 !docs/readme/**
+!docs/agency/
+!docs/agency/weekly-updates.md
 !docs/bug-reproductions/
 !docs/bug-reproductions/**
 !docs/STYLEGUIDE.md
