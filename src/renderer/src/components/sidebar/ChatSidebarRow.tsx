@@ -19,6 +19,7 @@ import type { ChatSidebarRow as Row } from './chat-sidebar-types'
 import { setChatCompleted } from './chat-sidebar-preferences'
 import { selectChatTabInWorkspace } from './chat-sidebar-selection'
 import type { ChatFolderDestination } from './chat-folder-destinations'
+import { clearAiVaultSessionDragData } from '@/lib/ai-vault-session-drag'
 
 export const ChatSidebarRow = memo(function ChatSidebarRow({
   row,
@@ -33,6 +34,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
   now,
   onOpen,
   onRename,
+  onSavedDragStart,
   folders,
   onChangeFolder,
   onNewFolder
@@ -49,6 +51,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
   now: number
   onOpen: (row: Row) => void
   onRename: (row: Row) => void
+  onSavedDragStart: (event: React.DragEvent, row: Row) => void
   folders: ChatFolderDestination[]
   onChangeFolder: (row: Row, folder: ChatFolderDestination) => void
   onNewFolder: (row: Row) => void
@@ -89,11 +92,16 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
               void setChatCompleted(row, true)
             }
           }}
-          draggable={Boolean(row.tabId)}
+          draggable={Boolean(row.tabId || row.session)}
           onDragStart={(event) => {
+            if (!row.tabId) {
+              onSavedDragStart(event, row)
+              return
+            }
             selectChatTabInWorkspace(row)
             writeWorkspaceDragData(event.dataTransfer, row.worktree.id)
           }}
+          onDragEnd={clearAiVaultSessionDragData}
         >
           {splitId ? (
             <span

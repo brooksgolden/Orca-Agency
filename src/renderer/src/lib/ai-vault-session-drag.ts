@@ -2,6 +2,7 @@ import { AI_VAULT_AGENTS, type AiVaultAgent } from '../../../shared/ai-vault-typ
 import type { SleepingAgentLaunchConfig } from '../../../shared/agent-session-resume'
 import { measureClipboardTextByteLength } from '../../../shared/clipboard-text'
 import { normalizeExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import type { TabSplitDirection } from '@/store/slices/tabs'
 
 export const AI_VAULT_SESSION_DRAG_TYPE = 'application/x-orca-ai-vault-session'
 export const AI_VAULT_SESSION_DRAG_START_EVENT = 'orca-ai-vault-session-drag-start'
@@ -14,6 +15,7 @@ export type AiVaultSessionDragPayload = {
   structuredSession?: { sessionId: string; workspaceId: string }
   title: string
   command: string
+  sidebarChat?: boolean
   // Why: drop targets must know where the session file lives (host vs local
   // WSL) to reject SSH panes that cannot reach it.
   sessionFilePath?: string
@@ -36,6 +38,12 @@ export type AiVaultSessionDragPayload = {
 }
 
 let activeAiVaultSessionDragPayload: AiVaultSessionDragPayload | null = null
+export type AiVaultSessionDropPlacement = {
+  worktreeId: string
+  groupId: string
+  splitDirection?: TabSplitDirection
+}
+let activeDropHandler: ((target: AiVaultSessionDropPlacement) => void) | undefined
 
 type SerializedAiVaultSessionDragPayload = AiVaultSessionDragPayload & {
   kind: 'ai-vault-session'
@@ -96,6 +104,7 @@ function isSerializedPayload(value: unknown): value is SerializedAiVaultSessionD
   return (
     payload.kind === 'ai-vault-session' &&
     payload.version === 1 &&
+    (payload.sidebarChat === undefined || typeof payload.sidebarChat === 'boolean') &&
     isAiVaultAgent(payload.agent) &&
     isNonEmptyString(payload.sessionId) &&
     (payload.structuredSession === undefined || isStructuredSession(payload.structuredSession)) &&
@@ -136,16 +145,19 @@ function isResumeStartup(
 
 export function writeAiVaultSessionDragData(
   dataTransfer: DataTransfer,
-  payload: AiVaultSessionDragPayload
+  payload: AiVaultSessionDragPayload,
+  onDrop?: (target: AiVaultSessionDropPlacement) => void
 ): void {
   const serialized = JSON.stringify({ kind: 'ai-vault-session', version: 1, ...payload })
   if (isAiVaultSessionDragPayloadTooLarge(serialized)) {
     activeAiVaultSessionDragPayload = null
+    activeDropHandler = undefined
     dataTransfer.effectAllowed = 'copy'
     dataTransfer.setData(AI_VAULT_SESSION_DRAG_TYPE, '')
     return
   }
   activeAiVaultSessionDragPayload = { ...payload }
+  activeDropHandler = onDrop
   dataTransfer.effectAllowed = 'copy'
   // Why: avoid text/plain so terminal/native drop targets cannot paste the
   // resume command instead of letting Orca's pane drop layer handle it.
@@ -158,6 +170,16 @@ export function hasAiVaultSessionDragData(dataTransfer: DataTransfer): boolean {
 
 export function clearAiVaultSessionDragData(): void {
   activeAiVaultSessionDragPayload = null
+  activeDropHandler = undefined
+}
+
+/** Sidebar drops retain their folder; ordinary history drops retain the default destination. */
+export function readAiVaultSessionDropHandler(payload: AiVaultSessionDragPayload) {
+  return activeAiVaultSessionDragPayload?.sessionId === payload.sessionId &&
+    activeAiVaultSessionDragPayload.agent === payload.agent &&
+    activeAiVaultSessionDragPayload.sessionExecutionHostId === payload.sessionExecutionHostId
+    ? activeDropHandler
+    : undefined
 }
 
 export function readAiVaultSessionDragData(
@@ -180,6 +202,7 @@ export function readAiVaultSessionDragData(
       agent,
       sessionId,
       structuredSession,
+      sidebarChat,
       title,
       command,
       sessionFilePath,
@@ -195,6 +218,7 @@ export function readAiVaultSessionDragData(
       agent,
       sessionId,
       ...(structuredSession ? { structuredSession } : {}),
+      ...(sidebarChat ? { sidebarChat } : {}),
       title,
       command,
       ...(sessionFilePath ? { sessionFilePath } : {}),

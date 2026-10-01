@@ -26,6 +26,14 @@ import {
   resolveAiVaultSessionLaunchTarget,
   resolveAiVaultTargetWorkspacePath
 } from './ai-vault-session-launch-target'
+import type { TabSplitDirection } from '@/store/slices/tabs'
+
+export type AiVaultResumePlacement = {
+  targetGroupId?: string
+  splitDirection?: TabSplitDirection
+  onResumed?: () => void
+  validateDestination?: () => boolean
+}
 
 // Why module scope: the chat sidebar and AI Vault panel can resume the same session.
 const pendingResumes = new Set<string>()
@@ -89,7 +97,11 @@ export function useAiVaultSessionLaunchActions({
   )
 
   const handleResume = useCallback(
-    (session: AiVaultSession, targetWorktreeId?: string): void => {
+    (
+      session: AiVaultSession,
+      targetWorktreeId?: string,
+      placement?: AiVaultResumePlacement
+    ): void => {
       if (session.structuredSession) {
         void activateAiVaultStructuredSession(session)
         return
@@ -107,6 +119,9 @@ export function useAiVaultSessionLaunchActions({
 
       const resumeKey = JSON.stringify([session.executionHostId, session.agent, session.sessionId])
       if (pendingResumes.has(resumeKey)) {
+        if (placement) {
+          toast.info('This chat is already reopening. Drop it again once it opens.')
+        }
         return
       }
       pendingResumes.add(resumeKey)
@@ -123,10 +138,25 @@ export function useAiVaultSessionLaunchActions({
       }
       void prepareAiVaultSessionForResume(session)
         .then(async (preparedSession) => {
+          if (placement?.validateDestination && !placement.validateDestination()) {
+            throw new Error('The destination pane was closed. Drop the chat onto an open pane.')
+          }
+          if (
+            placement?.targetGroupId &&
+            !useAppStore
+              .getState()
+              .groupsByWorktree[targetId.worktreeId]?.some(
+                (group) => group.id === placement.targetGroupId
+              )
+          ) {
+            throw new Error('The destination pane was closed. Drop the chat onto an open pane.')
+          }
           const launchResult = launchAiVaultSessionInNewTab({
             agent: session.agent,
             worktreeId: targetId.worktreeId,
-            ...buildResumeStartup(preparedSession, targetId.worktreeId)
+            ...buildResumeStartup(preparedSession, targetId.worktreeId),
+            targetGroupId: placement?.targetGroupId,
+            splitDirection: placement?.splitDirection
           })
           if (launchResult.tabId === null) {
             const outcome = await launchResult.runtimeLaunch
@@ -149,6 +179,7 @@ export function useAiVaultSessionLaunchActions({
           if (useAppStore.getState().activeWorktreeId !== targetId.worktreeId) {
             activateAiVaultResumeWorkspace(targetId.worktreeId)
           }
+          placement?.onResumed?.()
           showQueuedToast()
         })
         .catch(notifyAiVaultSessionPreparationFailure)

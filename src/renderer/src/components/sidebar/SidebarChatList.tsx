@@ -24,6 +24,7 @@ import { useChatSidebarData } from './use-chat-sidebar-data'
 import { setChatSidebarTitle } from './chat-sidebar-preferences'
 import { activeChatTarget, isChatRowSelected } from './chat-sidebar-selection'
 import { chatResumeSession } from './chat-sidebar-resume'
+import { startSavedChatDrag } from './chat-sidebar-saved-drag'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
 import { chatSidebarListItems, chatSidebarItemHeight } from './chat-sidebar-groups'
 import {
@@ -64,6 +65,10 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     targetState
   })
   const folders = useMemo(() => chatFolderDestinations(targetState), [targetState])
+  const savedDragStart = useCallback(
+    (event: React.DragEvent, row: Row) => startSavedChatDrag(event, row, handleResume),
+    [handleResume]
+  )
   const moveChat = useCallback((row: Row, folder: ChatFolderDestination) => {
     void changeChatFolder(row, folder)
       .then(() => {
@@ -231,6 +236,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
                     tabStop={entry.id === tabStopId}
                     onOpen={openChat}
                     onRename={renameChat}
+                    onSavedDragStart={savedDragStart}
                     folders={folders}
                     onChangeFolder={moveChat}
                     onNewFolder={setNewFolderRow}

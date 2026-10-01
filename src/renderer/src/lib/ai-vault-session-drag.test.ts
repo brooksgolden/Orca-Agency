@@ -5,6 +5,7 @@ import {
   clearAiVaultSessionDragData,
   hasAiVaultSessionDragData,
   readAiVaultSessionDragData,
+  readAiVaultSessionDropHandler,
   writeAiVaultSessionDragData,
   type AiVaultSessionDragPayload
 } from './ai-vault-session-drag'
@@ -39,6 +40,32 @@ function createTransfer(): DataTransfer {
 describe('Session History session drag data', () => {
   afterEach(() => {
     clearAiVaultSessionDragData()
+  })
+
+  it('keeps sidebar placement in memory only and clears it on cancellation or another drag', () => {
+    const transfer = createTransfer()
+    const payload: AiVaultSessionDragPayload = {
+      agent: 'codex',
+      sessionId: 'fork',
+      title: 'Fork',
+      command: 'codex resume fork',
+      sidebarChat: true,
+      sessionExecutionHostId: 'local'
+    }
+    const handler = () => undefined
+    writeAiVaultSessionDragData(transfer, payload, handler)
+    expect(readAiVaultSessionDropHandler(payload)).toBe(handler)
+    expect(readAiVaultSessionDropHandler({ ...payload, sessionId: 'other' })).toBeUndefined()
+    expect(
+      readAiVaultSessionDropHandler({ ...payload, sessionExecutionHostId: 'ssh:other' })
+    ).toBeUndefined()
+    expect(readAiVaultSessionDragData(transfer)).toEqual(payload)
+    clearAiVaultSessionDragData()
+    expect(readAiVaultSessionDropHandler(payload)).toBeUndefined()
+    expect(readAiVaultSessionDragData(transfer)?.sidebarChat).toBe(true)
+    writeAiVaultSessionDragData(transfer, payload, handler)
+    writeAiVaultSessionDragData(transfer, payload)
+    expect(readAiVaultSessionDropHandler(payload)).toBeUndefined()
   })
 
   it('writes and reads the private session history payload', () => {

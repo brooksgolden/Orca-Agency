@@ -10,7 +10,8 @@ import {
   AI_VAULT_SESSION_DRAG_START_EVENT,
   clearAiVaultSessionDragData,
   hasAiVaultSessionDragData,
-  readAiVaultSessionDragData
+  readAiVaultSessionDragData,
+  readAiVaultSessionDropHandler
 } from '@/lib/ai-vault-session-drag'
 import {
   buildAiVaultDropRepinStartup,
@@ -30,6 +31,7 @@ type PaneDropTarget = {
   zone: TabDropZone
   overlayStyle: CSSProperties
 }
+type DropPoint = { x: number; y: number }
 
 function getZoneOverlayStyle(rect: DOMRect, layerRect: DOMRect, zone: TabDropZone): CSSProperties {
   const left = rect.left - layerRect.left
@@ -58,7 +60,7 @@ function containsPoint(rect: DOMRect, x: number, y: number): boolean {
 function resolvePaneDropTarget(
   worktreeId: string,
   layerRect: DOMRect,
-  point: { x: number; y: number }
+  point: DropPoint
 ): PaneDropTarget | null {
   const elements = Array.from(
     document.querySelectorAll<HTMLElement>('[data-tab-group-body-id][data-worktree-id]')
@@ -100,13 +102,7 @@ export default function AiVaultSessionDropLayer({
   }, [])
 
   const updateTarget = useCallback(
-    (
-      dataTransfer: DataTransfer,
-      point: {
-        x: number
-        y: number
-      }
-    ): PaneDropTarget | null => {
+    (dataTransfer: DataTransfer, point: DropPoint): PaneDropTarget | null => {
       if (!hasAiVaultSessionDragData(dataTransfer)) {
         setTarget(null)
         return null
@@ -140,32 +136,28 @@ export default function AiVaultSessionDropLayer({
   )
 
   const handleSessionDrop = useCallback(
-    (
-      dataTransfer: DataTransfer,
-      point: {
-        x: number
-        y: number
-      }
-    ): boolean => {
+    (dataTransfer: DataTransfer, point: DropPoint): boolean => {
       if (!hasAiVaultSessionDragData(dataTransfer)) {
         return false
       }
 
       const layerRect = layerRef.current?.getBoundingClientRect()
       const wasInsideLayer = layerRect ? containsPoint(layerRect, point.x, point.y) : false
+      if (!wasInsideLayer) {
+        return false
+      }
       const dropTarget = updateTarget(dataTransfer, point) ?? target
       const payload = readAiVaultSessionDragData(dataTransfer)
+      const sidebarDrop = payload ? readAiVaultSessionDropHandler(payload) : undefined
       clearDragState()
       if (!dropTarget) {
-        if (wasInsideLayer) {
-          toast.error(
-            translate(
-              'auto.components.tab.group.AiVaultSessionDropLayer.dropOntoTerminalPane',
-              'Drop onto a terminal pane to resume this session.'
-            )
+        toast.error(
+          translate(
+            'auto.components.tab.group.AiVaultSessionDropLayer.dropOntoTerminalPane',
+            'Drop onto a terminal pane to resume this session.'
           )
-        }
-        return wasInsideLayer
+        )
+        return true
       }
       if (!payload) {
         toast.error(
@@ -174,6 +166,18 @@ export default function AiVaultSessionDropLayer({
             'Could not read the session drag payload.'
           )
         )
+        return true
+      }
+      if (sidebarDrop) {
+        sidebarDrop({
+          worktreeId,
+          groupId: dropTarget.groupId,
+          splitDirection: dropTarget.zone === 'center' ? undefined : dropTarget.zone
+        })
+        return true
+      }
+      if (payload.sidebarChat) {
+        toast.error('This chat drag expired. Drag the chat again from the sidebar.')
         return true
       }
       if (payload.structuredSession) {
@@ -312,7 +316,8 @@ export default function AiVaultSessionDropLayer({
 
   useEffect(() => {
     if (!enabled) {
-      clearDragState()
+      setIsDragActive(false)
+      setTarget(null)
       return
     }
 
