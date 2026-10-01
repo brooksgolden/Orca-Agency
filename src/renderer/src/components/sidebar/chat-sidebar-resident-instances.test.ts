@@ -73,7 +73,7 @@ describe('resident copies of a provider session', () => {
     expect(buildChatSidebarRows(state, [session], 10_000)).toMatchObject([{ tabId: null }])
   })
 
-  it('keeps two panes sharing a session distinct and honors session-wide hiding', () => {
+  it('keeps resumed panes visible while still excluding automation-owned sessions', () => {
     const paneA = makePaneKey('a', '77777777-7777-4777-8777-777777777777')
     const paneB = makePaneKey('a', '88888888-8888-4888-8888-888888888888')
     const state = chatState({ tabsByWorktree: { [chatWorktree.id]: [tab('a')] } })
@@ -94,7 +94,11 @@ describe('resident copies of a provider session', () => {
     expect(new Set(rows.map((row) => row.id)).size).toBe(2)
     expect(rows.some((row) => row.id === chatFallbackId('local', paneB))).toBe(true)
     state.settings!.chatSidebar = { hidden: [key], historySince: 0 }
-    expect(buildChatSidebarRows(state, [session], 10_000)).toEqual([])
+    expect(
+      buildChatSidebarRows(state, [session], 10_000)
+        .map((row) => row.paneKey)
+        .sort()
+    ).toEqual([paneA, paneB].sort())
     state.settings!.chatSidebar = { automationChats: [key], historySince: 0 }
     expect(buildChatSidebarRows(state, [session], 10_000)).toEqual([])
   })

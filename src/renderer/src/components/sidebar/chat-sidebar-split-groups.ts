@@ -5,6 +5,8 @@ import type { ChatSidebarRow } from './chat-sidebar-types'
 export type ChatWorkspaceGroup = {
   id: string
   members: ChatSidebarRow[]
+  paneSplitId?: string
+  folderGroupId?: string
 }
 
 /** Keep split windows together; do not infer links from shared folders or host-ambiguous IDs. */
@@ -35,8 +37,9 @@ export function chatSidebarSplitGroups(
   for (const group of groups) {
     const row = group.members[0]
     const link = row.tabId ? links.get(row.worktree.id) : undefined
-    const key = link ? `split:${link.id}` : group.id
-    const set = sets.get(key) ?? { splitId: link?.id, groups: [] }
+    const splitId = link?.id ?? group.paneSplitId
+    const key = splitId ? `split:${splitId}` : group.id
+    const set = sets.get(key) ?? { splitId, groups: [] }
     set.groups.push(group)
     sets.set(key, set)
   }

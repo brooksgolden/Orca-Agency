@@ -88,10 +88,17 @@ export function chatSidebarPreferencePatch(
   let completedChanged = false
   const automationChats = new Set(current.automationChats ?? [])
   let automationChanged = false
+  const hidden = new Set(current.hidden ?? [])
+  let hiddenChanged = false
   const ordered = [...rows].sort(
     (a, b) => Number(a.id !== a.sessionKey) - Number(b.id !== b.sessionKey)
   )
   for (const row of ordered) {
+    if (row.tabId && !row.automated) {
+      for (const id of [row.id, ...row.aliases, ...(row.sessionKey ? [row.sessionKey] : [])]) {
+        hiddenChanged = hidden.delete(id) || hiddenChanged
+      }
+    }
     // Older closed chats may only have their workspace's folder; retain it on the chat now.
     if (!row.tabId && row.folderWorktree && !chatPreference(folderAssignments, row)) {
       folderAssignments[row.id] = {
@@ -193,11 +200,13 @@ export function chatSidebarPreferencePatch(
     !completedChanged &&
     !foldersChanged &&
     !workspaceFoldersChanged &&
-    !automationChanged
+    !automationChanged &&
+    !hiddenChanged
   ) {
     return null
   }
   return {
+    ...(hiddenChanged ? { hidden: [...hidden] } : {}),
     ...(automationChanged ? { automationChats: [...automationChats] } : {}),
     ...(sessionsChanged ? { sessions } : {}),
     ...(titlesChanged ? { titles } : {}),

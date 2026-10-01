@@ -37,6 +37,12 @@ const NAVIGATION_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Home', 'End'])
 export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const { rows, state, history } = useChatSidebarData()
   const splits = useAppStore((s) => s.workspaceSplitGroups)
+  const panes = useAppStore(
+    useShallow((s) => ({
+      groupsByWorktree: s.groupsByWorktree,
+      layoutByWorktree: s.layoutByWorktree
+    }))
+  )
   const now = useNow(30_000)
   const [query, setQuery] = useState('')
   const [renaming, setRenaming] = useState<Row | null>(null)
@@ -104,8 +110,8 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     setName(row.title)
   }, [])
   const items = useMemo(
-    () => chatSidebarListItems(rows, state, query, splits),
-    [rows, state, query, splits]
+    () => chatSidebarListItems(rows, { ...state, ...panes }, query, splits),
+    [rows, state, panes, query, splits]
   )
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()

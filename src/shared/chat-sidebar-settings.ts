@@ -55,6 +55,7 @@ export type ChatSidebarSettings = {
   defaultFolder?: { projectGroupId: string; executionHostId: ExecutionHostId }
   /** Keyed by `JSON.stringify([executionHostId, agent, sessionId])`. */
   sessions?: Record<string, ChatSidebarSessionEntry>
+  /** Hidden history entries; opening a conversation restores its visibility. */
   hidden?: string[]
   titles?: Record<string, string>
 }

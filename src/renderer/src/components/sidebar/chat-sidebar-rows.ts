@@ -86,7 +86,8 @@ export function buildChatSidebarRows(
       (Number.isFinite(sessionCreatedAt) ? sessionCreatedAt : tab?.createdAt)
     const identities = [row.id, ...row.aliases, ...(row.sessionKey ? [row.sessionKey] : [])]
     row.automated = identities.some((id) => automationChats.has(id))
-    if (identities.some((id) => hidden.has(id))) {
+    // Why: hiding old history must not hide a conversation the user opens again.
+    if (!row.tabId && identities.some((id) => hidden.has(id))) {
       return
     }
     const completion = chatPreference(settings?.completed, row)

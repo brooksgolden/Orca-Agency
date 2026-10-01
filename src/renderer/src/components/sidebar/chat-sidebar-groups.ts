@@ -2,6 +2,7 @@ import type { ChatSidebarRow, ChatSidebarState } from './chat-sidebar-types'
 import { hiddenChatFolderLabels } from './chat-creation-folders'
 import { chatSidebarSplitGroups } from './chat-sidebar-split-groups'
 import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
+import { chatSidebarPaneGroups, type ChatPaneLayout } from './chat-sidebar-pane-groups'
 
 export type ChatSidebarListItem =
   | { kind: 'heading'; label: string; id: string }
@@ -23,7 +24,8 @@ export function chatSidebarListItems(
   state: Pick<
     ChatSidebarState,
     'tabsByWorktree' | 'unifiedTabsByWorktree' | 'projectGroups' | 'settings'
-  >,
+  > &
+    ChatPaneLayout,
   query: string,
   splits: readonly WorkspaceSplitGroup[] = []
 ): ChatSidebarListItem[] {
@@ -74,7 +76,7 @@ export function chatSidebarListItems(
     )
     return { id, members }
   })
-  const joined = chatSidebarSplitGroups(groups, splits, groupBy)
+  const joined = chatSidebarSplitGroups(chatSidebarPaneGroups(groups, state), splits, groupBy)
     .filter((set) => !text || set.groups.some((group) => group.members.some(matches)))
     .map((set) => ({
       ...set,
@@ -107,8 +109,10 @@ export function chatSidebarListItems(
       : []
     for (const set of section) {
       const start = items.length
-      for (const group of set.groups) {
+      for (const [groupIndex, group] of set.groups.entries()) {
         const members = group.members
+        const next = set.groups[groupIndex + 1]
+        const showFolder = !group.folderGroupId || next?.folderGroupId !== group.folderGroupId
         members.forEach((row, index) =>
           items.push({
             kind: 'chat',
@@ -116,7 +120,7 @@ export function chatSidebarListItems(
             id: row.id,
             groupId: group.id,
             subTab: index > 0,
-            showFolder: index === members.length - 1,
+            showFolder: showFolder && index === members.length - 1,
             splitId: set.splitId
           })
         )
