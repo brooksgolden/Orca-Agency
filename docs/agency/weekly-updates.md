@@ -7,7 +7,7 @@ The maintainer's Orca automation runs on Saturdays at **08:00 America/New_York**
 1. GPT-6 Sol at extra high effort compares the latest stable tag with the recorded upstream base, merges changes, and resolves conflicts against the feature contract below.
 2. Run focused regressions, typechecks, code-quality checks, hidden renderer checks, and packaged-app tests.
 3. Claude Opus 5.5 at extra high effort audits the changes and evidence. The same implementing Codex session reviews every finding and performs the final review. Failed reviews or checks return to editing and another audit.
-4. Assign a unique Agency patch version when binaries change, build Windows x64, and verify the package hashes. The installer stages complete files, closes the desktop gracefully, preserves running terminals and chat data, installs, and restarts.
+4. Assign a unique Agency version when binaries change, commit with normal hooks, and require a clean tree before building. Build Windows x64 from that commit and record it in the package manifest. The installer stages complete files, closes the desktop gracefully, preserves running terminals and chat data, installs, and restarts.
 5. Compare installed hashes and retained session identities. Verify functionality and inspect screenshots of the installed sidebar, panes, folders, and Automations. Repair failures and repeat the review and installation cycle.
 6. Publish the verified source and artifact to [Orca Agency](https://github.com/brooksgolden/orca-agency). Include the upstream base, tests, known limitations, and SHA-256 checksums in each release.
 
@@ -19,7 +19,7 @@ An unavailable credential or external service produces a clear failure receipt a
 | --- | --- |
 | Chat identity | Prompted and resumed chats, exact saved-session recovery, manual names, provider icons |
 | Activity | Running chats first; opening a chat does not refresh its activity; closed prompted tabs become separate Done chats |
-| Sidebar | Elbows for tabs sharing a pane; brackets for separate panes; one folder label per pane; compact rows; collapsible status groups |
+| Sidebar | Elbows for tabs sharing a pane; brackets for separate panes; 1 folder label per pane; compact rows; collapsible status groups |
 | Restart | Idle open tabs retain their identities, nesting, and pane layout |
 | Layout | Drag live, idle, and Done chats; drag blank headers; horizontal and vertical splits, including full-width edges; close empty panes |
 | Folders | Directory-based picker, default Uncategorized, configurable default, folder inheritance, change-folder menu |
@@ -27,11 +27,11 @@ An unavailable credential or external service produces a clear failure receipt a
 | Automations | Background runs remain outside Chats; Windows tasks and Hermes services remain discoverable |
 | Installation | Verified staging, graceful shutdown, restart, bounded managed backups, terminal and transcript preservation |
 
-Use the existing regression suites for these areas. The four packaged smoke checks cover the chat sidebar, workspace sidebar, file links, and local Hermes tasks. Visual review supplements those tests.
+Use the existing regression suites for these areas. The 4 packaged smoke checks cover the chat sidebar, workspace sidebar, file links, and local Hermes tasks. Visual review supplements those tests.
 
 ## Versioning and platforms
 
-The first release is **1.4.1000**, based on upstream **v1.4.218**. Later binary changes use new plain patch versions. Record the upstream stable base separately. Reusing an app version can reuse an old Windows terminal-host runtime, so package metadata must match source and must identify new bytes with a new version.
+The first release is **1.4.1000**, based on upstream **v1.4.218**. Later binary changes use a new plain semantic version greater than both the previous Agency version and the merged upstream version. Follow upstream major/minor advances, for example **1.5.1000** for a **1.5.x** base, and raise the patch further if required. Record the upstream stable base separately. Reusing an app version can reuse an old Windows terminal-host runtime, so package metadata must match source and must identify new bytes with a new version.
 
 Use each workspace's frozen lockfile, including the separate mobile workspace. On Windows, use the matching x64 toolchain and short test-output paths. Preserve compatibility with existing terminal daemons and remote clients.
 
