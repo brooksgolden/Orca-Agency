@@ -54,6 +54,16 @@ it('keeps both idle pane conversations bracketed without live hooks and excludes
     const restored = withSleepingChatAgents([current], state, chatWorktree.id)
     expect(restored.find((row) => row.paneKey === current.paneKey)?.state).toBe(status)
   }
+  const sibling = { ...saved[1], state: 'working' as const, rowSource: 'live' as const }
+  const withoutSiblingRecord = {
+    ...state,
+    sleepingAgentSessionsByPaneKey: {
+      [saved[0].paneKey]: state.sleepingAgentSessionsByPaneKey[saved[0].paneKey]
+    }
+  }
+  const mixed = withSleepingChatAgents([sibling], withoutSiblingRecord, chatWorktree.id)
+  expect(mixed).toHaveLength(2)
+  expect(mixed.find((row) => row.paneKey === sibling.paneKey)).toBe(sibling)
   state.terminalLayoutsByTabId.split!.root = { type: 'leaf', leafId: first }
   expect(buildChatSidebarRows(state, sessions, 20000)).toHaveLength(1)
   state.tabsByWorktree = {}

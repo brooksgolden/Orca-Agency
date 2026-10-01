@@ -4,6 +4,11 @@ import type {
 } from '../../../../shared/chat-sidebar-settings'
 import type { ChatSidebarRow } from './chat-sidebar-types'
 import {
+  isAiVaultSessionResumableContent,
+  type AiVaultSession
+} from '../../../../shared/ai-vault-types'
+import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
+import {
   chatLiveSessionSnapshot,
   chatSessionSnapshot,
   freshestChatSnapshot,
@@ -74,7 +79,7 @@ export function chatSidebarPreferencePatch(
   current: ChatSidebarSettings,
   now: number,
   /** Background recording without history: only rows that can snapshot themselves. */
-  options: { liveOnly?: boolean } = {}
+  options: { liveOnly?: boolean; scannedSessions?: readonly AiVaultSession[] } = {}
 ): Partial<ChatSidebarSettings> | null {
   const sessions = { ...current.sessions }
   const recordedSessions = new Set<string>()
@@ -93,6 +98,63 @@ export function chatSidebarPreferencePatch(
   const ordered = [...rows].sort(
     (a, b) => Number(a.id !== a.sessionKey) - Number(b.id !== b.sessionKey)
   )
+  for (const [key, stored] of Object.entries(sessions)) {
+    const proof = stored.resumeLauncher
+    const snapshot = stored.snapshot
+    if (
+      !proof ||
+      !snapshot ||
+      proof.agent !== 'claude' ||
+      typeof proof.sessionId !== 'string' ||
+      typeof proof.transcriptPath !== 'string'
+    ) {
+      continue
+    }
+    const scannedLauncher = options.scannedSessions?.find(
+      (session) =>
+        session.agent === 'claude' &&
+        session.executionHostId === snapshot.executionHostId &&
+        session.sessionId === proof.sessionId &&
+        normalizeRuntimePathForComparison(session.filePath) ===
+          normalizeRuntimePathForComparison(proof.transcriptPath)
+    )
+    if (
+      scannedLauncher &&
+      (isAiVaultSessionResumableContent(scannedLauncher) ||
+        scannedLauncher.resumedSessionIdPrefix !== proof.targetSessionIdPrefix)
+    ) {
+      sessions[key] = { ...stored, resumeLauncher: undefined }
+    }
+  }
+  // A launcher that now has its own conversation, or points to a different background
+  // target, revokes the earlier proof before a later no-scan close or cold restore.
+  for (const row of ordered) {
+    if (!row.tabId || !row.paneKey) {
+      continue
+    }
+    for (const [key, stored] of Object.entries(sessions)) {
+      const proof = stored.resumeLauncher
+      if (
+        !proof ||
+        proof.tabId !== row.tabId ||
+        proof.paneKey !== row.paneKey ||
+        stored.worktreeId !== row.worktree.id ||
+        key === row.sessionKey
+      ) {
+        continue
+      }
+      const sourceHasConversation =
+        row.session?.agent === 'claude' &&
+        row.session.sessionId === proof.sessionId &&
+        normalizeRuntimePathForComparison(row.session.filePath) ===
+          normalizeRuntimePathForComparison(proof.transcriptPath) &&
+        isAiVaultSessionResumableContent(row.session)
+      const newerProof = row.resumeLauncher?.sessionId === proof.sessionId
+      if (sourceHasConversation || newerProof) {
+        sessions[key] = { ...stored, resumeLauncher: undefined }
+      }
+    }
+  }
   for (const row of ordered) {
     if (row.tabId && !row.automated) {
       for (const id of [row.id, ...row.aliases, ...(row.sessionKey ? [row.sessionKey] : [])]) {
@@ -148,6 +210,9 @@ export function chatSidebarPreferencePatch(
         ? row.ownsWorkspaceName ||
           (stored?.worktreeId === row.worktree.id && stored.ownsWorkspaceName === true)
         : stored?.ownsWorkspaceName === true
+      const resumeLauncher =
+        row.resumeLauncher ??
+        (stored?.worktreeId === worktreeId ? stored.resumeLauncher : undefined)
       const snapshot = freshestChatSnapshot(
         freshestChatSnapshot(
           row.session ? chatSessionSnapshot(row.session) : stored?.snapshot,
@@ -163,13 +228,15 @@ export function chatSidebarPreferencePatch(
         stored?.worktreeId !== worktreeId ||
         stored?.createdAt !== createdAt ||
         (stored.ownsWorkspaceName === true) !== ownsWorkspaceName ||
+        JSON.stringify(stored?.resumeLauncher) !== JSON.stringify(resumeLauncher) ||
         (snapshot !== undefined && !sameChatSessionSnapshot(stored.snapshot, snapshot))
       ) {
         sessions[row.sessionKey] = {
           worktreeId,
           ...(createdAt !== undefined ? { createdAt } : {}),
           ...(ownsWorkspaceName ? { ownsWorkspaceName: true } : {}),
-          ...(snapshot ? { snapshot } : {})
+          ...(snapshot ? { snapshot } : {}),
+          ...(resumeLauncher ? { resumeLauncher } : {})
         }
       }
       titlesChanged = moveAliases(titles, row, row.id) || titlesChanged

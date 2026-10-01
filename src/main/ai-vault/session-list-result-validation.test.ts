@@ -98,7 +98,8 @@ describe('parseAiVaultListResult', () => {
           ...validSession(),
           previewMessagesTruncated: true,
           firstUserPrompt: 'first',
-          lastUserPrompt: 'last'
+          lastUserPrompt: 'last',
+          lastHumanTurnAt: '2026-10-01T08:00:00.000Z'
         }
       ],
       issues: [],
@@ -108,8 +109,47 @@ describe('parseAiVaultListResult', () => {
     expect(parsed.sessions[0]).toMatchObject({
       previewMessagesTruncated: true,
       firstUserPrompt: 'first',
-      lastUserPrompt: 'last'
+      lastUserPrompt: 'last',
+      lastHumanTurnAt: '2026-10-01T08:00:00.000Z'
     })
+  })
+
+  it('drops a malformed optional human-turn clock without rejecting its session', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [{ ...validSession(), lastHumanTurnAt: 'invalid' }],
+      issues: [],
+      scannedAt: '2026-10-01T00:00:00.000Z'
+    })
+    expect(parsed.sessions).toHaveLength(1)
+    expect(parsed.sessions[0]?.lastHumanTurnAt).toBeUndefined()
+    expect(parsed.issues).toEqual([])
+  })
+
+  it('preserves the provider-reported Claude background resume target across the wire', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [
+        {
+          ...validSession(),
+          agent: 'claude',
+          messageCount: 0,
+          resumedSessionIdPrefix: '170dd324'
+        }
+      ],
+      issues: [],
+      scannedAt: '2026-10-01T08:00:00.000Z'
+    })
+    expect(parsed.sessions[0]?.resumedSessionIdPrefix).toBe('170dd324')
+  })
+
+  it('keeps a Claude session when a newer host sends malformed resume metadata', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [{ ...validSession(), agent: 'claude', resumedSessionIdPrefix: 170 }],
+      issues: [],
+      scannedAt: '2026-10-01T08:00:00.000Z'
+    })
+    expect(parsed.sessions).toHaveLength(1)
+    expect(parsed.sessions[0]?.resumedSessionIdPrefix).toBeUndefined()
+    expect(parsed.issues).toEqual([])
   })
 
   // #15036: a `kind` this build has never heard of used to fail the whole issue,

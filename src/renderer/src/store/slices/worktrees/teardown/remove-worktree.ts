@@ -1,7 +1,6 @@
-import type { WorktreeSlice } from '../../worktree-helpers'
+import { getRepoIdFromWorktreeId, type WorktreeSlice } from '../../worktree-helpers'
 import type { WorktreeSliceGet, WorktreeSliceSet } from '../listing/worktree-slice-types'
 import type { RemoveWorktreeResult } from '../../../../../../shared/worktree/create-types'
-import { getRepoIdFromWorktreeId } from '../../worktree-helpers'
 import { parseExecutionHostId } from '../../../../../../shared/execution-host'
 import { ensureHooksConfirmed } from '@/lib/ensure-hooks-confirmed'
 import { getActiveRuntimeTarget } from '../../../../runtime/runtime-rpc-client'
@@ -251,7 +250,8 @@ export function createRemoveWorktree(
         worktreeId,
         hostId,
         requiredExecutionHostId,
-        terminalPtyIdsBeforeRemoval
+        terminalPtyIdsBeforeRemoval,
+        catalogVersion: removalResult?.catalogVersion
       })
       // Optional call: deleting a workspace must still finish on any store
       // composition that does not carry the workspace-split slice.

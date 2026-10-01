@@ -15,11 +15,12 @@ export function focusPanePreservingOverlays(
   }
   if (
     typeof document !== 'undefined' &&
-    hasVisibleOverlay({
-      ignoreMatches: '[role="listbox"][data-worktree-sidebar]',
-      ignoreContaining: pane.container,
-      ignoreDismissed: true
-    })
+    (document.activeElement?.matches('[data-worktree-sidebar][data-keyboard-navigation]') ||
+      hasVisibleOverlay({
+        ignoreMatches: '[role="listbox"][data-worktree-sidebar]',
+        ignoreContaining: pane.container,
+        ignoreDismissed: true
+      }))
   ) {
     return
   }

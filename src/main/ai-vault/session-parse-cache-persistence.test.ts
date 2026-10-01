@@ -140,8 +140,9 @@ async function coldParseStats(path: string): Promise<SessionParseStats> {
  *
  * This table is the reminder. Changing the persisted session shape — or the
  * meaning of a field the parsers fill — breaks this `satisfies` and the fix
- * is to bump `SCHEMA_VERSION` in session-parse-cache-persistence.ts, not to
- * silently extend the list.
+ * is to bump `SCHEMA_VERSION` in session-parse-cache-persistence.ts. Schema 5
+ * migrates small zero-turn Claude launchers from schemas 3/4 while reusing
+ * large conversations.
  */
 const CACHED_SESSION_FIELDS = {
   id: true,
@@ -161,6 +162,8 @@ const CACHED_SESSION_FIELDS = {
   messageCount: true,
   totalTokens: true,
   previewMessages: true,
+  resumedSessionIdPrefix: true,
+  lastHumanTurnAt: true,
   previewMessagesTruncated: true,
   firstUserPrompt: true,
   lastUserPrompt: true,
@@ -285,6 +288,74 @@ describe('session parse cache persistence', () => {
     await ensureSessionParseCacheLoaded()
     expect(getSessionParseCacheEntry(codexPath)).toBeUndefined()
     expect((await coldParseStats(transcript)).reused).toBe(1)
+  })
+
+  it('reparses cached zero-turn Claude launchers while reusing large conversations', async () => {
+    const root = await makeTempDir()
+    const cacheFile = join(root, 'session-parse-cache.json')
+    const transcript = await writeTranscript(root)
+    await appendFile(transcript, `${userRecord(2, 'x'.repeat(70_000))}\n`)
+    const conversation = await claudeCandidate(transcript)
+    await parseAgentSessionFileCached(conversation, process.platform)
+
+    const launcherId = '8b1a93a0-1576-43df-88ba-5b3e742e8496'
+    const launcherPath = join(root, `${launcherId}.jsonl`)
+    await writeFile(
+      launcherPath,
+      `${JSON.stringify({ type: 'last-prompt', sessionId: launcherId })}\n${JSON.stringify({
+        type: 'system',
+        subtype: 'local_command',
+        sessionId: launcherId,
+        commandRun: { command: 'resume', args: '' },
+        content:
+          '<local-command-stdout>Opening "Existing chat", running in the background (170dd324)</local-command-stdout>'
+      })}\n`
+    )
+    const launcher = await claudeCandidate(launcherPath)
+    await parseAgentSessionFileCached(launcher, process.platform)
+    const oldCache = snapshotSessionParseCacheForPersistence().map(
+      ([path, entry]) =>
+        [
+          path,
+          path === launcherPath && entry.session
+            ? { ...entry, session: { ...entry.session, resumedSessionIdPrefix: undefined } }
+            : entry
+        ] as [string, PersistedSessionParseCacheEntry]
+    )
+
+    for (const schemaVersion of [3, 4]) {
+      await writeFile(
+        cacheFile,
+        JSON.stringify({ schemaVersion, appVersion: APP_VERSION, entries: oldCache })
+      )
+      simulateRestart(cacheFile)
+      await ensureSessionParseCacheLoaded()
+      expect(getSessionParseCacheEntry(launcherPath)).toBeUndefined()
+      expect(getSessionParseCacheEntry(transcript)).toBeDefined()
+
+      const launcherStats = createSessionParseStats()
+      const parsed = await parseAgentSessionFileCached(launcher, process.platform, launcherStats)
+      expect(launcherStats.fullParses).toBe(1)
+      expect(parsed?.resumedSessionIdPrefix).toBe('170dd324')
+      const conversationStats = createSessionParseStats()
+      await parseAgentSessionFileCached(conversation, process.platform, conversationStats)
+      expect(conversationStats.reused).toBe(1)
+      expect(conversationStats.bytesRead).toBe(0)
+      if (schemaVersion === 4) {
+        scheduleSessionParseCachePersist(launcherStats)
+        await flushSessionParseCachePersistForTests()
+      }
+    }
+
+    expect(JSON.parse(await readFile(cacheFile, 'utf8')).schemaVersion).toBe(5)
+    simulateRestart(cacheFile)
+    await ensureSessionParseCacheLoaded()
+    const launcherReuse = createSessionParseStats()
+    expect(
+      (await parseAgentSessionFileCached(launcher, process.platform, launcherReuse))
+        ?.resumedSessionIdPrefix
+    ).toBe('170dd324')
+    expect(launcherReuse.reused).toBe(1)
   })
 
   it('reuses a schema-compatible cache written by a different app version', async () => {

@@ -198,7 +198,7 @@ describe('registerPtyHandlers', () => {
         '\\\\wsl.localhost\\Ubuntu\\home\\jin\\.local\\share\\orca\\codex-runtime-home\\home'
       const ensureForDistro = vi
         .spyOn(wslHookRelayManager, 'ensureForDistro')
-        .mockImplementation(() => {})
+        .mockImplementation(async () => {})
 
       try {
         buildPtyHostEnv(
@@ -213,7 +213,7 @@ describe('registerPtyHandlers', () => {
             agentStatusHooksEnabled: true
           }
         )
-        expect(ensureForDistro).toHaveBeenCalledExactlyOnceWith('Ubuntu', runtimeHome)
+        expect(ensureForDistro).toHaveBeenCalledExactlyOnceWith('Ubuntu', runtimeHome, undefined)
       } finally {
         ensureForDistro.mockRestore()
       }
@@ -350,6 +350,16 @@ describe('registerPtyHandlers', () => {
       expect(env.CLAUDE_CODE_CHILD_SESSION).toBeUndefined()
       expect(env.CLAUDE_CODE_SESSION_ID).toBeUndefined()
       expect(env.CLAUDE_CODE_BRIDGE_SESSION_ID).toBeUndefined()
+    })
+    it('strips an inherited agent session id so a pane never claims that session', async () => {
+      // Why: an Orca launched inside a structured session inherits its id; every pane would then
+      // present that session as its orchestration caller instead of its own terminal.
+      const env = await spawnAndGetEnv(undefined, {
+        ORCA_AGENT_SESSION_ID: 'a0b1c2d3-0000-4000-8000-00000000abcd',
+        ORCA_STRUCTURED_SESSION: '1'
+      })
+      expect(env.ORCA_AGENT_SESSION_ID).toBeUndefined()
+      expect(env.ORCA_STRUCTURED_SESSION).toBeUndefined()
     })
     it('keeps an explicitly requested Claude child-session stamp on a local spawn', async () => {
       const env = await spawnAndGetEnv(

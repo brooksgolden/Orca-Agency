@@ -1,5 +1,6 @@
 import { useAnyBrowserGuestNeedsPaint } from './browser-pane/host-guest/browser-guest-paint-retention'
 import { WorktreeSplitSurface } from './TerminalWorktreeSplitSurface'
+import { selectParkedEquivalentMountTabIds } from './terminal/startup-terminal-tab-hold'
 import type { TerminalController } from './use-terminal-controller'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
@@ -45,6 +46,7 @@ export function TerminalSplitWorkspaceSurfaces({
     mountedWorktreeIdsRef,
     renderedActiveWorktreeId,
     visibleWorkspaceSplitGroup,
+    startupTerminalTabHold,
     workspaceSurfaces
   } = controller
   const rootRef = useRef<HTMLDivElement>(null)
@@ -258,9 +260,11 @@ export function TerminalSplitWorkspaceSurfaces({
         isForceParked={forceParkedTerminalWorktreeIds.has(workspace.id)}
         activityTerminalPortals={activityTerminalPortals}
         backgroundMountTabIds={backgroundMountTabIdsByWorktreeRef.current.get(workspace.id) ?? null}
-        activationDeferredMountTabIds={
-          activationDeferredMountTabIdsByWorktreeRef.current.get(workspace.id) ?? null
-        }
+        activationDeferredMountTabIds={selectParkedEquivalentMountTabIds(
+          activationDeferredMountTabIdsByWorktreeRef.current.get(workspace.id),
+          startupTerminalTabHold,
+          workspace.id
+        )}
       />
     )
   }

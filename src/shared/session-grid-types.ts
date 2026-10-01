@@ -82,6 +82,7 @@ export type SessionGridDotState =
   | 'monitoring'
   | 'permission'
   | 'interrupted'
+  | 'failed'
   | 'done'
   | 'idle'
 
@@ -104,6 +105,7 @@ export function sessionGridDotStateBucket(
       return 'working'
     case 'done':
     case 'interrupted':
+    case 'failed':
       return 'done'
     case 'idle':
       return 'idle'
@@ -121,6 +123,7 @@ export type SessionGridAttentionBadge =
   | 'monitoring'
   | 'permission'
   | 'interrupted'
+  | 'failed'
   | 'unread'
   | 'done'
 

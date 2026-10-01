@@ -1,4 +1,4 @@
-import { Suspense, useMemo } from 'react'
+import { Suspense, useCallback, useMemo } from 'react'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { useDroppable } from '@dnd-kit/core'
 import { Ellipsis, X } from 'lucide-react'
@@ -19,8 +19,10 @@ import { useWorkspaceHeaderDrag } from '../workspace-split/use-workspace-header-
 import { useTabGroupWorkspaceModel } from './useTabGroupWorkspaceModel'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { resolveGroupTabFromVisibleId } from './tab-group-visible-id'
+import { resolveTabGroupActiveTabSelection } from './tab-group-active-tab-selection'
 import { getTabPaneBodyDroppableId, type HoveredTabInsertion } from './useTabDragSplit'
 import { tabGroupBodyAnchorName } from './tab-group-body-anchor'
+import { registerTabGroupBody } from './tab-group-body-geometry'
 import { translate } from '@/i18n/i18n'
 import type { TabGroup } from '../../../../shared/tab-types'
 import type { ClientHostedBrowserRow } from '../../../../shared/client-hosted-browser-rows'
@@ -98,6 +100,20 @@ export default function TabGroupPanel({
     },
     disabled: !isTabDragActive
   })
+  const setBodyRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setBodyDropRef(node)
+      if (!node) {
+        return undefined
+      }
+      const unregisterBody = registerTabGroupBody(groupId, node)
+      return () => {
+        unregisterBody()
+        setBodyDropRef(null)
+      }
+    },
+    [groupId, setBodyDropRef]
+  )
   // Why: per-group anchor-name lets the worktree-level overlay position panes via CSS anchor positioning, so moving a tab between groups re-targets the anchor instead of remounting xterm (loses alt-screen TUI state) or reloading `<webview>`.
   const bodyAnchorName = tabGroupBodyAnchorName(groupId)
   // Why: memoize so a fresh style object each render doesn't break downstream memoization keyed on referential equality.
@@ -105,17 +121,12 @@ export default function TabGroupPanel({
     () => ({ anchorName: bodyAnchorName }) as React.CSSProperties,
     [bodyAnchorName]
   )
+  const activeTabSelection = resolveTabGroupActiveTabSelection(activeTab)
 
   const tabBar = (
     <TabBar
       tabs={terminalTabs}
-      activeTabId={
-        activeTab?.contentType === 'terminal'
-          ? activeTab.entityId
-          : activeTab?.contentType === 'agent-session'
-            ? activeTab.id
-            : null
-      }
+      activeTabId={activeTabSelection.activeTabId}
       groupId={groupId}
       worktreeId={worktreeId}
       expandedPaneByTabId={model.expandedPaneByTabId}
@@ -162,27 +173,10 @@ export default function TabGroupPanel({
       clientHostedBrowserRows={clientHostedRows}
       groupActiveTabId={activeTab?.id ?? null}
       agentSessionTabs={agentSessionItems}
-      activeFileId={
-        activeTab?.contentType === 'terminal' ||
-        activeTab?.contentType === 'agent-session' ||
-        activeTab?.contentType === 'browser' ||
-        activeTab?.contentType === 'simulator'
-          ? null
-          : activeTab?.id
-      }
-      activeBrowserTabId={activeTab?.contentType === 'browser' ? activeTab.entityId : null}
-      activeSimulatorTabId={activeTab?.contentType === 'simulator' ? activeTab.id : null}
-      activeTabType={
-        activeTab?.contentType === 'terminal'
-          ? 'terminal'
-          : activeTab?.contentType === 'agent-session'
-            ? 'agent-session'
-            : activeTab?.contentType === 'browser'
-              ? 'browser'
-              : activeTab?.contentType === 'simulator'
-                ? 'simulator'
-                : 'editor'
-      }
+      activeFileId={activeTabSelection.activeFileId}
+      activeBrowserTabId={activeTabSelection.activeBrowserTabId}
+      activeSimulatorTabId={activeTabSelection.activeSimulatorTabId}
+      activeTabType={activeTabSelection.activeTabType}
       onActivateFile={commands.activateEditor}
       onCloseFile={commands.closeItem}
       onActivateBrowserTab={commands.activateBrowser}
@@ -363,7 +357,7 @@ export default function TabGroupPanel({
       </div>
 
       <div
-        ref={setBodyDropRef}
+        ref={setBodyRef}
         data-tab-group-body-id={groupId}
         data-worktree-id={worktreeId}
         className="relative flex-1 min-h-0 overflow-hidden"

@@ -37,34 +37,44 @@ export function bindBuildColdRestoreAgentResumeStartup(session: ConnectPanePtySe
     const sleepingRecordEntry = session.getSleepingRecordForPane(state)
     const sleepingRecord = sleepingRecordEntry?.record
 
-    const useLiveEntry = entry && entry.state !== 'done'
+    const savedCandidate = !session.paneStartup?.command
+      ? savedTabResume(
+          state,
+          session.deps.worktreeId,
+          session.deps.tabId,
+          session.executionHostId,
+          session.cacheKey
+        )
+      : null
+    // A verified launcher can outlive the real background conversation in hook and sleeping
+    // metadata. Its persisted target is the session that must be resumed after a cold restart.
+    const useSavedProof = Boolean(savedCandidate?.resumeLauncher)
+    const useLiveEntry = entry && entry.state !== 'done' && !useSavedProof
     const saved =
-      !useLiveEntry &&
-      !sleepingRecord &&
-      !session.paneStartup?.command &&
-      session.manager.getPanes().length === 1
-        ? savedTabResume(
-            state,
-            session.deps.worktreeId,
-            session.deps.tabId,
-            session.executionHostId
-          )
+      useSavedProof || (!useLiveEntry && !sleepingRecord && session.manager.getPanes().length === 1)
+        ? savedCandidate
         : null
     if (
       saved &&
       entry?.providerSession &&
-      (entry.agentType !== saved.agent || entry.providerSession.id !== saved.sessionId)
+      (entry.agentType !== saved.agent ||
+        (entry.providerSession.id !== saved.sessionId &&
+          entry.providerSession.id !== saved.resumeLauncher?.sessionId))
     ) {
       return null
     }
-    const agent = useLiveEntry ? entry.agentType : (sleepingRecord?.agent ?? saved?.agent)
+    const agent = useLiveEntry
+      ? entry.agentType
+      : useSavedProof
+        ? saved?.agent
+        : (sleepingRecord?.agent ?? saved?.agent)
     if (!agent || !isResumableTuiAgent(agent)) {
       return null
     }
     const providerSession = normalizeAgentProviderSession(
       useLiveEntry
         ? entry.providerSession
-        : (sleepingRecord?.providerSession ??
+        : ((useSavedProof ? undefined : sleepingRecord?.providerSession) ??
             (saved ? { key: 'session_id', id: saved.sessionId } : undefined))
     )
     if (!providerSession) {

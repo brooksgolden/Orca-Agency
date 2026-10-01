@@ -28,6 +28,8 @@ export type LaunchAgentInNewTabArgs = {
   launchPlatform?: NodeJS.Platform
   /** Called after the prompt is actually delivered to the agent input path. */
   onPromptDelivered?: () => void
+  /** Called when a terminal paste was written but composer readiness was never confirmed. */
+  onPromptDeliveryUnconfirmed?: () => void
   /** Whether the new tab takes the foreground. Default true, as the tab bar's `+` expects.
    *  A caller launching into a workspace it is not standing in — the session grid — passes
    *  false: `createTab` otherwise moves the GLOBAL `activeTabId`, and the terminal view
@@ -35,6 +37,8 @@ export type LaunchAgentInNewTabArgs = {
   activate?: boolean
   /** Keeps a preflighted route authoritative across workspace creation. */
   agentSessionLaunchPlan?: AgentSessionLaunchPlan
+  /** A launch that seeds a workspace must not reshuffle Recent during PTY spawn. */
+  pendingActivationSpawn?: boolean
   /** Lets a workspace reveal itself before the selected surface opens. */
   beforeSurfaceOpen?: (
     surface:

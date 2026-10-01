@@ -6,6 +6,7 @@ import {
   collectTerminalProviderSnapshotPtyIds,
   refreshTerminalProviderSnapshotCapabilities
 } from '../components/terminal/terminal-provider-snapshot-capability'
+import { refreshLocalStartupPtyLiveness } from '../components/terminal/local-startup-pty-liveness'
 
 type DegradedStartupRecoveryArgs = {
   error: unknown
@@ -91,8 +92,16 @@ export async function recoverFromDegradedStartup(args: DegradedStartupRecoveryAr
     await refreshTerminalProviderSnapshotCapabilities(
       collectTerminalProviderSnapshotPtyIds(useAppStore.getState())
     )
+    await refreshLocalStartupPtyLiveness(
+      collectTerminalProviderSnapshotPtyIds(useAppStore.getState())
+    )
     await reconnectPersistedTerminals(abortSignal)
     await window.api.app.recoverLegacyWorkerTerminalsForRendererStartup()
+    // Why: reconnect set workspaceSessionReady but not this flag, which the success chain sets
+    // last; without it a degraded boot keeps every restoration reader waiting for good.
+    if (!isCancelled()) {
+      useAppStore.setState({ terminalStartupRestorationReady: true })
+    }
   } catch (reconnectErr) {
     console.error('[startup] reconnectPersistedTerminals failed in error path:', reconnectErr)
     // Why (issue #1158): the await may have run during StrictMode teardown; re-check cancellation so a cancelled pass 1 doesn't stomp pass 2's hydration.

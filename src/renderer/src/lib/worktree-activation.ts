@@ -29,6 +29,7 @@ import { applyWorktreeNavViewEntry } from '@/lib/worktree-nav-view-history-repla
 import { findWorktreeClaimedByNoHost } from '@/lib/worktree-host-qualified-lookup'
 import {
   activationProvidesInitialSurface,
+  activationSeedsUserDefaultSurface,
   type WorktreeActivationOptions,
   type WorktreeActivationSurfaceSelection
 } from './worktree-activation-surface-selection'
@@ -48,23 +49,26 @@ export type ActivateAndRevealResult = {
 function ensureFolderWorkspaceInitialTerminal(
   folderWorkspace: FolderWorkspace,
   startup?: WorktreeStartupPayload,
-  providesInitialSurface?: boolean
+  providesInitialSurface?: boolean,
+  seedUserDefaultSurface?: boolean
 ): string | null {
   if (providesInitialSurface === true && startup === undefined) {
     return null
   }
   const state = useAppStore.getState()
   const workspaceKey = folderWorkspaceKey(folderWorkspace.id)
-  const primaryTabId = ensureWorktreeHasInitialTerminal(
+  return ensureWorktreeHasInitialTerminal(
     state,
     workspaceKey,
     startup,
     undefined,
     undefined,
     undefined,
-    { reseedEmptiedWorkspace: providesInitialSurface !== true }
+    {
+      reseedEmptiedWorkspace: providesInitialSurface !== true,
+      ...(seedUserDefaultSurface ? { seedUserDefaultSurface: true } : {})
+    }
   )
-  return primaryTabId
 }
 
 function canInspectAgentActivationInventory(): boolean {
@@ -129,6 +133,7 @@ export function activateAndRevealFolderWorkspace(
 
   const workspaceKey = folderWorkspaceKey(folderWorkspaceId)
   const providesInitialSurface = activationProvidesInitialSurface(opts)
+  const seedUserDefaultSurface = activationSeedsUserDefaultSurface(opts)
   state.markWorktreeVisited(workspaceKey)
   if (!state.isNavigatingHistory) {
     state.recordWorktreeVisit(workspaceKey)
@@ -145,15 +150,20 @@ export function activateAndRevealFolderWorkspace(
     resumeSleepingAgentSessionsForWorktree(workspaceKey)
   }
   if (shouldGateAgentActivation) {
-    gateAndReseedEmptyWorkspace(
-      workspaceKey,
-      opts?.providesInitialSurface === true,
-      opts?.executionHostId
-    )
+    gateAndReseedEmptyWorkspace(workspaceKey, {
+      callerProvidesSurface: opts?.providesInitialSurface === true,
+      seedUserDefaultSurface,
+      ...(opts?.executionHostId ? { executionHostId: opts.executionHostId } : {})
+    })
   }
   const primaryTabId = shouldGateAgentActivation
     ? null
-    : ensureFolderWorkspaceInitialTerminal(folderWorkspace, opts?.startup, providesInitialSurface)
+    : ensureFolderWorkspaceInitialTerminal(
+        folderWorkspace,
+        opts?.startup,
+        providesInitialSurface,
+        seedUserDefaultSurface
+      )
 
   if (opts?.revealInSidebar !== false) {
     state.revealWorktreeInSidebar(
@@ -191,6 +201,7 @@ export function activateAndRevealWorktree(
     opts?.startup || opts?.setup || opts?.defaultTabs || opts?.issueCommand
   )
   const providesInitialSurface = activationProvidesInitialSurface(opts)
+  const seedUserDefaultSurface = activationSeedsUserDefaultSurface(opts)
   // Why: a plain reselect should still reveal the sidebar row but must not restamp focus recency or wake persistence.
   const isPlainAlreadyActiveTerminal =
     !hasActivationWork &&
@@ -249,11 +260,11 @@ export function activateAndRevealWorktree(
     resumeSleepingAgentSessionsForWorktree(worktreeId)
   }
   if (shouldGateAgentActivation) {
-    gateAndReseedEmptyWorkspace(
-      worktreeId,
-      opts?.providesInitialSurface === true,
-      opts?.executionHostId
-    )
+    gateAndReseedEmptyWorkspace(worktreeId, {
+      callerProvidesSurface: opts?.providesInitialSurface === true,
+      seedUserDefaultSurface,
+      ...(opts?.executionHostId ? { executionHostId: opts.executionHostId } : {})
+    })
   }
 
   // 4. Ensure a focusable surface exists for externally-created worktrees
@@ -272,6 +283,7 @@ export function activateAndRevealWorktree(
             ...(opts?.backendStartupTerminalSpawned ? { backendStartupTerminalSpawned: true } : {}),
             ...(opts?.createNewTerminalForStartup ? { createNewTerminalForStartup: true } : {}),
             ...(providesInitialSurface ? { callerProvidesSurface: true } : {}),
+            ...(seedUserDefaultSurface ? { seedUserDefaultSurface: true } : {}),
             reseedEmptiedWorkspace: !providesInitialSurface
           }
         )

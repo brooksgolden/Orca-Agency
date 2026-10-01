@@ -1,3 +1,4 @@
 #!/usr/bin/env sh
 # Use the repository config so dependency packages cannot override the hook.
-pnpm exec lint-staged --config package.json
+# Bound large stable merges so validation does not exhaust desktop memory.
+pnpm exec lint-staged --config package.json --concurrent 2

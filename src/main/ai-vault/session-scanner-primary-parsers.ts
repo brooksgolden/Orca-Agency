@@ -20,6 +20,7 @@ import {
   createAccumulator,
   finalizeSession,
   sessionIdFromFileName,
+  timestampIso,
   updateLatestLocation,
   updateTimeline
 } from './session-scanner-accumulator'
@@ -38,6 +39,37 @@ type ParserSessionOptions = {
   executionHostPlatform?: NodeJS.Platform | null
 }
 
+const CLAUDE_BACKGROUND_RESUME_RESULT =
+  /^<local-command-stdout>Opening [^\r\n]+, running in the background \(([0-9a-f]{8})\)<\/local-command-stdout>$/
+
+function isClaudeHumanUserContent(content: unknown): boolean {
+  const plain = extractString(content)
+  if (plain) {
+    return !isKnownHarnessInjectedUserTurnText(plain)
+  }
+  if (!Array.isArray(content)) {
+    return false
+  }
+  let hasPrompt = false
+  let firstText: string | null = null
+  for (const item of content) {
+    const block = asRecord(item)
+    const text =
+      typeof item === 'string'
+        ? extractString(item)
+        : block?.type === 'text'
+          ? extractString(block.text)
+          : null
+    if (text) {
+      firstText ??= text
+      hasPrompt = true
+    } else if (block?.type === 'image' || block?.type === 'document') {
+      hasPrompt = true
+    }
+  }
+  return hasPrompt && (!firstText || !isKnownHarnessInjectedUserTurnText(firstText))
+}
+
 // Parse state kept resumable so the scan cache can append newly written
 // transcript lines without re-reading the whole (potentially huge) file.
 export type ClaudeSessionParseState = {
@@ -45,6 +77,8 @@ export type ClaudeSessionParseState = {
   metaTitle: string | null
   generatedTitle: string | null
   firstUserTitle: string | null
+  resumedSessionIdPrefix: string | null
+  lastHumanTurnAt: string | null
 }
 
 export function createClaudeSessionParseState(
@@ -60,7 +94,9 @@ export function createClaudeSessionParseState(
     }),
     metaTitle: null,
     generatedTitle: null,
-    firstUserTitle: null
+    firstUserTitle: null,
+    resumedSessionIdPrefix: null,
+    lastHumanTurnAt: null
   }
 }
 
@@ -74,7 +110,9 @@ export function cloneClaudeSessionParseState(
     },
     metaTitle: state.metaTitle,
     generatedTitle: state.generatedTitle,
-    firstUserTitle: state.firstUserTitle
+    firstUserTitle: state.firstUserTitle,
+    resumedSessionIdPrefix: state.resumedSessionIdPrefix,
+    lastHumanTurnAt: state.lastHumanTurnAt
   }
 }
 
@@ -90,6 +128,15 @@ export function consumeClaudeSessionLine(state: ClaudeSessionParseState, line: s
   }
   updateTimeline(accumulator, extractString(record.timestamp))
   updateLatestLocation(accumulator, record)
+
+  if (record.type === 'system' && record.subtype === 'local_command') {
+    const command = asRecord(record.commandRun)
+    const content = extractString(record.content)
+    if (command?.command === 'resume') {
+      const match = command.args === '' && content?.match(CLAUDE_BACKGROUND_RESUME_RESULT)
+      state.resumedSessionIdPrefix = match && match[1] ? match[1] : null
+    }
+  }
 
   if (record.type === 'custom-title') {
     accumulator.title = normalizeTitleText(extractString(record.customTitle) ?? '')
@@ -136,14 +183,20 @@ export function consumeClaudeSessionLine(state: ClaudeSessionParseState, line: s
 
   if (record.type === 'user') {
     accumulator.messageCount++
+    const content = asRecord(record.message)?.content
     const title = extractMessageText(record.message)
     // Meta prompts (injected context) only seed the last-resort title. Some
     // injected turns (task notifications) carry no isMeta, so also gate on
     // the known-tag classifier — a real prompt pasting a custom `<my-element>`
     // must seed the primary title, not be demoted as machinery.
-    const isMetaUserTurn =
-      record.isMeta === true || (title != null && isKnownHarnessInjectedUserTurnText(title))
-    addPreviewContent(accumulator, 'user', asRecord(record.message)?.content, record.timestamp, {
+    const isMetaUserTurn = record.isMeta === true || !isClaudeHumanUserContent(content)
+    if (!isMetaUserTurn) {
+      const at = timestampIso(record.timestamp)
+      if (at && (!state.lastHumanTurnAt || at > state.lastHumanTurnAt)) {
+        state.lastHumanTurnAt = at
+      }
+    }
+    addPreviewContent(accumulator, 'user', content, record.timestamp, {
       seedFirstUserPrompt: !isMetaUserTurn
     })
     if (title) {
@@ -194,7 +247,16 @@ export async function finalizeClaudeSessionParseState(
       snapshot.accumulator.filePath
     )
   }
-  return finalizeSession(snapshot.accumulator, platform, options)
+  const session = finalizeSession(snapshot.accumulator, platform, options)
+  return session
+    ? {
+        ...session,
+        ...(snapshot.resumedSessionIdPrefix
+          ? { resumedSessionIdPrefix: snapshot.resumedSessionIdPrefix }
+          : {}),
+        ...(snapshot.lastHumanTurnAt ? { lastHumanTurnAt: snapshot.lastHumanTurnAt } : {})
+      }
+    : null
 }
 
 export function createClaudeSessionResumeState(

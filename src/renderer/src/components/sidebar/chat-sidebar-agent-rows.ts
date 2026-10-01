@@ -10,8 +10,9 @@ import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
 import { agentStatusEvidenceObservedAt } from '../../../../shared/agent-status-freshness'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { ChatSidebarResumeLauncher } from '../../../../shared/chat-sidebar-settings'
 import type { Worktree } from '../../../../shared/worktree/types'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import {
   chatFallbackId,
   chatSessionKey,
@@ -22,6 +23,7 @@ import {
 import { chatLiveSession } from './chat-sidebar-session-snapshot'
 import { hasChatConversation } from './chat-sidebar-conversation'
 import { withSleepingChatAgents } from './chat-sidebar-sleeping-agents'
+import { resumedClaudeSession, savedClaudeResume } from './chat-sidebar-claude-resume'
 
 /** When the latest working turn began; heartbeats and session-boundary snapshots never move it. */
 function latestTurnStart(entry: AgentStatusEntry): number {
@@ -50,6 +52,11 @@ function rowTimestamp(agent: DashboardAgentRow, sessionAt: number): number {
   return agent.state === 'working'
     ? agent.entry.stateStartedAt
     : agentStatusEvidenceObservedAt(agent.entry)
+}
+
+function transcriptHumanTurnAt(session: AiVaultSession | null): number {
+  const parsed = Date.parse(session?.lastHumanTurnAt ?? '')
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 export function buildAgentChatRows(args: {
@@ -89,15 +96,55 @@ export function buildAgentChatRows(args: {
   const representedTabIds = new Set<string>()
   for (const agent of agents) {
     const soleChat = chatPanesByTab.get(agent.tab.id) === 1
-    const providerSession = agent.entry.providerSession
+    const resident = residentTabIds.has(agent.tab.id)
+    const hookProviderSession = agent.entry.providerSession
     // Why: the tab-level provider title belongs to one pane, so split siblings must not borrow it.
     const tabSession =
-      !providerSession &&
+      !hookProviderSession &&
       soleChat &&
       (agent.agentType === agent.tab.aiVaultTitle?.agent || agent.agentType === 'unknown')
         ? agent.tab.aiVaultTitle
         : undefined
-    const sessionAgent = providerSession ? agent.agentType : tabSession?.agent
+    const sessionAgent = hookProviderSession ? agent.agentType : tabSession?.agent
+    const reportedSessionId = hookProviderSession?.id ?? tabSession?.sessionId
+    const reportedKey =
+      sessionAgent && reportedSessionId
+        ? chatSessionKey(hostId, sessionAgent, reportedSessionId)
+        : null
+    const launcher = reportedKey ? (args.sessions.get(reportedKey) ?? null) : null
+    const scannedResume = hookProviderSession
+      ? resumedClaudeSession(launcher, args.sessions, hookProviderSession.transcriptPath)
+      : null
+    const rememberedResume =
+      !scannedResume && resident && hookProviderSession?.id
+        ? savedClaudeResume({
+            settings: state.settings?.chatSidebar,
+            sessions: args.sessions,
+            launcher,
+            launcherSessionId: hookProviderSession.id,
+            launcherTranscriptPath: hookProviderSession.transcriptPath,
+            hostId,
+            worktreeId: worktree.id,
+            tabId: agent.tab.id,
+            paneKey: agent.paneKey
+          })
+        : null
+    const resumed = scannedResume ?? rememberedResume?.session ?? null
+    const resumeLauncher: ChatSidebarResumeLauncher | undefined =
+      scannedResume && hookProviderSession?.transcriptPath && launcher?.resumedSessionIdPrefix
+        ? {
+            agent: 'claude',
+            sessionId: hookProviderSession.id,
+            transcriptPath: hookProviderSession.transcriptPath,
+            tabId: agent.tab.id,
+            paneKey: agent.paneKey,
+            targetSessionIdPrefix: launcher.resumedSessionIdPrefix
+          }
+        : rememberedResume?.proof
+    const providerSession =
+      resumed && hookProviderSession
+        ? { ...hookProviderSession, id: resumed.sessionId, transcriptPath: resumed.filePath }
+        : hookProviderSession
     const sessionId = providerSession?.id ?? tabSession?.sessionId
     const structuredTab = unifiedById.get(agent.tab.id)
     const structuredKey =
@@ -110,8 +157,7 @@ export function buildAgentChatRows(args: {
         : null
     const sessionKey =
       sessionAgent && sessionId ? chatSessionKey(hostId, sessionAgent, sessionId) : structuredKey
-    const session = sessionKey ? (args.sessions.get(sessionKey) ?? null) : null
-    const resident = residentTabIds.has(agent.tab.id)
+    const session = resumed ?? (sessionKey ? (args.sessions.get(sessionKey) ?? null) : null)
     if (!resident && !session) {
       continue
     }
@@ -141,7 +187,9 @@ export function buildAgentChatRows(args: {
     const id = sessionKey ?? fallbackIds[0]
     const nameSource =
       providerSession || !sessionId
-        ? agent
+        ? providerSession === hookProviderSession
+          ? agent
+          : { ...agent, entry: { ...agent.entry, providerSession } }
         : {
             ...agent,
             entry: {
@@ -172,13 +220,18 @@ export function buildAgentChatRows(args: {
       tabId: resident ? agent.tab.id : null,
       paneKey: resident ? agent.paneKey : null,
       session,
-      timestamp: rowTimestamp(agent, sessionAt),
-      turnStartedAt: agent.startedAt === 0 ? 0 : latestTurnStart(agent.entry),
-      activityFromState: agent.startedAt === 0,
+      timestamp: resumed ? sessionAt : rowTimestamp(agent, sessionAt),
+      turnStartedAt: resumed
+        ? transcriptHumanTurnAt(resumed)
+        : agent.startedAt === 0
+          ? 0
+          : latestTurnStart(agent.entry),
+      activityFromState: !resumed && agent.startedAt === 0,
       state: agent.state,
       completed: false,
       ownsWorkspaceName: false,
-      liveSession: chatLiveSession(agent.agentType, providerSession, title)
+      liveSession: chatLiveSession(agent.agentType, providerSession, title),
+      ...(resident && resumeLauncher ? { resumeLauncher } : {})
     })
   }
   return { rows, representedTabIds }

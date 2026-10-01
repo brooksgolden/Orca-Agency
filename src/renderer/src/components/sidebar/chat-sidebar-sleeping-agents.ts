@@ -50,6 +50,6 @@ export function withSleepingChatAgents(
       }
     })
   }
-  const savedTabs = new Set(saved.map((row) => row.tab.id))
-  return [...agents.filter((row) => row.startedAt !== 0 || !savedTabs.has(row.tab.id)), ...saved]
+  const savedPanes = new Set(saved.map((row) => row.paneKey))
+  return [...agents.filter((row) => row.startedAt !== 0 || !savedPanes.has(row.paneKey)), ...saved]
 }

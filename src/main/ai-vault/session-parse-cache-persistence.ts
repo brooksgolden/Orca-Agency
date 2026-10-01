@@ -15,7 +15,7 @@ import type { SessionSidecarObservation } from './session-sidecar-stat'
 
 // Bump when the persisted entry layout or cached session semantics change; a
 // mismatched file is discarded whole.
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 // Debounce so back-to-back scans (desktop IPC + runtime RPC) collapse into one write.
 const SAVE_DEBOUNCE_MS = 1_500
 // The payload contains transcript-derived preview text; keep it user-only
@@ -144,7 +144,9 @@ function parsePersistedFile(parsed: unknown): [string, PersistedSessionParseCach
   // Why: application releases that keep this schema promise compatible cached
   // session semantics, so an update does not force a multi-gigabyte cold scan.
   if (
-    (file.schemaVersion !== SCHEMA_VERSION && file.schemaVersion !== 3) ||
+    (file.schemaVersion !== SCHEMA_VERSION &&
+      file.schemaVersion !== 4 &&
+      file.schemaVersion !== 3) ||
     typeof file.appVersion !== 'string'
   ) {
     return null
@@ -159,8 +161,15 @@ function parsePersistedFile(parsed: unknown): [string, PersistedSessionParseCach
       // One malformed entry means the file can't be trusted; discard it whole.
       return null
     }
-    // Why: old Codex caches counted resume settings as activity; other providers are unchanged.
-    if (file.schemaVersion !== 3 || entry[1].session?.agent !== 'codex') {
+    // Why: older small Claude launchers missed `/resume` links; their reparse is cheap.
+    const oldClaudeLauncher =
+      file.schemaVersion !== SCHEMA_VERSION &&
+      entry[1].session?.agent === 'claude' &&
+      entry[1].session.messageCount === 0 &&
+      entry[1].sizeBytes !== null &&
+      entry[1].sizeBytes <= 64 * 1024
+    // Why: old Codex caches counted resume settings as activity.
+    if (!oldClaudeLauncher && (file.schemaVersion !== 3 || entry[1].session?.agent !== 'codex')) {
       entries.push(entry)
     }
   }

@@ -3,6 +3,26 @@ type PreviewBoxFitTerminal = { rows: number; buffer: { active: { cursorY: number
 /** `width` clips tall buffers so the cursor row stays readable; `both` because a claim clamped at the 8-row floor overflows a grid card. */
 export type PreviewBoxFitAxis = 'width' | 'both'
 
+/** Observe both the preview box and its parent so either layout change refits and reclaims the grid. */
+export function observePreviewBoxResize(
+  container: HTMLElement,
+  scheduleFit: () => void,
+  scheduleGridClaim: () => void
+): ResizeObserver | null {
+  const observer =
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => {
+          scheduleFit()
+          scheduleGridClaim()
+        })
+  if (container.parentElement) {
+    observer?.observe(container.parentElement)
+  }
+  observer?.observe(container)
+  return observer
+}
+
 // Frames to keep re-measuring while the layout stays unusable, so a preview
 // whose first fit ran detached still converges without any external trigger.
 const UNMEASURABLE_RETRY_FRAMES = 40

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 function readSource(relativePath: string): string {
-  return readFileSync(join(process.cwd(), relativePath), 'utf8')
+  return readFileSync(join(process.cwd(), relativePath), 'utf8').replace(/\r\n/g, '\n')
 }
 
 const APP_PATH = 'src/renderer/src/App.tsx'
@@ -617,8 +617,8 @@ describe('renderer startup runtime routing', () => {
     expect(checkpointBlock).toContain(
       'const shutdownCheckpointPersist = createShutdownCheckpointPersist({'
     )
-    expect(checkpointBlock).toContain(
-      'buildWorkspaceSessionHostSnapshots(\n          buildWorkspaceSessionPayload(freshState),\n          freshState\n        )'
+    expect(checkpointBlock).toMatch(
+      /buildWorkspaceSessionHostSnapshots\(\s*buildWorkspaceSessionPayload\(freshState\),\s*freshState\s*\)/
     )
     expect(checkpointBlock).toContain('buildUiPatch: () => buildActiveViewUnloadPatch(')
     // Why pin the exact gate: the degrade tiers must arm only for intentional

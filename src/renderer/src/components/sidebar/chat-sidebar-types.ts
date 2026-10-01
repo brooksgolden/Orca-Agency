@@ -5,6 +5,7 @@ import type { AppState } from '@/store/types'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { AiVaultSessionTitle } from '../../../../shared/ai-vault-session-title'
 import type { AgentType } from '../../../../shared/agent-status-types'
+import type { ChatSidebarResumeLauncher } from '../../../../shared/chat-sidebar-settings'
 
 export type ChatSidebarRow = {
   id: string
@@ -33,6 +34,8 @@ export type ChatSidebarRow = {
   agentType?: AgentType
   /** Hook-reported provider session, enough to keep a Claude or Codex chat after its tab closes. */
   liveSession: ChatLiveSession | null
+  /** Exact pane-bound Claude `/resume` link for close paths without a history scan. */
+  resumeLauncher?: ChatSidebarResumeLauncher
   automated?: boolean
 }
 

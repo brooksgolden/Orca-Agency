@@ -1,11 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ITheme } from '@xterm/xterm'
+import { useShallow } from 'zustand/react/shallow'
 import '@xterm/xterm/css/xterm.css'
 import { useSystemPrefersDark } from '@/components/terminal-pane/use-system-prefers-dark'
 import { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal-kitty-keyboard-mode-tracker'
 import { replayPreviewConnectionSnapshot } from './preview-terminal-snapshot-replay'
 import { useEffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/use-effective-mac-option-as-alt'
-import { buildPreviewTerminalOptions } from './preview-terminal-options'
+import {
+  buildPreviewTerminalOptions,
+  previewAdvertisesKittyKeyboard
+} from './preview-terminal-options'
 import {
   usePreviewTerminalAppearanceSync,
   usePreviewTerminalTheme
@@ -14,7 +18,7 @@ import { createPreviewClipboardPaster } from './preview-terminal-paste'
 import { PreviewTerminalSurface } from './PreviewTerminalSurface'
 import { useAppStore } from '@/store'
 import { createPreviewGridClaim } from './preview-grid-claim'
-import { createPreviewBoxFit } from './preview-terminal-box-fit'
+import { createPreviewBoxFit, observePreviewBoxResize } from './preview-terminal-box-fit'
 import { createPreviewInputInstallers } from './preview-terminal-input-installers'
 import type { PreviewPhase } from './preview-terminal-phase-overlay'
 import { cancelPreviewDetach, queuePreviewDetach } from './preview-detach-batch'
@@ -79,7 +83,12 @@ export function AgentTerminalPreview({
   const fontSizeRef = useRef(fontSize)
   const autoFocusRef = useRef(autoFocus)
   const onPtyGoneRef = useRef(onPtyGone)
-  const { terminalTheme, terminalMode } = usePreviewTerminalTheme(settings, systemPrefersDark)
+  const { terminalTheme: composedTheme, terminalMode } = usePreviewTerminalTheme(
+    settings,
+    systemPrefersDark
+  )
+  const retainTheme = useShallow((theme: ITheme | null) => theme)
+  const terminalTheme = retainTheme(composedTheme)
   const [mountSurfaceId] = useState(nextSurfaceId)
   const surfaceIdRef = useRef(mountSurfaceId)
   // A null snapshot means no serializer knows this pty (it died or was never
@@ -104,6 +113,7 @@ export function AgentTerminalPreview({
     onPtyGoneRef.current = onPtyGone
   }, [settings, macOptionAsAlt, terminalInput, ptyId, workspace, fontSize, autoFocus, onPtyGone])
 
+  // Font changes retain the replay-driven fit, grid claim and input-owner reset.
   useEffect(() => {
     setPtyGone(false)
     setPhase('connecting')
@@ -114,9 +124,13 @@ export function AgentTerminalPreview({
     let disposed = false
     let terminal: Terminal | null = null
     let offData: (() => void) | null = null
+    // The advertised mode and the input mirror must come from the same mount snapshot.
+    const mountTerminalInput = terminalInputRef.current
     // Why: mirrors the pane's tracker — the policy needs the flags the TUI
     // negotiated, and this preview parses the same output stream the pane does.
-    const kittyKeyboardModes = new TerminalKittyKeyboardModeTracker()
+    const kittyKeyboardModes = new TerminalKittyKeyboardModeTracker({
+      kittyKeyboard: previewAdvertisesKittyKeyboard(mountTerminalInput)
+    })
     let refreshInFlight = false
     let refreshAgain = false
     let hasAutoFocused = false
@@ -154,17 +168,7 @@ export function AgentTerminalPreview({
     // guard here: the claim already dedupes by target, and gating on the box
     // alone is what left cards at their old columns after a zoom — the box is
     // unchanged, and the font-change claim measured before xterm reflowed.
-    const boxResizeObserver =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(() => {
-            scheduleFit()
-            gridClaim.schedule()
-          })
-    if (container.parentElement) {
-      boxResizeObserver?.observe(container.parentElement)
-    }
-    boxResizeObserver?.observe(container)
+    const boxResizeObserver = observePreviewBoxResize(container, scheduleFit, gridClaim.schedule)
 
     let replayDepth = 0
     let livePending = false
@@ -250,7 +254,7 @@ export function AgentTerminalPreview({
         terminal = new Terminal(
           buildPreviewTerminalOptions({
             settings: settingsRef.current,
-            terminalInput: terminalInputRef.current,
+            terminalInput: mountTerminalInput,
             macOptionIsMeta: macOptionAsAltRef.current === 'true',
             theme: terminalTheme,
             themeMode: terminalMode,

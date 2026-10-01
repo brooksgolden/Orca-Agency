@@ -17,6 +17,8 @@ type PreviewTestTerminal = {
   scrollToTop: Mock
   scrollToBottom: Mock
   selectAll: Mock
+  hasSelection: Mock
+  clearSelection: Mock
   modes: { bracketedPasteMode: boolean }
   selectionText: string
   customKeyHandler: ((event: KeyboardEvent) => boolean) | null
@@ -94,6 +96,10 @@ vi.mock('@xterm/xterm', () => ({
     scrollToBottom = vi.fn()
     selectAll = vi.fn()
     getSelection = vi.fn(() => this.selectionText)
+    hasSelection = vi.fn(() => this.selectionText !== '')
+    clearSelection = vi.fn(() => {
+      this.selectionText = ''
+    })
     attachCustomKeyEventHandler = vi.fn((handler: (event: KeyboardEvent) => boolean) => {
       this.customKeyHandler = handler
     })

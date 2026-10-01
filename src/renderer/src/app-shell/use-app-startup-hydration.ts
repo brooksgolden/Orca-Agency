@@ -19,6 +19,7 @@ import {
 } from '../startup/startup-diagnostics'
 import { recoverFromDegradedStartup } from '../startup/startup-degraded-recovery'
 import { restoreSshConnectionsForStartup } from '../startup/startup-ssh-connection-restore'
+import { listRuntimeSessionHostIdsForStartup } from '../startup/list-runtime-session-host-ids'
 import { collectActiveWorkspaceSshTargetIds } from '../startup/active-workspace-ssh-targets'
 import { publishTerminalViewAttributesAtAppStart } from '../components/terminal-pane/terminal-appearance'
 import { getSystemPrefersDark } from '../lib/terminal-theme'
@@ -26,28 +27,17 @@ import {
   collectTerminalProviderSnapshotPtyIds,
   refreshTerminalProviderSnapshotCapabilities
 } from '../components/terminal/terminal-provider-snapshot-capability'
+import { refreshLocalStartupPtyLiveness } from '../components/terminal/local-startup-pty-liveness'
+import { installLocalStartupPtySpawnGuard } from '../components/terminal/local-startup-pty-spawn-guard'
 import {
   getRepoExecutionHostId,
   isRuntimeOwnedSshTargetId,
-  parseExecutionHostId,
-  toRuntimeExecutionHostId,
-  type ExecutionHostId
+  parseExecutionHostId
 } from '../../../shared/execution-host'
 import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import { restoreLocalStructuredSessionTabsOnce } from '../runtime/local-structured-session-tabs-sync'
 import { ensureLocalRuntimeCapabilities } from '../runtime/local-runtime-capabilities'
-
-async function listRuntimeSessionHostIdsForStartup(): Promise<ExecutionHostId[]> {
-  try {
-    return (await window.api.runtimeEnvironments.list()).map((environment) =>
-      toRuntimeExecutionHostId(environment.id)
-    )
-  } catch (err) {
-    console.warn('Failed to list runtime session hosts for startup:', err)
-    return []
-  }
-}
 
 /**
  * Runs the renderer's one-shot boot chain: settings, persisted UI, the local repo catalog,
@@ -68,6 +58,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
 
   // Fetch initial data + hydrate GitHub cache from disk
   useEffect(() => {
+    const uninstallStartupPtySpawnGuard = installLocalStartupPtySpawnGuard()
     // Why first and ungated: the local capability set is a static fact the main process can answer
     // immediately, but its only other writer is the structured-session-tabs sync, which waits for
     // workspaceSessionReady + terminalStartupRestorationReady + the experimental flag. Every
@@ -269,10 +260,10 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
           await timeRendererStartupStep('recover-legacy-worker-terminals-pre-reconnect', () =>
             window.api.app.recoverLegacyWorkerTerminalsForRendererStartup()
           )
-          await timeRendererStartupStep('terminal-provider-snapshot-capabilities', () => {
-            return refreshTerminalProviderSnapshotCapabilities(
-              collectTerminalProviderSnapshotPtyIds(useAppStore.getState())
-            )
+          await timeRendererStartupStep('terminal-provider-snapshot-capabilities', async () => {
+            const savedPtyIds = collectTerminalProviderSnapshotPtyIds(useAppStore.getState())
+            await refreshTerminalProviderSnapshotCapabilities(savedPtyIds)
+            await refreshLocalStartupPtyLiveness(savedPtyIds)
           })
           reconnectStarted = true
           await timeRendererStartupStep('reconnect-terminals', () =>
@@ -363,6 +354,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
     return () => {
       cancelled = true
       abortController.abort()
+      uninstallStartupPtySpawnGuard()
     }
   }, [actions])
 }

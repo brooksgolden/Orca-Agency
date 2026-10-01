@@ -22,8 +22,20 @@ export type ChatSidebarSessionSnapshot = {
   createdAt: string | null
   updatedAt: string | null
   modifiedAt: string
+  /** Latest real Claude prompt timestamp retained across no-history restarts. */
+  lastHumanTurnAt?: string
   /** Host-built resume command; only remote hosts need it. */
   resumeCommand?: string
+}
+
+/** Provider-reported `/resume` link bound to the terminal pane that issued it. */
+export type ChatSidebarResumeLauncher = {
+  agent: 'claude'
+  sessionId: string
+  transcriptPath: string
+  tabId: string
+  paneKey: string
+  targetSessionIdPrefix: string
 }
 
 export type ChatSidebarSessionEntry = {
@@ -33,6 +45,7 @@ export type ChatSidebarSessionEntry = {
   /** Pins which chat shows its workspace's manual name once sibling chats appear. */
   ownsWorkspaceName?: boolean
   snapshot?: ChatSidebarSessionSnapshot
+  resumeLauncher?: ChatSidebarResumeLauncher
 }
 
 export type ChatSidebarSettings = {

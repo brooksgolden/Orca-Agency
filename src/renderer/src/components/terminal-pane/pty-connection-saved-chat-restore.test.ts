@@ -231,4 +231,110 @@ describe('connectPanePty', () => {
       expect(transport.sendInput).not.toHaveBeenCalled()
     }
   )
+
+  it.each([false, true])(
+    'cold restores a proven Claude background target instead of its launcher in split=%s',
+    async (split) => {
+      const { connectPanePty } = await import('./pty-connection')
+      const transport = createMockTransport('fresh-pty')
+      transportFactoryQueue.push(transport)
+      const launcherId = '8b1a93a0-1576-43df-88ba-5b3e742e8496'
+      const targetId = '170dd324-3d4f-40d8-8e8b-ba261c0ee064'
+      const dir = '/home/ada/.claude/projects/-tmp-wt-1'
+      const launcherPath = `${dir}/${launcherId}.jsonl`
+      const paneKey = `tab-1:${LEAF_1}`
+      mockStoreState.tabsByWorktree['wt-1'] = [
+        {
+          id: 'tab-1',
+          ptyId: null,
+          launchAgent: 'claude',
+          aiVaultTitle: split
+            ? { agent: 'codex', sessionId: 'sibling-session', title: 'Sibling' }
+            : null
+        }
+      ]
+      mockStoreState.ptyIdsByTabId = {}
+      mockStoreState.terminalLayoutsByTabId = split
+        ? {
+            'tab-1': {
+              root: {
+                type: 'split',
+                direction: 'horizontal',
+                first: { type: 'leaf', leafId: LEAF_1 },
+                second: { type: 'leaf', leafId: '22222222-2222-4222-8222-222222222222' }
+              },
+              activeLeafId: LEAF_1,
+              expandedLeafId: null
+            }
+          }
+        : {}
+      mockStoreState.agentStatusByPaneKey[paneKey] = {
+        paneKey,
+        agentType: 'claude',
+        state: 'waiting',
+        prompt: '',
+        updatedAt: 1,
+        stateStartedAt: 1,
+        stateHistory: [],
+        providerSession: { key: 'session_id', id: launcherId, transcriptPath: launcherPath }
+      }
+      if (split) {
+        const siblingPaneKey = 'tab-1:22222222-2222-4222-8222-222222222222'
+        mockStoreState.agentStatusByPaneKey[siblingPaneKey] = {
+          paneKey: siblingPaneKey,
+          tabId: 'tab-1',
+          worktreeId: 'wt-1',
+          agentType: 'codex',
+          state: 'done',
+          prompt: '',
+          updatedAt: 1,
+          stateStartedAt: 1,
+          stateHistory: [],
+          providerSession: { key: 'session_id', id: 'sibling-session' }
+        }
+      }
+      mockStoreState.settings!.chatSidebar = {
+        sessions: {
+          [JSON.stringify(['local', 'claude', targetId])]: {
+            worktreeId: 'wt-1',
+            snapshot: {
+              executionHostId: 'local',
+              agent: 'claude',
+              sessionId: targetId,
+              title: 'Real conversation',
+              cwd: '/tmp/wt-1',
+              filePath: `${dir}/${targetId}.jsonl`,
+              codexHome: null,
+              createdAt: null,
+              updatedAt: null,
+              modifiedAt: '2026-09-26T00:00:00Z'
+            },
+            resumeLauncher: {
+              agent: 'claude',
+              sessionId: launcherId,
+              transcriptPath: launcherPath,
+              tabId: 'tab-1',
+              paneKey,
+              targetSessionIdPrefix: '170dd324'
+            }
+          }
+        }
+      }
+      // SAFETY: These focused fixtures implement the pane, manager, and dependency methods exercised by this restore path.
+      connectPanePty(
+        createPane(1) as never,
+        createManager(split ? 2 : 1) as never,
+        createDeps() as never
+      )
+      await flushAsyncTicks(20)
+      await new Promise((resolve) => setTimeout(resolve, 70))
+      expect(transport.connect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: expect.stringContaining(targetId),
+          resumeProviderSession: { key: 'session_id', id: targetId }
+        })
+      )
+      expect(transport.connect.mock.calls[0][0].command).not.toContain(launcherId)
+    }
+  )
 })

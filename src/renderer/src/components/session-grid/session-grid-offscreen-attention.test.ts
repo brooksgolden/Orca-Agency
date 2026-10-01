@@ -65,6 +65,7 @@ describe('sessionGridItemNeedsAttention', () => {
     ['working', false],
     ['monitoring', false],
     ['done', false],
+    ['failed', false],
     ['interrupted', false]
   ] satisfies [SessionGridAttentionBadge, boolean][])(
     'counts %s as needing you: %s',
