@@ -6,7 +6,6 @@ export type ChatWorkspaceGroup = {
   id: string
   members: ChatSidebarRow[]
   paneSplitId?: string
-  folderGroupId?: string
 }
 
 /** Keep split windows together; do not infer links from shared folders or host-ambiguous IDs. */

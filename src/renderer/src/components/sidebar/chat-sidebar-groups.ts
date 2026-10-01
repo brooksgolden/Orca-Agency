@@ -109,10 +109,8 @@ export function chatSidebarListItems(
       : []
     for (const set of section) {
       const start = items.length
-      for (const [groupIndex, group] of set.groups.entries()) {
+      for (const group of set.groups) {
         const members = group.members
-        const next = set.groups[groupIndex + 1]
-        const showFolder = !group.folderGroupId || next?.folderGroupId !== group.folderGroupId
         members.forEach((row, index) =>
           items.push({
             kind: 'chat',
@@ -120,7 +118,7 @@ export function chatSidebarListItems(
             id: row.id,
             groupId: group.id,
             subTab: index > 0,
-            showFolder: showFolder && index === members.length - 1,
+            showFolder: index === members.length - 1,
             splitId: set.splitId
           })
         )

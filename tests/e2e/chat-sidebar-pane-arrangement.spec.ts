@@ -93,7 +93,7 @@ test('prompted and resumed chats follow tab and pane arrangement', async ({
   await expect(child).not.toHaveAttribute('data-chat-sub-tab', 'true')
   await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(4)
   await expect(orcaPage.locator('[data-chat-sub-tab-elbow]')).toHaveCount(2)
-  await expect(orcaPage.locator('[data-chat-folder]')).toHaveCount(1)
+  await expect(orcaPage.locator('[data-chat-folder]')).toHaveCount(2)
   await expect(rows.last()).toContainText('Short prompt')
   await orcaPage.screenshot({ path: testInfo.outputPath('separate-panes-bracket.png') })
   await orcaPage.evaluate(
@@ -104,6 +104,7 @@ test('prompted and resumed chats follow tab and pane arrangement', async ({
   await expect(child).toHaveAttribute('data-chat-sub-tab', 'true')
   await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(0)
   await expect(orcaPage.locator('[data-chat-sub-tab-elbow]')).toHaveCount(3)
+  await expect(orcaPage.locator('[data-chat-folder]')).toHaveCount(1)
   await expect(main).toBeVisible()
   await orcaPage.screenshot({ path: testInfo.outputPath('shared-pane-elbows.png') })
   await orcaPage.evaluate((tabId) => window.__store!.getState().closeTab(tabId), ids.child)

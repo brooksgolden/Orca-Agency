@@ -62,7 +62,7 @@ describe('chat connectors follow pane layout', () => {
     const split = chats(source)
     expect(split.map((r) => [r.id, r.subTab, r.showFolder])).toEqual([
       ['a', false, false],
-      ['c', true, false],
+      ['c', true, true],
       ['b', false, true]
     ])
     expect(new Set(split.map((r) => r.splitId)).size).toBe(1)
@@ -137,7 +137,7 @@ describe('chat connectors follow pane layout', () => {
     ])
   })
 
-  it('combines workspace brackets with pane brackets and keeps only one footer per workspace', () => {
+  it('combines workspace brackets with pane brackets and keeps one footer per pane', () => {
     const source = state()
     source.layoutByWorktree = { [worktreeId]: layout }
     source.groupsByWorktree[worktreeId].push({
@@ -162,6 +162,6 @@ describe('chat connectors follow pane layout', () => {
     expect(result.map((r) => r.id)).toEqual(['a', 'c', 'b', 'other'])
     expect(result.map((r) => r.subTab)).toEqual([false, true, false, false])
     expect(result.every((r) => r.splitId === 'joined')).toBe(true)
-    expect(result.filter((r) => r.showFolder)).toHaveLength(2)
+    expect(result.filter((r) => r.showFolder).map((r) => r.id)).toEqual(['c', 'b', 'other'])
   })
 })

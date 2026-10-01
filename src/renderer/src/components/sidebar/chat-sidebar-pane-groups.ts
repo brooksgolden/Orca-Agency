@@ -71,8 +71,7 @@ export function chatSidebarPaneGroups(
       .map(([paneId, pane]) => ({
         id: JSON.stringify([group.id, paneId]),
         members: pane.members,
-        paneSplitId: splitId,
-        folderGroupId: group.id
+        paneSplitId: splitId
       }))
   })
 }
