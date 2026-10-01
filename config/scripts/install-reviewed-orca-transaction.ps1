@@ -57,9 +57,9 @@ function Switch-ReviewedAppStage([string] $Stage, [string] $Target, [string] $Ba
     throw 'App backup must be a new sibling directory.'
   }
   # Why: each path always contains a complete app; never overwrite mapped files one by one.
-  [IO.Directory]::Move($Target, $backupPath)
+  Move-ReviewedAppDirectory $Target $backupPath
   if ($OriginalMoved) { $OriginalMoved.Value = $true }
-  try { [IO.Directory]::Move($Stage, $Target) } catch {
+  try { Move-ReviewedAppDirectory $Stage $Target } catch {
     Move-ReviewedAppDirectory $backupPath $Target
     throw
   }

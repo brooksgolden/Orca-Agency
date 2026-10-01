@@ -262,6 +262,34 @@ Test-Expectation (@($result.Warnings | Where-Object { "$_" -like '*Stage cleanup
 Remove-ReviewedAppStage $stageLock.Path $target
 Test-Expectation (-not (Test-Path -LiteralPath $stageLock.Path)) 'the retained stage can be cleaned after its file lock is released'
 
+# 13. Windows can retain a short-lived file lock after the desktop exits.
+Add-Type -TypeDefinition @'
+public static class OrcaFixtureDelayedUnlock {
+  public static void Release(System.IDisposable handle) {
+    System.Threading.ThreadPool.QueueUserWorkItem(_ => {
+      System.Threading.Thread.Sleep(800);
+      handle.Dispose();
+    });
+  }
+}
+'@
+$retryStage = "$target-stage-20260101-000000-013"
+$retryBackup = "$target-backup-20260101-000000-013"
+$retryStageCreated = $false
+New-ReviewedAppStage $package $target $retryStage ([ref]$retryStageCreated)
+New-FixtureFile (Join-Path $retryStage 'retry-proof.txt') 'new staged tree'
+$transientHandle = [IO.File]::Open((Join-Path $target 'resources\app.asar'), 'Open', 'Read', 'None')
+$lockBlockedMove = $false
+$retryOriginalMoved = $false
+try {
+  try { [IO.Directory]::Move($target, $retryBackup) } catch { $lockBlockedMove = $true }
+  Test-Expectation $lockBlockedMove 'the transient-lock fixture actually blocks an immediate directory move'
+  [OrcaFixtureDelayedUnlock]::Release($transientHandle)
+  Switch-ReviewedAppStage $retryStage $target $retryBackup ([ref]$retryOriginalMoved)
+} finally { $transientHandle.Dispose() }
+Test-Expectation ($retryOriginalMoved -and (Test-Path -LiteralPath (Join-Path $target 'retry-proof.txt')) -and
+  (Get-TreeSignature $retryBackup) -eq $appBefore) 'a transient lock is retried, promoting the stage and retaining the complete previous tree'
+
 Write-Host ''
 if ($failures) { throw "$failures installer expectation(s) failed." }
 Write-Host 'All installer backup expectations passed.'
