@@ -1,5 +1,58 @@
 $ErrorActionPreference = 'Stop'
 
+function Get-ReviewedInstallProcesses([string] $Executable) {
+  Get-CimInstance Win32_Process -Filter "Name = 'Orca.exe'" -ErrorAction Stop | Where-Object {
+    [string]::Equals($_.ExecutablePath, $Executable, [StringComparison]::OrdinalIgnoreCase)
+  }
+}
+
+function Test-ReviewedCrashReporter($Record) {
+  return $Record.CommandLine -match '(?:^|\s)--type=crashpad-handler(?:\s|$)'
+}
+
+function Test-ReviewedDesktopAbsent([string] $Executable) {
+  # A leftover crash reporter has no application window and must not prevent recovery.
+  return @(Get-ReviewedInstallProcesses $Executable | Where-Object {
+    -not (Test-ReviewedCrashReporter $_)
+  }).Count -eq 0
+}
+
+function Stop-ReviewedOrphanCrashReporters([string] $Executable, [int] $DesktopId, [object[]] $Captured) {
+  if ($DesktopId -le 0 -or (Get-Process -Id $DesktopId -ErrorAction SilentlyContinue)) { return }
+  $remaining = @(Get-ReviewedInstallProcesses $Executable)
+  if (@($remaining | Where-Object { -not (Test-ReviewedCrashReporter $_) }).Count) { return }
+  foreach ($record in $remaining) {
+    $verified = @($Captured | Where-Object {
+      $_.ProcessId -eq $record.ProcessId -and $_.ParentProcessId -eq $DesktopId -and
+      $record.ParentProcessId -eq $DesktopId -and $_.CreationDate -eq $record.CreationDate -and
+      (Test-ReviewedCrashReporter $_)
+    })
+    if ($verified.Count -ne 1 -or -not $record.CreationDate) { continue }
+    $process = Get-Process -Id $record.ProcessId -ErrorAction SilentlyContinue
+    if (-not $process) { continue }
+    try {
+      # Holding this handle and checking creation time prevents killing a reused PID.
+      $null = $process.Handle
+      $startTicks = $process.StartTime.ToUniversalTime().Ticks
+      if (($startTicks - ($startTicks % 10)) -ne $record.CreationDate.ToUniversalTime().Ticks -or
+        -not [string]::Equals($process.Path, $Executable, [StringComparison]::OrdinalIgnoreCase)) { continue }
+      $process.Kill()
+      Write-Host "Closed orphan crash reporter PID $($record.ProcessId); desktop and terminals were not stopped."
+    } finally { $process.Dispose() }
+  }
+}
+
+function Wait-ReviewedDesktopClosed([string] $Executable, [int] $DesktopId, [object[]] $Captured, [int] $TimeoutSeconds = 90) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    Stop-ReviewedOrphanCrashReporters $Executable $DesktopId $Captured
+    $remaining = @(Get-ReviewedInstallProcesses $Executable)
+    if (-not $remaining.Count) { return }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $deadline)
+  throw "Orca did not close within $TimeoutSeconds seconds; no installed app files were changed."
+}
+
 function Assert-ReviewedDesktopClosed([string] $Executable) {
   $running = @(Get-Process -Name Orca -ErrorAction SilentlyContinue | Where-Object {
     try { [string]::Equals($_.Path, $Executable, [StringComparison]::OrdinalIgnoreCase) } catch { $false }
