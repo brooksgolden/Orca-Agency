@@ -125,6 +125,7 @@ export function resumeSavedChatAtDrop(
         splitDirection: target.splitDirection
       })
     } else {
+      current.activateTab(unified.id, { worktreeId: sourceId })
       placeWorkspace()
     }
     return true

@@ -29,6 +29,7 @@ function makeState() {
     groupsByWorktree: { [chatWorktree.id]: [{ id: 'pane' }], other: [{ id: 'pane' }] },
     workspaceSplitGroups: placeWorkspaceAtEdge([], 'other', chatWorktree.id, 'right', 'split'),
     dropUnifiedTab: vi.fn(),
+    activateTab: vi.fn(),
     placeWorkspaceAtEdge: vi.fn()
   }
 }
@@ -109,6 +110,10 @@ describe('saved chat sidebar drop', () => {
         groupId: 'pane',
         splitDirection: 'right'
       })
+      resumeSavedChatAtDrop(row, { ...target, worktreeId: 'other' }, resume)
+      expect(resume).not.toHaveBeenCalled()
+      expect(state.activateTab).toHaveBeenCalledWith('unified', { worktreeId: chatWorktree.id })
+      expect(state.placeWorkspaceAtEdge).toHaveBeenCalledWith(chatWorktree.id, 'other', 'right')
     }
   )
 
