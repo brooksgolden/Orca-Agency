@@ -47,8 +47,16 @@ async function clickPrintedFileLink(
     x: screen.x + ((center % frame.cols) + 0.5) * (screen.width / frame.cols),
     y: screen.y + (Math.floor(center / frame.cols) + 0.5) * (screen.height / frame.rows)
   }
+  writeFileSync(
+    test.info().outputPath('link-probe.json'),
+    JSON.stringify({ frame, screen, point, visibleCells }, null, 2)
+  )
+  // Why: hidden Electron windows can defer painting; capture a frame before hit testing.
+  await page.screenshot({ path: test.info().outputPath('link-probe.png') })
   await page.mouse.move(point.x, point.y)
-  await page.waitForTimeout(250)
+  await expect(
+    page.locator('.pane-link-tooltip:visible').filter({ hasText: 'linked.md' })
+  ).toBeVisible()
   await page.mouse.click(point.x, point.y)
   const popover = page.locator('[data-terminal-link-action-popover]')
   await expect(popover).toBeVisible()
