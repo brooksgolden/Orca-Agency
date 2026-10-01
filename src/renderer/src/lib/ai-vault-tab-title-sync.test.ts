@@ -12,6 +12,15 @@ import {
 } from './ai-vault-tab-title-batches'
 import { startAiVaultTabTitleSync } from './ai-vault-tab-title-sync'
 import type { AppState } from '@/store/types'
+import { buildChatSidebarRows } from '@/components/sidebar/chat-sidebar-rows'
+import { chatSidebarListItems } from '@/components/sidebar/chat-sidebar-groups'
+import {
+  chatSession,
+  chatState,
+  chatTab,
+  chatWorktree
+} from '@/components/sidebar/chat-sidebar-test-fixtures'
+import { clearTransientTerminalState } from '@/store/slices/terminal-helpers'
 
 function terminalTab(worktreeId: string, aiVaultTitle?: TerminalTab['aiVaultTitle']): TerminalTab {
   return {
@@ -168,6 +177,57 @@ function makeState(args: {
 
 describe('AI Vault tab title sync', () => {
   it.each(['claude', 'codex'] as const)(
+    'keeps an idle %s tab nested after restart before any title lookup finishes',
+    async (agent) => {
+      const store = makeState({
+        agent,
+        executionHostId: 'ssh:dev-box',
+        worktreeId: chatWorktree.id,
+        path: chatWorktree.path
+      })
+      let runScheduled: (() => void) | undefined
+      const stop = startAiVaultTabTitleSync({
+        ...store,
+        scheduleReconcile: (callback) => {
+          runScheduled = callback
+          return () => {}
+        },
+        resolveSessionTitles: async () => ({ titles: [] })
+      })
+      try {
+        const tab = store.getState().tabsByWorktree[chatWorktree.id][0]
+        expect(tab.aiVaultTitle).toEqual({ agent, sessionId: `${agent}-session`, title: '' })
+        const state = chatState({
+          tabsByWorktree: {
+            [chatWorktree.id]: [
+              chatTab('main', { createdAt: 0 }),
+              clearTransientTerminalState(JSON.parse(JSON.stringify(tab)), 1)
+            ]
+          }
+        })
+        state.repos[0].executionHostId = 'ssh:dev-box'
+        state.settings!.chatSidebar = { historySince: 0 }
+        const session = chatSession(`${agent}-session`, { agent, executionHostId: 'ssh:dev-box' })
+        const rows = buildChatSidebarRows(state, [session], 10_000)
+        expect(rows.find((row) => row.session?.sessionId === session.sessionId)).toMatchObject({
+          tabId: tab.id,
+          state: 'idle',
+          timestamp: 2_000,
+          agentType: agent
+        })
+        const items = chatSidebarListItems(rows, state, '').filter((item) => item.kind === 'chat')
+        expect(items.map((item) => item.subTab)).toEqual([false, true])
+        // A provider id with no conversation must still stay out of the list.
+        expect(buildChatSidebarRows(state, [], 10_000)).toHaveLength(1)
+        runScheduled?.()
+        await Promise.resolve()
+      } finally {
+        stop()
+      }
+    }
+  )
+
+  it.each(['claude', 'codex'] as const)(
     'projects the canonical %s AI Vault session title',
     async (agent) => {
       const store = makeState({
@@ -229,7 +289,9 @@ describe('AI Vault tab title sync', () => {
     })
 
     await vi.waitFor(() =>
-      expect(store.getState().tabsByWorktree['worktree-1'][0].aiVaultTitle).toBeTruthy()
+      expect(store.getState().tabsByWorktree['worktree-1'][0].aiVaultTitle?.title).toBe(
+        'Stable conversation'
+      )
     )
     store.removeSleepingRecord()
     const restored = store.getState().tabsByWorktree['worktree-1'][0] as TerminalTab
@@ -362,7 +424,11 @@ describe('AI Vault tab title sync', () => {
     store.setProviderSessionId('codex-session-2')
 
     await vi.waitFor(() => expect(resolveSessionTitles).toHaveBeenCalledTimes(2))
-    expect(store.getState().tabsByWorktree['worktree-1'][0].aiVaultTitle).toBeNull()
+    expect(store.getState().tabsByWorktree['worktree-1'][0].aiVaultTitle).toEqual({
+      agent: 'codex',
+      sessionId: 'codex-session-2',
+      title: ''
+    })
     stop()
   })
 

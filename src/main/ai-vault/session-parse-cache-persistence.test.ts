@@ -265,6 +265,28 @@ describe('session parse cache persistence', () => {
     expect(stats.reused).toBe(0)
   })
 
+  it('invalidates old Codex activity caches while keeping Claude caches reusable', async () => {
+    const root = await makeTempDir()
+    const cacheFile = join(root, 'session-parse-cache.json')
+    initSessionParseCachePersistence({ filePath: cacheFile, appVersion: APP_VERSION })
+    const transcript = await writeTranscript(root)
+    await parseAndPersist(transcript)
+    const persisted = JSON.parse(await readFile(cacheFile, 'utf-8'))
+    const codexPath = join(root, 'codex.jsonl')
+    const cached = persisted.entries[0][1]
+    persisted.schemaVersion = 3
+    persisted.entries.push([
+      codexPath,
+      { ...cached, session: { ...cached.session, agent: 'codex' } }
+    ])
+    await writeFile(cacheFile, JSON.stringify(persisted))
+
+    simulateRestart(cacheFile)
+    await ensureSessionParseCacheLoaded()
+    expect(getSessionParseCacheEntry(codexPath)).toBeUndefined()
+    expect((await coldParseStats(transcript)).reused).toBe(1)
+  })
+
   it('reuses a schema-compatible cache written by a different app version', async () => {
     const root = await makeTempDir()
     const cacheFile = join(root, 'session-parse-cache.json')

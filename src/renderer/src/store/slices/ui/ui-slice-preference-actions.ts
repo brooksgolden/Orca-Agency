@@ -46,8 +46,9 @@ export function createUiPreferenceActions(set: UISliceSet, get: UISliceGet): Par
     groupBy: 'repo',
     // Why: group keys are mode-specific, so clear collapsed state on mode switch — stale keys are meaningless and accumulate.
     setGroupBy: (g) => {
-      window.api.ui.set({ groupBy: g, collapsedGroups: [] }).catch(console.error)
-      set({ groupBy: g, collapsedGroups: new Set<string>() })
+      const collapsedGroups = [...get().collapsedGroups].filter((key) => key.startsWith('chat:'))
+      window.api.ui.set({ groupBy: g, collapsedGroups }).catch(console.error)
+      set({ groupBy: g, collapsedGroups: new Set(collapsedGroups) })
     },
 
     sortBy: 'recent',

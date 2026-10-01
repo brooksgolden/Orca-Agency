@@ -21,6 +21,7 @@ import {
 } from './chat-sidebar-types'
 import { chatLiveSession } from './chat-sidebar-session-snapshot'
 import { hasChatConversation } from './chat-sidebar-conversation'
+import { withSleepingChatAgents } from './chat-sidebar-sleeping-agents'
 
 /** When the latest working turn began; heartbeats and session-boundary snapshots never move it. */
 function latestTurnStart(entry: AgentStatusEntry): number {
@@ -65,17 +66,21 @@ export function buildAgentChatRows(args: {
     (state.unifiedTabsByWorktree[worktree.id] ?? []).map((tab) => [tab.id, tab])
   )
   const residentTabIds = new Set([...tabs.map((tab) => tab.id), ...unifiedById.keys()])
-  const agents = buildWorktreeAgentRows({
-    tabs,
-    entries: selectLiveAgentStatusEntriesForWorktree(state, worktree.id),
-    retained: selectRetainedAgentEntriesForWorktree(state, worktree.id),
-    runtimePaneTitlesByTabId: state.runtimePaneTitlesByTabId,
-    terminalLayoutsByTabId: state.terminalLayoutsByTabId,
-    ptyIdsByTabId: state.ptyIdsByTabId,
-    foregroundAgentsByPaneKey: state.paneForegroundAgentByPaneKey,
-    runtimeAgentOrchestrationByPaneKey: state.runtimeAgentOrchestrationByPaneKey,
-    now: args.now
-  }).filter((agent) => agent.rowSource !== 'subagent')
+  const agents = withSleepingChatAgents(
+    buildWorktreeAgentRows({
+      tabs,
+      entries: selectLiveAgentStatusEntriesForWorktree(state, worktree.id),
+      retained: selectRetainedAgentEntriesForWorktree(state, worktree.id),
+      runtimePaneTitlesByTabId: state.runtimePaneTitlesByTabId,
+      terminalLayoutsByTabId: state.terminalLayoutsByTabId,
+      ptyIdsByTabId: state.ptyIdsByTabId,
+      foregroundAgentsByPaneKey: state.paneForegroundAgentByPaneKey,
+      runtimeAgentOrchestrationByPaneKey: state.runtimeAgentOrchestrationByPaneKey,
+      now: args.now
+    }).filter((agent) => agent.rowSource !== 'subagent'),
+    state,
+    worktree.id
+  )
   const chatPanesByTab = new Map<string, number>()
   for (const agent of agents) {
     chatPanesByTab.set(agent.tab.id, (chatPanesByTab.get(agent.tab.id) ?? 0) + 1)
@@ -110,7 +115,6 @@ export function buildAgentChatRows(args: {
     if (!resident && !session) {
       continue
     }
-    representedTabIds.add(agent.tab.id)
     const sleeping = state.sleepingAgentSessionsByPaneKey[agent.paneKey]
     if (
       !hasChatConversation({
@@ -128,6 +132,7 @@ export function buildAgentChatRows(args: {
     ) {
       continue
     }
+    representedTabIds.add(agent.tab.id)
     const fallbackIds = [
       ...(structuredKey ? [structuredKey] : []),
       ...(soleChat ? [chatFallbackId(hostId, agent.tab.id)] : []),
@@ -158,6 +163,7 @@ export function buildAgentChatRows(args: {
       id,
       aliases: fallbackIds.filter((alias) => alias !== id),
       sessionKey,
+      agentType: sessionAgent ?? agent.agentType,
       title,
       manualTitle: agent.tab.customTitle?.trim() || null,
       folder: args.folder,

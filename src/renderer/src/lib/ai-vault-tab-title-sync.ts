@@ -73,17 +73,32 @@ export function startAiVaultTabTitleSync(dependencies: SyncDependencies): () => 
   let stopped = false
   let writing = false
 
-  const writeTitle = (request: AiVaultTitleRequest, title: string | null): void => {
+  const writeTitle = (request: AiVaultTitleRequest, title: string): void => {
     writing = true
     try {
-      dependencies
-        .getState()
-        .setAiVaultTabTitle(
-          request.tabId,
-          title ? { agent: request.agent, sessionId: request.providerSession.id, title } : null
-        )
+      dependencies.getState().setAiVaultTabTitle(request.tabId, {
+        agent: request.agent,
+        sessionId: request.providerSession.id,
+        title
+      })
     } finally {
       writing = false
+    }
+  }
+
+  const rememberIdentities = (): void => {
+    const state = dependencies.getState()
+    const tabs = new Map(
+      Object.values(state.tabsByWorktree)
+        .flat()
+        .map((tab) => [tab.id, tab])
+    )
+    for (const request of collectAiVaultTitleRequests(state)) {
+      const stored = tabs.get(request.tabId)?.aiVaultTitle
+      if (stored?.agent !== request.agent || stored.sessionId !== request.providerSession.id) {
+        // Why: an idle restart must retain tab ownership even when title lookup is delayed or fails.
+        writeTitle(request, '')
+      }
     }
   }
 
@@ -151,9 +166,6 @@ export function startAiVaultTabTitleSync(dependencies: SyncDependencies): () => 
       const stored = tabsById.get(request.tabId)?.aiVaultTitle
       const identityMatches =
         stored?.agent === request.agent && stored.sessionId === request.providerSession.id
-      if (stored && !identityMatches) {
-        writeTitle(request, null)
-      }
       return request.refresh || !identityMatches || !stored?.title.trim()
     })
 
@@ -189,9 +201,11 @@ export function startAiVaultTabTitleSync(dependencies: SyncDependencies): () => 
 
   const unsubscribe = dependencies.subscribe((state, previous) => {
     if (!writing && aiVaultTitleSyncInputsChanged(state, previous)) {
+      rememberIdentities()
       schedule()
     }
   })
+  rememberIdentities()
   schedule()
 
   return () => {

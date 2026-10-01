@@ -20,6 +20,8 @@ import { setChatCompleted } from './chat-sidebar-preferences'
 import { selectChatTabInWorkspace } from './chat-sidebar-selection'
 import type { ChatFolderDestination } from './chat-folder-destinations'
 import { clearAiVaultSessionDragData } from '@/lib/ai-vault-session-drag'
+import { AgentIcon } from '@/lib/agent-catalog'
+import { agentTypeToIconAgent, formatAgentTypeLabel } from '@/lib/agent-status'
 
 export const ChatSidebarRow = memo(function ChatSidebarRow({
   row,
@@ -56,13 +58,15 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
   onChangeFolder: (row: Row, folder: ChatFolderDestination) => void
   onNewFolder: (row: Row) => void
 }) {
+  const agent = row.agentType ?? row.session?.agent ?? row.liveSession?.agent
+  const agentLabel = agent ? formatAgentTypeLabel(agent) : 'Unknown agent'
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           role="option"
           aria-selected={selected}
-          aria-label={`${row.title}, ${row.folder}${splitId ? ', shares a split window' : ''}`}
+          aria-label={`${row.title}, ${agentLabel}, ${row.folder}${splitId ? ', shares a split window' : ''}`}
           tabIndex={tabStop ? 0 : -1}
           data-current={selected ? 'true' : undefined}
           data-chat-sidebar-id={row.id}
@@ -138,6 +142,14 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
           <div className="min-w-0 flex-1">
             <div className="flex h-5 min-w-0 items-center gap-1 leading-4">
               <span
+                className="flex shrink-0 items-center"
+                data-chat-agent={agent ?? 'unknown'}
+                title={agentLabel}
+                aria-hidden="true"
+              >
+                <AgentIcon agent={agentTypeToIconAgent(agent)} size={12} />
+              </span>
+              <span
                 className={cn('min-w-0 flex-1 truncate', subTab ? 'text-[11px]' : 'text-xs')}
                 data-chat-title=""
                 title={row.title}
@@ -156,7 +168,7 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
               </span>
             </div>
             {showFolder ? (
-              <div className="absolute left-8 right-1 top-[18px] flex min-w-0 items-center gap-2 text-[11px] leading-3 text-muted-foreground">
+              <div className="absolute left-12 right-1 top-[18px] flex min-w-0 items-center gap-2 text-[11px] leading-3 text-muted-foreground">
                 <span
                   data-chat-folder=""
                   className="min-w-0 flex-1 truncate"

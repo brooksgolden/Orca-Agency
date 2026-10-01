@@ -133,9 +133,13 @@ function consumeCodexRecordLine(state: CodexSessionParseState, line: string): vo
   }
   const { accumulator } = state
 
+  const payload = asRecord(record.payload)
+  // Why: Codex appends this when reopening an idle chat, without starting a turn.
+  if (record.type === 'event_msg' && payload?.type === 'thread_settings_applied') {
+    return
+  }
   updateTimeline(accumulator, extractString(record.timestamp))
 
-  const payload = asRecord(record.payload)
   if (record.type === 'session_meta' && payload) {
     if (isCodexWorkerSession(payload)) {
       // Why: Codex writes internal worker/sub-agent transcripts into the same
@@ -161,10 +165,7 @@ function consumeCodexRecordLine(state: CodexSessionParseState, line: string): vo
 
   if (record.type === 'turn_context' && payload) {
     accumulator.cwd = extractString(payload.cwd) ?? accumulator.cwd
-    const model = extractModel(payload)
-    if (model) {
-      accumulator.model = model
-    }
+    accumulator.model = extractModel(payload) ?? accumulator.model
     return
   }
 

@@ -5,7 +5,7 @@ import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
 import { chatSidebarPaneGroups, type ChatPaneLayout } from './chat-sidebar-pane-groups'
 
 export type ChatSidebarListItem =
-  | { kind: 'heading'; label: string; id: string }
+  | { kind: 'heading'; label: string; id: string; collapsed: boolean }
   | {
       kind: 'chat'
       row: ChatSidebarRow
@@ -27,7 +27,8 @@ export function chatSidebarListItems(
   > &
     ChatPaneLayout,
   query: string,
-  splits: readonly WorkspaceSplitGroup[] = []
+  splits: readonly WorkspaceSplitGroup[] = [],
+  collapsedGroups?: ReadonlySet<string>
 ): ChatSidebarListItem[] {
   const settings = state.settings?.chatSidebar
   const groupBy = settings?.groupBy ?? 'status'
@@ -98,15 +99,21 @@ export function chatSidebarListItems(
     if (!section?.length) {
       return []
     }
+    const headingId = `chat:${groupBy}:${key}`
+    const collapsed = collapsedGroups?.has(headingId) ?? false
     const items: ChatSidebarListItem[] = key
       ? [
           {
             kind: 'heading',
-            id: `heading:${key}`,
+            id: headingId,
+            collapsed,
             label: `${key} (${section.reduce((sum, set) => sum + set.groups.reduce((count, group) => count + group.members.length, 0), 0)})`
           }
         ]
       : []
+    if (collapsed && key) {
+      return items
+    }
     for (const set of section) {
       const start = items.length
       for (const group of set.groups) {

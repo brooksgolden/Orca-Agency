@@ -4,6 +4,7 @@ import type { Worktree } from '../../../../shared/worktree/types'
 import type { AppState } from '@/store/types'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { AiVaultSessionTitle } from '../../../../shared/ai-vault-session-title'
+import type { AgentType } from '../../../../shared/agent-status-types'
 
 export type ChatSidebarRow = {
   id: string
@@ -29,6 +30,7 @@ export type ChatSidebarRow = {
   /** Shows its workspace's manual name; persisted so the name stays put when siblings appear. */
   ownsWorkspaceName: boolean
   sessionKey: string | null
+  agentType?: AgentType
   /** Hook-reported provider session, enough to keep a Claude or Codex chat after its tab closes. */
   liveSession: ChatLiveSession | null
   automated?: boolean

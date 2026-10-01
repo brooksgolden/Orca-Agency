@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useShallow } from 'zustand/react/shallow'
 import { toast } from 'sonner'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +39,8 @@ const NAVIGATION_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Home', 'End'])
 export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const { rows, state, history } = useChatSidebarData()
   const splits = useAppStore((s) => s.workspaceSplitGroups)
+  const collapsedGroups = useAppStore((s) => s.collapsedGroups)
+  const toggleCollapsedGroup = useAppStore((s) => s.toggleCollapsedGroup)
   const panes = useAppStore(
     useShallow((s) => ({
       groupsByWorktree: s.groupsByWorktree,
@@ -115,8 +118,8 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     setName(row.title)
   }, [])
   const items = useMemo(
-    () => chatSidebarListItems(rows, { ...state, ...panes }, query, splits),
-    [rows, state, panes, query, splits]
+    () => chatSidebarListItems(rows, { ...state, ...panes }, query, splits, collapsedGroups),
+    [rows, state, panes, query, splits, collapsedGroups]
   )
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()
@@ -216,12 +219,20 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 {entry.kind === 'heading' ? (
-                  <div
-                    role="presentation"
-                    className="flex h-7 items-center px-1 text-xs font-medium text-muted-foreground"
+                  <button
+                    type="button"
+                    aria-expanded={!entry.collapsed}
+                    data-chat-section={entry.id}
+                    className="flex h-7 w-full items-center justify-between rounded-sm px-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
+                    onClick={() => toggleCollapsedGroup(entry.id)}
                   >
-                    {entry.label}
-                  </div>
+                    <span>{entry.label}</span>
+                    {entry.collapsed ? (
+                      <ChevronRight className="size-3" aria-hidden="true" />
+                    ) : (
+                      <ChevronDown className="size-3" aria-hidden="true" />
+                    )}
+                  </button>
                 ) : (
                   <ChatSidebarRow
                     row={entry.row}

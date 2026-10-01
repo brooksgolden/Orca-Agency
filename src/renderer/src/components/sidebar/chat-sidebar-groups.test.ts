@@ -5,6 +5,28 @@ import { chatRow, chatState, chatTab, chatWorktree } from './chat-sidebar-test-f
 import { placeWorkspaceAtEdge, removeWorkspaceFromSplit } from '@/lib/workspace-split-layout'
 
 describe('workspace chat groups', () => {
+  it('collapses statuses independently without losing their counts or nested layout', () => {
+    const source = chatState({
+      tabsByWorktree: { [chatWorktree.id]: [chatTab('a'), chatTab('b')] }
+    })
+    const rows = [
+      chatRow({ id: 'a', tabId: 'a' }),
+      chatRow({ id: 'b', tabId: 'b' }),
+      chatRow({ id: 'closed', tabId: null, completed: true })
+    ]
+    const items = chatSidebarListItems(rows, source, '', [], new Set(['chat:status:In progress']))
+    expect(items.filter((item) => item.kind === 'heading')).toEqual([
+      { kind: 'heading', id: 'chat:status:In progress', label: 'In progress (2)', collapsed: true },
+      { kind: 'heading', id: 'chat:status:Done', label: 'Done (1)', collapsed: false }
+    ])
+    expect(items.filter((item) => item.kind === 'chat').map((item) => item.id)).toEqual(['closed'])
+    const reopened = chatSidebarListItems(rows, source, '', [], new Set(['chat:status:Done']))
+    expect(reopened.filter((item) => item.kind === 'chat').map((item) => item.subTab)).toEqual([
+      false,
+      true
+    ])
+  })
+
   it('keeps restored idle tabs nested before any provider status or history scan arrives', () => {
     const source = chatState({
       tabsByWorktree: { [chatWorktree.id]: [chatTab('a'), chatTab('b'), chatTab('c')] }

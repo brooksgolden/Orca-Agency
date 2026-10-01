@@ -15,7 +15,7 @@ import type { SessionSidecarObservation } from './session-sidecar-stat'
 
 // Bump when the persisted entry layout or cached session semantics change; a
 // mismatched file is discarded whole.
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 // Debounce so back-to-back scans (desktop IPC + runtime RPC) collapse into one write.
 const SAVE_DEBOUNCE_MS = 1_500
 // The payload contains transcript-derived preview text; keep it user-only
@@ -143,7 +143,10 @@ function parsePersistedFile(parsed: unknown): [string, PersistedSessionParseCach
   const file = parsed as Record<string, unknown>
   // Why: application releases that keep this schema promise compatible cached
   // session semantics, so an update does not force a multi-gigabyte cold scan.
-  if (file.schemaVersion !== SCHEMA_VERSION || typeof file.appVersion !== 'string') {
+  if (
+    (file.schemaVersion !== SCHEMA_VERSION && file.schemaVersion !== 3) ||
+    typeof file.appVersion !== 'string'
+  ) {
     return null
   }
   if (!Array.isArray(file.entries)) {
@@ -156,7 +159,10 @@ function parsePersistedFile(parsed: unknown): [string, PersistedSessionParseCach
       // One malformed entry means the file can't be trusted; discard it whole.
       return null
     }
-    entries.push(entry)
+    // Why: old Codex caches counted resume settings as activity; other providers are unchanged.
+    if (file.schemaVersion !== 3 || entry[1].session?.agent !== 'codex') {
+      entries.push(entry)
+    }
   }
   return entries
 }

@@ -17,6 +17,7 @@ const CODEX_PAYLOAD_TYPE_PATTERN = /^\{"type":"([^"]+)"/
 const PARSED_RECORD_TYPES = new Set(['session_meta', 'turn_context'])
 const PARSED_RESPONSE_ITEM_TYPES = new Set(['message'])
 const PARSED_EVENT_TYPES = new Set([
+  'thread_settings_applied',
   'item_completed',
   'user_message',
   'agent_message',
