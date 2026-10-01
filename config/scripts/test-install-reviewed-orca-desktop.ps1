@@ -16,7 +16,7 @@ function New-Record([int] $Id, [int] $Parent, [string] $Command = '--type=crashp
   return [pscustomobject]@{ ProcessId=$Id; ParentProcessId=$Parent; CommandLine=$Command; ExecutablePath=$Path; CreationDate=$stamp }
 }
 function New-Handle([int] $Id, [string] $Path = $exe) {
-  $handle = [pscustomobject]@{ Id=$Id; Path=$Path; StartTime=$stamp; Handle=100 }
+  $handle = [pscustomobject]@{ Id=$Id; Path=$Path; StartTime=$stamp; Handle=100; HasExited=$false }
   $handle | Add-Member ScriptMethod Kill { $script:killed += $this.Id }
   $handle | Add-Member ScriptMethod Dispose {}
   return $handle
@@ -46,6 +46,12 @@ Reset-Fixture
 $script:handles[10] = New-Handle 10
 Stop-ReviewedOrphanCrashReporters $exe 10 $captured
 Assert-Check ($script:killed.Count -eq 0) 'live original desktop protects its reporter'
+
+Reset-Fixture
+$script:handles[10] = New-Handle 10
+$script:handles[10].HasExited = $true
+Stop-ReviewedOrphanCrashReporters $exe 10 $captured
+Assert-Check ($script:killed -contains 20) 'exited desktop retained by a process handle does not block orphan cleanup'
 
 Reset-Fixture
 $script:records += New-Record 30 5 'Orca.exe'

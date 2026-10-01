@@ -18,7 +18,12 @@ function Test-ReviewedDesktopAbsent([string] $Executable) {
 }
 
 function Stop-ReviewedOrphanCrashReporters([string] $Executable, [int] $DesktopId, [object[]] $Captured) {
-  if ($DesktopId -le 0 -or (Get-Process -Id $DesktopId -ErrorAction SilentlyContinue)) { return }
+  if ($DesktopId -le 0) { return }
+  $desktopProcess = Get-Process -Id $DesktopId -ErrorAction SilentlyContinue
+  if ($desktopProcess) {
+    # Windows can enumerate an exited process until its last retained handle is released.
+    try { if (-not $desktopProcess.HasExited) { return } } finally { $desktopProcess.Dispose() }
+  }
   $remaining = @(Get-ReviewedInstallProcesses $Executable)
   if (@($remaining | Where-Object { -not (Test-ReviewedCrashReporter $_) }).Count) { return }
   foreach ($record in $remaining) {
