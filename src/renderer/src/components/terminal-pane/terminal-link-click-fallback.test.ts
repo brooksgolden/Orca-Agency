@@ -5,6 +5,8 @@ import {
   openFilePathLinkAtBufferPosition
 } from './terminal-link-handlers'
 import { installHttpLinkClickFallback } from './terminal-url-link-hit-testing'
+import { activateAndRevealWorktree } from '@/lib/worktree-activation'
+import { writeTerminalPathExistsCache } from './terminal-path-exists-cache'
 import { createTerminalLinkTestDoubles } from './terminal-link-handlers-test-fixtures'
 import {
   getRegisteredBubbleMouseUpHandler,
@@ -54,6 +56,116 @@ vi.mock('@/lib/connection-context', () => ({
 installTerminalLinkTestEnvironment(doubles)
 
 describe('createFilePathLinkProvider range bounds', () => {
+  const relativeFile = 'docs/agent/linked.md'
+  const directPath = `/workspace/client/${relativeFile}`
+  const inferredPath = `/app-code/${relativeFile}`
+  const relativeDeps = (pathExistsCache: Map<string, boolean>) => ({
+    startupCwd: '/workspace/client',
+    worktreeId: 'wt-1',
+    worktreePath: '/workspace/client',
+    runtimeEnvironmentId: null,
+    pathExistsCache
+  })
+  const clickRelative = (anchors: string[], cache: Map<string, boolean>): boolean =>
+    openFilePathLinkAtBufferPosition(
+      makeBuffer([
+        ...anchors.map((anchor) => makeBufferLine(anchor)),
+        makeBufferLine(`See ${relativeFile}`)
+      ]),
+      { x: 10, y: anchors.length + 1 },
+      80,
+      relativeDeps(cache)
+    )
+  const recentlyProbed = (entries: [string, boolean][]): Map<string, boolean> => {
+    const cache = new Map<string, boolean>()
+    for (const [key, exists] of entries) {
+      writeTerminalPathExistsCache(cache, key, exists)
+    }
+    return cache
+  }
+
+  it('opens the one fully verified relative target on a direct modifier-click fallback', async () => {
+    setPlatform('Macintosh')
+    const cache = recentlyProbed([
+      [`active\0${directPath}`, false],
+      [`active\0${inferredPath}`, true]
+    ])
+    expect(clickRelative([`Wrote ${inferredPath}`], cache)).toBe(true)
+    await flushAsyncWork()
+    expect(openFileMock).toHaveBeenCalledWith(expect.objectContaining({ filePath: inferredPath }), {
+      forceContentReload: true
+    })
+  })
+
+  it('does not choose between two verified relative targets', () => {
+    const other = `/other-app/${relativeFile}`
+    const cache = recentlyProbed([
+      [`active\0${directPath}`, false],
+      [`active\0${inferredPath}`, true],
+      [`active\0${other}`, true]
+    ])
+    expect(clickRelative([`Wrote ${inferredPath}`, `Wrote ${other}`], cache)).toBe(false)
+    expect(openFileMock).not.toHaveBeenCalled()
+  })
+
+  it('waits for a competing contextual target to finish probing', () => {
+    const other = `/other-app/${relativeFile}`
+    const cache = recentlyProbed([
+      [`active\0${directPath}`, false],
+      [`active\0${inferredPath}`, true],
+      [`active\0${other}`, true]
+    ])
+    cache.delete(`active\0${other}`)
+    expect(clickRelative([`Wrote ${inferredPath}`, `Wrote ${other}`], cache)).toBe(false)
+    expect(openFileMock).not.toHaveBeenCalled()
+  })
+
+  it('does not infer from an unverified old cache entry', () => {
+    const cache = new Map([
+      [`active\0${directPath}`, false],
+      [`active\0${inferredPath}`, true]
+    ])
+    expect(clickRelative([`Wrote ${inferredPath}`], cache)).toBe(false)
+    expect(openFileMock).not.toHaveBeenCalled()
+  })
+
+  it('does not let an old missing anchor hide a competing target', () => {
+    const other = `/other-app/${relativeFile}`
+    const cache = recentlyProbed([
+      [`active\0${directPath}`, false],
+      [`active\0${inferredPath}`, true]
+    ])
+    cache.set(`active\0${other}`, false)
+    expect(clickRelative([`Wrote ${inferredPath}`, `Wrote ${other}`], cache)).toBe(false)
+    expect(openFileMock).not.toHaveBeenCalled()
+  })
+
+  it('prefers an existing pane-cwd file over an inferred target', async () => {
+    setPlatform('Macintosh')
+    const cache = recentlyProbed([
+      [`active\0${directPath}`, true],
+      [`active\0${inferredPath}`, true]
+    ])
+    expect(clickRelative([`Wrote ${inferredPath}`], cache)).toBe(true)
+    await flushAsyncWork()
+    expect(openFileMock).toHaveBeenCalledWith(expect.objectContaining({ filePath: directPath }), {
+      forceContentReload: true
+    })
+  })
+
+  it('keeps a known workspace root above an inferred relative file', async () => {
+    setPlatform('Macintosh')
+    storeState.worktreesByRepo = { repo: [{ id: 'wt-root', path: directPath }] }
+    const cache = recentlyProbed([
+      [`active\0${directPath}`, false],
+      [`active\0${inferredPath}`, true]
+    ])
+    expect(clickRelative([`Wrote ${inferredPath}`], cache)).toBe(true)
+    await flushAsyncWork()
+    expect(activateAndRevealWorktree).toHaveBeenCalledWith('wt-root')
+    expect(openFileMock).not.toHaveBeenCalled()
+  })
+
   it('opens a single-row file path from a direct modifier-click fallback', async () => {
     setPlatform('Macintosh')
     const pathExists = createDeferred<boolean>()

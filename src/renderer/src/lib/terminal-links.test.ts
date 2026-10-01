@@ -39,6 +39,29 @@ describe('terminal path helpers', () => {
     expect(toWorktreeRelativePath('C:\\repo\\src\\file.ts', 'C:\\repo')).toBe('src/file.ts')
   })
 
+  it('resolves parent paths from the cwd on Windows and POSIX without climbing above the root', () => {
+    expect(
+      resolveTerminalFileLinkText(
+        '..\\..\\app-code\\docs\\agent\\README.md',
+        'C:\\Users\\alex\\dev\\clients\\Client-One'
+      )?.absolutePath
+    ).toBe('C:/Users/alex/dev/app-code/docs/agent/README.md')
+    expect(
+      resolveTerminalFileLinkText('../../app/readme.md', '/home/alice/client')?.absolutePath
+    ).toBe('/home/app/readme.md')
+    expect(resolveTerminalFileLinkText('../../../../safe.md', '/home')?.absolutePath).toBe(
+      '/safe.md'
+    )
+    expect(resolveTerminalFileLinkText('..\\..\\..\\safe.md', 'C:\\repo')?.absolutePath).toBe(
+      'C:/safe.md'
+    )
+    expect(resolveTerminalFileLinkText('../../safe.md', '//host/share/repo')?.absolutePath).toBe(
+      '//host/share/safe.md'
+    )
+    expect(resolveTerminalFileLinkText('docs/a.md', '/')?.absolutePath).toBe('/docs/a.md')
+    expect(resolveTerminalFileLinkText('../x/y.md', '/')?.absolutePath).toBe('/x/y.md')
+  })
+
   it('keeps worktree-relative paths for forward-slash Windows UNC paths', () => {
     expect(isPathInsideWorktree('//server/share/repo/src/file.ts', '\\\\server\\share\\repo')).toBe(
       true

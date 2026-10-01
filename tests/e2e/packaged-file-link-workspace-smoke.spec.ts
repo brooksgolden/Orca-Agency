@@ -30,14 +30,16 @@ async function clickPrintedFileLink(
   const terminal = new Terminal({ cols: frame.cols, rows: frame.rows })
   await new Promise<void>((resolve) => terminal.write(frame.data, resolve))
   const buffer = terminal.buffer.active
-  const visibleCells = Array.from({ length: frame.rows }, (_, row) =>
+  const visibleRows = Array.from({ length: frame.rows }, (_, row) =>
     (buffer.getLine(buffer.viewportY + row)?.translateToString(false) ?? '').padEnd(frame.cols)
-  ).join('')
+  )
+  const visibleCells = visibleRows.join('')
   terminal.dispose()
-  const start = visibleCells.lastIndexOf(printedPath)
-  if (start === -1) {
-    throw new Error(`Terminal did not render ${printedPath}`)
+  const printedRow = visibleRows.findLastIndex((line) => line.trim() === printedPath)
+  if (printedRow === -1) {
+    throw new Error(`Terminal did not render a standalone line containing ${printedPath}`)
   }
+  const start = printedRow * frame.cols + visibleRows[printedRow].indexOf(printedPath)
   const center = start + Math.floor(printedPath.length / 2)
   const screen = await page.locator('.xterm:visible .xterm-screen').boundingBox()
   if (!screen) {
@@ -74,6 +76,11 @@ test('packaged file links and folder workspace splits retain their workspace', a
   folders.forEach((folder) => mkdirSync(folder, { recursive: true }))
   writeFileSync(path.join(folders[0], 'linked.md'), '# File link smoke\n')
   writeFileSync(path.join(folders[1], 'linked.md'), '# Second file link smoke\n')
+  const externalFile = path.join(userDataDir, 'app-code', 'docs', 'agent', 'linked.md')
+  mkdirSync(path.dirname(externalFile), { recursive: true })
+  writeFileSync(externalFile, '# Relative file from the same chat\n')
+  const externalAnchor = path.join(path.dirname(externalFile), 'research.md')
+  writeFileSync(externalAnchor, '# Earlier research file\n')
   writeFileSync(
     path.join(userDataDir, 'orca-data.json'),
     JSON.stringify(getE2ECompletedOnboardingProfile())
@@ -156,6 +163,27 @@ test('packaged file links and folder workspace splits retain their workspace', a
     await expect
       .poll(() => app.evaluate(() => Reflect.get(globalThis, 'copiedFilePathSmoke')))
       .toBe(path.join(folders[0], 'linked.md'))
+
+    await page
+      .locator('[data-tab-id]')
+      .filter({ hasText: 'linked.md' })
+      .first()
+      .locator('[data-tab-close-button]')
+      .click()
+    await page.locator('.xterm:visible .xterm-helper-textarea').click()
+    // An earlier sibling proves the code folder; the target's full path is never printed.
+    const printedExternalAnchor = externalAnchor.replaceAll('\\', '/')
+    await page.keyboard.type(`echo "${printedExternalAnchor}"`)
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('echo docs/agent/linked.md')
+    await page.keyboard.press('Enter')
+    await clickPrintedFileLink(page, 'docs/agent/linked.md', `folder:${ids[0]}`)
+    await expect(page.locator('.editor-header-path').first()).toContainText('linked.md')
+    await expect(
+      page.getByText('Relative file from the same chat', { exact: false }).first()
+    ).toBeVisible()
+    await expect(row(ids[0])).toHaveAttribute('aria-current', 'page')
+    await page.screenshot({ path: testInfo.outputPath('relative-file-in-owning-chat.png') })
 
     await row(ids[1]).locator('[data-worktree-card-surface]').click()
     await expect(row(ids[1])).toHaveAttribute('aria-current', 'page')

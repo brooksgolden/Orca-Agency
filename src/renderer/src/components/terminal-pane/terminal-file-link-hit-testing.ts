@@ -1,5 +1,6 @@
 import type { IBufferLine, IBufferRange } from '@xterm/xterm'
 import { extractTerminalFileLinkCandidates, resolveTerminalFileLink } from '@/lib/terminal-links'
+import { normalizeAbsolutePath } from '@/lib/terminal-path-normalization'
 import { isRemoteRuntimeFileOperation } from '@/runtime/runtime-file-client'
 import {
   getTerminalFileContext,
@@ -7,8 +8,12 @@ import {
   openDetectedFilePath,
   terminalLinkWslDistro
 } from './terminal-file-open-routing'
-import { getTerminalPathExistsCacheKey } from './terminal-path-exists-cache'
+import {
+  getTerminalPathExistsCacheKey,
+  wasTerminalPathExistsCacheRecentlyProbed
+} from './terminal-path-exists-cache'
 import { resolveKnownWorktreeRootPathLink } from './terminal-worktree-path-link'
+import { contextualFileLinkTargets } from './terminal-relative-file-link-context'
 import {
   buildHardWrappedPathLogicalLineCandidates,
   buildWrappedLogicalLine,
@@ -68,24 +73,96 @@ export function openFilePathLinkAtBufferPosition(
         deps.worktreePath,
         terminalLinkWslDistro(deps.wslDistro, deps.runtimeEnvironmentId)
       )
-      const cacheKey = getTerminalPathExistsCacheKey({
-        absolutePath: mappedPath,
-        connectionId: fileContext.connectionId,
-        isRemoteRuntimePath: isRemoteRuntimeFileOperation(fileContext, mappedPath),
-        runtimeEnvironmentId: deps.runtimeEnvironmentId
-      })
+      const cacheKey = (path: string): string =>
+        getTerminalPathExistsCacheKey({
+          absolutePath: path,
+          connectionId: fileContext.connectionId,
+          isRemoteRuntimePath: isRemoteRuntimeFileOperation(fileContext, path),
+          runtimeEnvironmentId: deps.runtimeEnvironmentId
+        })
+      const cachedExists = (path: string): boolean | undefined =>
+        deps.pathExistsCache?.get(cacheKey(path))
+      const recentlyProbed = (path: string): boolean =>
+        wasTerminalPathExistsCacheRecentlyProbed(deps.pathExistsCache, cacheKey(path))
       const isKnownWorktreeRoot = Boolean(resolveKnownWorktreeRootPathLink(mappedPath))
       if (/[\\/]$/.test(parsed.pathText) && !isKnownWorktreeRoot) {
         continue
       }
-      matches.push({
-        absolutePath: mappedPath,
-        line: resolved.line,
-        column: resolved.column,
-        pathText: parsed.pathText,
-        cachedExists: deps.pathExistsCache?.get(cacheKey),
-        isKnownWorktreeRoot
-      })
+      const contextual = contextualFileLinkTargets(
+        buffer,
+        position.y,
+        parsed.pathText,
+        deps.startupCwd,
+        deps.terminalHomePath
+      )
+      const directExists = cachedExists(mappedPath)
+      if (
+        isKnownWorktreeRoot ||
+        directExists === true ||
+        (directExists === undefined && contextual.length === 0)
+      ) {
+        matches.push({
+          absolutePath: mappedPath,
+          line: resolved.line,
+          column: resolved.column,
+          pathText: parsed.pathText,
+          cachedExists: directExists,
+          isKnownWorktreeRoot
+        })
+      }
+      if (
+        isKnownWorktreeRoot ||
+        directExists !== false ||
+        contextual.length === 0 ||
+        !recentlyProbed(mappedPath)
+      ) {
+        continue
+      }
+      const verified = new Map<string, string>()
+      let pending = false
+      for (const { anchorPath, absolutePath } of contextual) {
+        const anchor = mapTerminalFilePath(
+          anchorPath,
+          deps.worktreePath,
+          terminalLinkWslDistro(deps.wslDistro, deps.runtimeEnvironmentId)
+        )
+        const target = mapTerminalFilePath(
+          absolutePath,
+          deps.worktreePath,
+          terminalLinkWslDistro(deps.wslDistro, deps.runtimeEnvironmentId)
+        )
+        const anchorExists = cachedExists(anchor)
+        if (anchorExists === false) {
+          if (!recentlyProbed(anchor)) {
+            pending = true
+          }
+          continue
+        }
+        const targetExists = cachedExists(target)
+        if (
+          anchorExists === undefined ||
+          targetExists === undefined ||
+          !recentlyProbed(anchor) ||
+          !recentlyProbed(target)
+        ) {
+          pending = true
+        } else if (anchorExists && targetExists) {
+          const key = normalizeAbsolutePath(target)?.comparisonKey
+          if (key) {
+            verified.set(key, target)
+          }
+        }
+      }
+      if (!pending && verified.size === 1) {
+        matches.push({
+          absolutePath: [...verified.values()][0],
+          line: resolved.line,
+          column: resolved.column,
+          pathText: parsed.pathText,
+          cachedExists: true,
+          isKnownWorktreeRoot: false
+        })
+      }
     }
 
     const cachedMatch = matches

@@ -273,6 +273,117 @@ describe('createFilePathLinkProvider range bounds', () => {
     expect(window.api.shell.pathExists).toHaveBeenCalledWith('/repo/package.json')
   })
 
+  it('links a relative file through a verified exact path printed earlier in the same pane', async () => {
+    vi.mocked(window.api.shell.pathExists).mockImplementation(
+      async (pathValue) => pathValue === '/app-code/docs/agent/linked.md'
+    )
+    const pathExistsCache = new Map<string, boolean>()
+    const { provider } = createProviderSetup(
+      [
+        makeBufferLine('Wrote /app-code/docs/agent/linked.md'),
+        makeBufferLine('See docs/agent/linked.md')
+      ],
+      pathExistsCache,
+      { startupCwd: '/workspace/client' }
+    )
+    const links = await new Promise<ILink[]>((resolve) => {
+      provider.provideLinks(2, (provided) => resolve(provided ?? []))
+    })
+
+    expect(links.map((link) => link.text)).toEqual(['docs/agent/linked.md'])
+    expect(pathExistsCache.get('active\0/workspace/client/docs/agent/linked.md')).toBe(false)
+    expect(pathExistsCache.get('active\0/app-code/docs/agent/linked.md')).toBe(true)
+  })
+
+  it('rechecks a cached missing cwd file before choosing another directory', async () => {
+    vi.mocked(window.api.shell.pathExists).mockImplementation(
+      async (pathValue) =>
+        pathValue === '/workspace/client/docs/agent/linked.md' ||
+        pathValue === '/app-code/docs/agent/linked.md'
+    )
+    const cache = new Map([['active\0/workspace/client/docs/agent/linked.md', false]])
+    const { provider } = createProviderSetup(
+      [
+        makeBufferLine('Wrote /app-code/docs/agent/linked.md'),
+        makeBufferLine('See docs/agent/linked.md')
+      ],
+      cache,
+      { startupCwd: '/workspace/client' }
+    )
+    const links = await new Promise<ILink[]>((resolve) => {
+      provider.provideLinks(2, (provided) => resolve(provided ?? []))
+    })
+
+    expect(links.map((link) => link.text)).toEqual(['docs/agent/linked.md'])
+    expect(window.api.shell.pathExists).toHaveBeenCalledWith(
+      '/workspace/client/docs/agent/linked.md'
+    )
+    expect(cache.get('active\0/workspace/client/docs/agent/linked.md')).toBe(true)
+    expect(cache.has('active\0/app-code/docs/agent/linked.md')).toBe(false)
+  })
+
+  it('rejects missing and ambiguous context targets rather than linking another client file', async () => {
+    vi.mocked(window.api.shell.pathExists).mockImplementation(
+      async (pathValue) =>
+        pathValue === '/app-one/docs/agent/one.md' || pathValue === '/app-two/docs/agent/two.md'
+    )
+    const rows = [
+      makeBufferLine('Wrote /app-one/docs/agent/one.md'),
+      makeBufferLine('Wrote /app-two/docs/agent/two.md'),
+      makeBufferLine('See docs/agent/linked.md')
+    ]
+    const missing = createProviderSetup(rows, new Map(), { startupCwd: '/workspace/client' })
+    const missingLinks = await new Promise<ILink[]>((resolve) => {
+      missing.provider.provideLinks(3, (provided) => resolve(provided ?? []))
+    })
+    expect(missingLinks).toEqual([])
+
+    vi.mocked(window.api.shell.pathExists).mockImplementation(async (pathValue) =>
+      [
+        '/app-one/docs/agent/one.md',
+        '/app-two/docs/agent/two.md',
+        '/app-one/docs/agent/linked.md',
+        '/app-two/docs/agent/linked.md'
+      ].includes(pathValue)
+    )
+    const ambiguous = createProviderSetup(rows, new Map(), { startupCwd: '/workspace/client' })
+    const ambiguousLinks = await new Promise<ILink[]>((resolve) => {
+      ambiguous.provider.provideLinks(3, (provided) => resolve(provided ?? []))
+    })
+    expect(ambiguousLinks).toEqual([])
+  })
+
+  it('rechecks old negative anchor and target proofs before deciding uniqueness', async () => {
+    vi.mocked(window.api.shell.pathExists).mockImplementation(async (pathValue) =>
+      [
+        '/app-one/docs/agent/r1.md',
+        '/app-two/docs/agent/r2.md',
+        '/app-one/docs/agent/linked.md',
+        '/app-two/docs/agent/linked.md'
+      ].includes(pathValue)
+    )
+    const cache = new Map([
+      ['active\0/app-two/docs/agent/r2.md', false],
+      ['active\0/app-two/docs/agent/linked.md', false]
+    ])
+    const { provider } = createProviderSetup(
+      [
+        makeBufferLine('Wrote /app-one/docs/agent/r1.md'),
+        makeBufferLine('Wrote /app-two/docs/agent/r2.md'),
+        makeBufferLine('See docs/agent/linked.md')
+      ],
+      cache,
+      { startupCwd: '/workspace/client' }
+    )
+    const links = await new Promise<ILink[]>((resolve) => {
+      provider.provideLinks(3, (provided) => resolve(provided ?? []))
+    })
+
+    expect(links).toEqual([])
+    expect(window.api.shell.pathExists).toHaveBeenCalledWith('/app-two/docs/agent/r2.md')
+    expect(window.api.shell.pathExists).toHaveBeenCalledWith('/app-two/docs/agent/linked.md')
+  })
+
   it('returns a wrapped file link when hovering the first physical row', async () => {
     const rows = [
       makeBufferLine('open src/components/'),
