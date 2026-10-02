@@ -64,20 +64,16 @@ export function savedClaudeResume(args: {
   tabId: string
   paneKey: string
 }): { session: AiVaultSession; proof: ChatSidebarResumeLauncher } | null {
-  const path = args.launcherTranscriptPath
-  if (
-    !path ||
-    (args.launcher &&
-      (isAiVaultSessionResumableContent(args.launcher) ||
-        !sameTranscriptPath(args.launcher.filePath, path)))
-  ) {
-    return null
-  }
-  const directory = claudeTranscriptDirectory(path)
   const matches = Object.entries(args.settings?.sessions ?? {}).flatMap(([key, entry]) => {
     const proof = entry.resumeLauncher
     const snapshot = entry.snapshot
+    const path = args.launcherTranscriptPath ?? proof?.transcriptPath
+    const directory = typeof path === 'string' ? claudeTranscriptDirectory(path) : null
     if (
+      !path ||
+      (args.launcher &&
+        (isAiVaultSessionResumableContent(args.launcher) ||
+          !sameTranscriptPath(args.launcher.filePath, path))) ||
       !proof ||
       proof.agent !== 'claude' ||
       typeof proof.sessionId !== 'string' ||
