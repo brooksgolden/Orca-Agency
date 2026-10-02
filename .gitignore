@@ -110,6 +110,7 @@ docs/**
 !docs/readme/**
 !docs/agency/
 !docs/agency/weekly-updates.md
+!docs/agency/pending-fixes.md
 !docs/bug-reproductions/
 !docs/bug-reproductions/**
 !docs/STYLEGUIDE.md

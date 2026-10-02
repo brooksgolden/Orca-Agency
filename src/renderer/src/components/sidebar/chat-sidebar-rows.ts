@@ -16,11 +16,13 @@ import {
   chatFallbackId,
   chatSessionKey,
   chatSessionTime,
+  chatSessionHumanTurnTime,
   type ChatSidebarRow,
   type ChatSidebarState
 } from './chat-sidebar-types'
 import { buildAgentChatRows } from './chat-sidebar-agent-rows'
 import { chatPreference, isChatCompleted, outranksChatRow } from './chat-sidebar-identity'
+import { chatCompletionActivityTime } from './chat-sidebar-completion'
 import { chatWorkspaceNameOwners, manualWorkspaceName } from './chat-sidebar-workspace-names'
 import {
   chatLiveSession,
@@ -92,9 +94,7 @@ export function buildChatSidebarRows(
     }
     const completion = chatPreference(settings?.completed, row)
     row.completed = isChatCompleted(row, completion)
-    if (row.completed && completion) {
-      row.timestamp = completion.activityAt
-    }
+    row.timestamp = chatCompletionActivityTime(row, completion)
     const previous = rows.get(row.id)
     if (!previous || outranksChatRow(row, previous)) {
       rows.set(row.id, row)
@@ -150,8 +150,7 @@ export function buildChatSidebarRows(
         paneKey: sleeping?.paneKey ?? null,
         session,
         timestamp: sleeping?.updatedAt ?? sessionAt,
-        // Why: transcript updates and tab creation do not prove a submitted prompt.
-        turnStartedAt: 0,
+        turnStartedAt: chatSessionHumanTurnTime(session),
         activityFromState: false,
         state: 'idle',
         completed: false,
@@ -195,7 +194,7 @@ export function buildChatSidebarRows(
         paneKey: null,
         session,
         timestamp: sessionAt,
-        turnStartedAt: 0,
+        turnStartedAt: chatSessionHumanTurnTime(session),
         activityFromState: false,
         state: 'idle',
         completed: false,
@@ -271,7 +270,7 @@ export function buildChatSidebarRows(
       paneKey: null,
       session,
       timestamp: sessionAt,
-      turnStartedAt: 0,
+      turnStartedAt: chatSessionHumanTurnTime(session),
       activityFromState: false,
       state: 'idle',
       completed: false,

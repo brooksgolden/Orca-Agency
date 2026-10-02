@@ -79,3 +79,9 @@ export function chatSessionTime(session: AiVaultSession): number {
   const timestamp = Date.parse(session.updatedAt ?? session.modifiedAt)
   return Number.isFinite(timestamp) ? timestamp : 0
 }
+
+/** Only an actual human prompt proves a new turn, not a transcript or resume write. */
+export function chatSessionHumanTurnTime(session: AiVaultSession | null): number {
+  const timestamp = Date.parse(session?.lastHumanTurnAt ?? '')
+  return Number.isFinite(timestamp) ? timestamp : 0
+}

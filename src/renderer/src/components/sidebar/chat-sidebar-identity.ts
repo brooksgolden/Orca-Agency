@@ -1,7 +1,4 @@
-import type {
-  ChatSidebarCompletion,
-  ChatSidebarSettings
-} from '../../../../shared/chat-sidebar-settings'
+import type { ChatSidebarSettings } from '../../../../shared/chat-sidebar-settings'
 import type { ChatSidebarRow } from './chat-sidebar-types'
 import {
   isAiVaultSessionResumableContent,
@@ -14,6 +11,8 @@ import {
   freshestChatSnapshot,
   sameChatSessionSnapshot
 } from './chat-sidebar-session-snapshot'
+import { refreshedChatCompletion } from './chat-sidebar-completion'
+export { isChatCompleted, chatCompletionEdit } from './chat-sidebar-completion'
 
 type RowIds = Pick<ChatSidebarRow, 'id' | 'aliases'>
 
@@ -38,21 +37,6 @@ export function chatPreference<T>(
   }
   const key = storedKey(values, row)
   return key === undefined ? undefined : values[key]
-}
-
-export function isChatCompleted(
-  row: Pick<ChatSidebarRow, 'turnStartedAt' | 'activityFromState' | 'state' | 'worktree'>,
-  completion: ChatSidebarCompletion | undefined
-): boolean {
-  if (!completion) {
-    return row.worktree.workspaceStatus === 'completed' && row.state !== 'working'
-  }
-  return (
-    completion.done !== false &&
-    row.turnStartedAt <= completion.at &&
-    // Why: title-derived rows have no turn clock; a working title after the marked turn is a new turn.
-    (!row.activityFromState || row.state !== 'working' || completion.working === true)
-  )
 }
 
 function moveAliases<T>(values: Record<string, T>, row: RowIds, target: string): boolean {
@@ -243,19 +227,14 @@ export function chatSidebarPreferencePatch(
       completedChanged = moveAliases(completed, row, row.id) || completedChanged
       foldersChanged = moveAliases(folderAssignments, row, row.id) || foldersChanged
     }
-    if (!row.activityFromState) {
-      continue
-    }
     const key = storedKey(completed, row)
     const completion = key === undefined ? undefined : completed[key]
-    if (!key || !completion || completion.done === false) {
+    if (!key || !completion) {
       continue
     }
-    if (completion.working === true && row.state !== 'working') {
-      completed[key] = { ...completion, working: false }
-      completedChanged = true
-    } else if (completion.working !== true && row.state === 'working') {
-      completed[key] = { ...completion, at: now, done: false }
+    const refreshed = refreshedChatCompletion(row, completion, now)
+    if (refreshed) {
+      completed[key] = refreshed
       completedChanged = true
     }
   }
@@ -281,23 +260,4 @@ export function chatSidebarPreferencePatch(
     ...(workspaceFoldersChanged ? { workspaceFolderAssignments } : {}),
     ...(completedChanged ? { completed } : {})
   }
-}
-
-export function chatCompletionEdit(
-  row: Pick<ChatSidebarRow, 'id' | 'aliases' | 'timestamp' | 'state'>,
-  current: ChatSidebarSettings,
-  done: boolean,
-  now: number
-): Partial<ChatSidebarSettings> {
-  const completed = { ...current.completed }
-  for (const alias of row.aliases) {
-    delete completed[alias]
-  }
-  completed[row.id] = {
-    activityAt: row.timestamp,
-    at: now,
-    done,
-    ...(row.state === 'working' ? { working: true } : {})
-  }
-  return { completed }
 }

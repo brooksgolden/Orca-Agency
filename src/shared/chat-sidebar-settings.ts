@@ -5,6 +5,8 @@ export type ChatSidebarCompletion = {
   activityAt: number
   at: number
   done?: boolean
+  /** Automatic tab-close completion; a replacement tab reopens the saved chat. */
+  closedTabId?: string
   /** The chat was working when marked done; title-only chats reopen after that turn ends. */
   working?: boolean
 }
