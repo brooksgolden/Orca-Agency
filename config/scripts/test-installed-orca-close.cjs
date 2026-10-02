@@ -76,7 +76,24 @@ async function simulate({ appearsAt = 0, unsaved = false, missingButton = false 
     })
     assert.equal(exited, expected)
   }
-  console.log('8 close-confirmation and process-exit checks passed')
+  const connectionPolicy = source.slice(
+    source.indexOf('function canUseMainProcessClose'),
+    source.indexOf(';(async () => {')
+  )
+  for (const [message, expected] of [
+    ['connect ECONNREFUSED 127.0.0.1:19387', true],
+    ['browserType.connectOverCDP: Timeout 3000ms exceeded.', true],
+    ['No installed Orca renderer', false],
+    ['Inspector is not the expected installed Orca desktop', false]
+  ]) {
+    assert.equal(
+      vm.runInNewContext(`${connectionPolicy}\ncanUseMainProcessClose(error)`, {
+        error: { message }
+      }),
+      expected
+    )
+  }
+  console.log('12 close-confirmation, process-exit and connection-policy checks passed')
 })().catch((error) => {
   console.error(error)
   process.exitCode = 1

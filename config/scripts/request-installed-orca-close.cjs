@@ -126,12 +126,15 @@ async function requestCloseThroughMainProcess() {
     socket.close()
   }
 }
+function canUseMainProcessClose(error) {
+  return /ECONNREFUSED|Timeout \d+ms exceeded/.test(String(error.message))
+}
 ;(async () => {
   let browser
   try {
     browser = await chromium.connectOverCDP('http://127.0.0.1:19387', { timeout: 3000 })
   } catch (error) {
-    if (!String(error.message).includes('ECONNREFUSED')) {
+    if (!canUseMainProcessClose(error)) {
       throw error
     }
     await requestCloseThroughMainProcess()
