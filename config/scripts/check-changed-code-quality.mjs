@@ -5,6 +5,7 @@ import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { resolvePullRequestDiffBase } from './git-pull-request-diff-base.mjs'
 import { resolveOxlintInvocation } from './oxlint-cli-invocation.mjs'
+import { batchOxlintFiles } from './oxlint-file-batches.mjs'
 
 const SOURCE_FILE_PATTERN = /\.(?:[cm]?[jt]sx?)$/
 const ROOT_CODE_QUALITY_IGNORED_PREFIXES = ['cloud/']
@@ -399,20 +400,24 @@ function isSuppressedDiagnostic(diagnostic, root) {
 
 function runOxlintScan(root, scan, files) {
   const { command, prefixArgs } = resolveOxlintInvocation(root)
-  const result = spawnSync(command, [...prefixArgs, ...scan.args, '--format', 'json', ...files], {
-    cwd: root,
-    encoding: 'utf8',
-    maxBuffer: 128 * 1024 * 1024,
-    windowsHide: true
-  })
-  if (result.error) {
-    throw result.error
+  const diagnostics = []
+  for (const batch of batchOxlintFiles(files)) {
+    const result = spawnSync(command, [...prefixArgs, ...scan.args, '--format', 'json', ...batch], {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 128 * 1024 * 1024,
+      windowsHide: true
+    })
+    if (result.error) {
+      throw result.error
+    }
+    if (!result.stdout.trim()) {
+      process.stderr.write(result.stderr)
+      throw new Error(`${scan.label} failed before producing diagnostics.`)
+    }
+    diagnostics.push(...(parseOxlintOutput(result.stdout, scan.label).diagnostics ?? []))
   }
-  if (!result.stdout.trim()) {
-    process.stderr.write(result.stderr)
-    throw new Error(`${scan.label} failed before producing diagnostics.`)
-  }
-  return parseOxlintOutput(result.stdout, scan.label).diagnostics ?? []
+  return diagnostics
 }
 
 export function main(

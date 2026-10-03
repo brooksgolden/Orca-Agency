@@ -320,7 +320,7 @@ describe('session parse cache persistence', () => {
           path === launcherPath && entry.session
             ? { ...entry, session: { ...entry.session, resumedSessionIdPrefix: undefined } }
             : entry
-        ] as [string, PersistedSessionParseCacheEntry]
+        ] satisfies [string, PersistedSessionParseCacheEntry]
     )
 
     for (const schemaVersion of [3, 4]) {

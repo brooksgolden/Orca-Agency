@@ -320,10 +320,12 @@ describe('connectPanePty', () => {
           }
         }
       }
-      // SAFETY: These focused fixtures implement the pane, manager, and dependency methods exercised by this restore path.
       connectPanePty(
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The focused pane fixture implements the methods exercised by this restore path.
         createPane(1) as never,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The focused manager fixture implements the methods exercised by this restore path.
         createManager(split ? 2 : 1) as never,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The focused dependency fixture implements the methods exercised by this restore path.
         createDeps() as never
       )
       await flushAsyncTicks(20)
