@@ -19,6 +19,7 @@ import {
 import {
   selectForegroundAgentsForWorktree,
   selectLivePtyIdsForWorktree,
+  selectPaneForegroundAgentsForWorktree,
   selectRuntimePaneTitlesForWorktree
 } from '../sidebar/worktree-card-status-inputs'
 
@@ -34,6 +35,7 @@ type WorktreeAgentRowsCacheEntry = {
   paneTitlesByTabId: Record<string, Record<number, string>>
   foregroundAgentsByPaneKey: Record<string, PaneForegroundAgentEntry>
   ptyIdsByTabId: Record<string, string[]>
+  paneForegroundAgentByPaneKey: Record<string, PaneForegroundAgentEntry>
   rows: DashboardAgentRowWithLineage[]
 }
 
@@ -126,6 +128,7 @@ export function selectWorktreeAgentRowsCached(args: {
   const paneTitlesByTabId = selectRuntimePaneTitlesForWorktree(state, worktreeId)
   const foregroundAgentsByPaneKey = selectForegroundAgentsForWorktree(state, worktreeId)
   const ptyIdsByTabId = selectLivePtyIdsForWorktree(state, worktreeId)
+  const paneForegroundAgentByPaneKey = selectPaneForegroundAgentsForWorktree(state, worktreeId)
 
   const cached = cache?.byWorktree.get(worktreeId)
   if (
@@ -139,7 +142,8 @@ export function selectWorktreeAgentRowsCached(args: {
     shallowRecordEqual(cached.terminalLayoutsByTabId, terminalLayoutsByTabId) &&
     shallowRecordEqual(cached.paneTitlesByTabId, paneTitlesByTabId) &&
     shallowRecordEqual(cached.foregroundAgentsByPaneKey, foregroundAgentsByPaneKey) &&
-    shallowRecordEqual(cached.ptyIdsByTabId, ptyIdsByTabId)
+    shallowRecordEqual(cached.ptyIdsByTabId, ptyIdsByTabId) &&
+    shallowRecordEqual(cached.paneForegroundAgentByPaneKey, paneForegroundAgentByPaneKey)
   ) {
     return cached.rows
   }
@@ -164,6 +168,7 @@ export function selectWorktreeAgentRowsCached(args: {
       ptyIdsByTabId,
       terminalLayoutsByTabId,
       runtimeAgentOrchestrationByPaneKey: orchestration,
+      paneForegroundAgentByPaneKey,
       now
     })
   )
@@ -181,6 +186,7 @@ export function selectWorktreeAgentRowsCached(args: {
       paneTitlesByTabId,
       foregroundAgentsByPaneKey,
       ptyIdsByTabId,
+      paneForegroundAgentByPaneKey,
       rows
     })
   }

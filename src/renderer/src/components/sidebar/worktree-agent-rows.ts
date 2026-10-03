@@ -21,6 +21,7 @@ import { resolveRuntimePaneTitleLeafId } from '@/lib/runtime-pane-title-leaf-id'
 import { resolveDecayedAgentRowState } from '@/lib/agent-row-decay-state'
 import { tabHasLivePty } from '@/lib/tab-has-live-pty'
 import { buildTitleDerivedAgentRows } from './worktree-title-derived-agent-rows'
+import type { TitleDerivedPaneForeground } from './title-derived-pane-agent-identity'
 import { buildSubagentChildRows } from './worktree-subagent-child-rows'
 import { compareWorktreeAgentRows } from './worktree-agent-row-order'
 import {
@@ -148,6 +149,7 @@ export function buildWorktreeAgentRows(args: {
   terminalLayoutsByTabId?: Record<string, TerminalLayoutSnapshot | undefined>
   foregroundAgentsByPaneKey?: Record<string, PaneForegroundAgentEntry>
   runtimeAgentOrchestrationByPaneKey?: Record<string, AgentStatusOrchestrationContext>
+  paneForegroundAgentByPaneKey?: Record<string, TitleDerivedPaneForeground>
   now: number
 }): DashboardAgentRow[] {
   const rows: DashboardAgentRow[] = []

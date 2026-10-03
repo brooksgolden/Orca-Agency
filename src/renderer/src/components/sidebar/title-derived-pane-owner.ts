@@ -11,7 +11,11 @@ export function resolveTitleDerivedPaneOwner(
   foregroundAgentsByPaneKey?: Record<string, PaneForegroundAgentEntry>
 ): AgentType | null {
   const foreground = foregroundAgentsByPaneKey?.[makePaneKey(tab.id, leafId)]
-  if (foreground?.agent && foreground.processObserved === true && !foreground.shellForeground) {
+  if (
+    foreground?.agent &&
+    foreground.agentEvidence === 'process-read' &&
+    !foreground.shellForeground
+  ) {
     return foreground.agent
   }
   // A tab's launch identity belongs to a pane only while the tab has one leaf.

@@ -9,7 +9,7 @@
 import { test, expect } from './helpers/orca-app'
 import { waitForSessionReady } from './helpers/store'
 
-test('opens the runs dashboard and returns to automations', async ({ orcaPage }) => {
+test('opens the runs dashboard and returns to automations', async ({ orcaPage }, testInfo) => {
   await waitForSessionReady(orcaPage)
 
   await orcaPage.evaluate(() => {
@@ -34,6 +34,7 @@ test('opens the runs dashboard and returns to automations', async ({ orcaPage })
   await expect(orcaPage.getByText('Automation', { exact: true })).toBeVisible()
   await expect(orcaPage.getByText('Triggered', { exact: true })).toBeVisible()
   await expect(orcaPage.getByText('Status', { exact: true })).toBeVisible()
+  await orcaPage.screenshot({ path: testInfo.outputPath('automation-runs.png') })
 
   await orcaPage
     .getByRole('navigation', { name: 'Automations breadcrumb' })
@@ -41,4 +42,5 @@ test('opens the runs dashboard and returns to automations', async ({ orcaPage })
     .click()
   await expect(orcaPage.getByRole('heading', { name: 'Automations' })).toBeVisible()
   await expect(runsButton).toBeVisible()
+  await orcaPage.screenshot({ path: testInfo.outputPath('automation-list.png') })
 })

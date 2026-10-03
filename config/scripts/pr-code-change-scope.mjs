@@ -54,8 +54,10 @@ const GIT_COMPAT_PREFIXES = [
 
 // Why narrow: the contract pins Codex's read-repair, so it runs when the heal that
 // depends on it, its app-server transport, or the contract itself changes. The same
-// job pins --no-daemon for Orca's codex shell wrapper.
+// job pins --no-daemon for Orca's codex shell wrapper and the project-trust key.
 const CODEX_INDEX_HEAL_CONTRACT_PREFIXES = [
+  'src/main/agent-trust-presets',
+  'src/main/codex/config-toml-trust',
   'src/main/pty/codex-no-daemon-binary-contract',
   'src/main/pty/codex-shell-launch-preflight',
   'src/shared/codex-shell-function',
@@ -284,6 +286,7 @@ const WINDOWS_PACKAGE_TESTS = [
   'src/main/agent-hooks/windows-direct-cmd-hook-command.test.ts',
   'src/main/codex/windows-hook-command.test.ts',
   'src/main/codex/windows-hook-upgrade.test.ts',
+  'src/main/codex/hook-service-managed-install.test.ts',
   'src/main/windows/windows-pty-job.win32.test.ts',
   'src/main/windows/windows-msys-job.win32.test.ts',
   'src/main/providers/agent-foreground-process-git-bash.win32.test.ts',

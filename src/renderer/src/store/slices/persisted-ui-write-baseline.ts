@@ -29,6 +29,7 @@ export type PersistedUIWriteBaseline = {
   hideDetachedHeadWorkspaces: boolean
   hideWorkspacesFromOtherDevices: boolean
   alwaysShowDefaultBranchWorkspace: boolean
+  explorerDisplayRootByWorktree: Record<string, string>
   showDotfilesByWorktree: Record<string, boolean>
   filterRepoIds: readonly string[]
   acknowledgedAgentsByPaneKey: Record<string, number>
@@ -68,6 +69,7 @@ const PERSISTED_UI_WRITE_BASELINE_FIELD_SET = {
   hideDetachedHeadWorkspaces: true,
   hideWorkspacesFromOtherDevices: true,
   alwaysShowDefaultBranchWorkspace: true,
+  explorerDisplayRootByWorktree: true,
   showDotfilesByWorktree: true,
   filterRepoIds: true,
   acknowledgedAgentsByPaneKey: true,
@@ -114,6 +116,7 @@ export function capturePersistedUIWriteBaseline(
     hideDetachedHeadWorkspaces: mirror.hideDetachedHeadWorkspaces,
     hideWorkspacesFromOtherDevices: mirror.hideWorkspacesFromOtherDevices,
     alwaysShowDefaultBranchWorkspace: mirror.alwaysShowDefaultBranchWorkspace,
+    explorerDisplayRootByWorktree: mirror.explorerDisplayRootByWorktree,
     showDotfilesByWorktree: mirror.showDotfilesByWorktree,
     filterRepoIds: mirror.filterRepoIds,
     acknowledgedAgentsByPaneKey: mirror.acknowledgedAgentsByPaneKey,
@@ -131,6 +134,7 @@ export function capturePersistedUIWriteBaseline(
   }
 }
 
+/** Compares collection fields by value so hydration does not produce redundant persistence writes from new identities. */
 function writeFieldEqual(field: keyof PersistedUIWriteBaseline, a: unknown, b: unknown): boolean {
   // Why by value: every drag and every hydration allocates a fresh order array.
   // Compared by identity, each broadcast would read as an unflushed local edit
@@ -143,6 +147,7 @@ function writeFieldEqual(field: keyof PersistedUIWriteBaseline, a: unknown, b: u
     return shallow(a, b)
   }
   if (
+    field === 'explorerDisplayRootByWorktree' ||
     field === 'showDotfilesByWorktree' ||
     field === 'acknowledgedAgentsByPaneKey' ||
     field === 'activityClearedAtByPaneKey' ||

@@ -1,3 +1,4 @@
+import { createWebExplorerRootSync } from './web-explorer-root-sync'
 import type { PreloadApi } from '../../../../preload/api-types'
 import { assertClipboardTextWithinLimitWithYield } from '../../../../shared/clipboard-text'
 import type { ReadClipboardTextOptions } from '../../../../shared/clipboard-text'
@@ -9,8 +10,8 @@ import {
 } from '../../../../shared/host-gated-ui-fields'
 import { omitPairingLocalUiFields } from '../../../../shared/pairing-local-ui-fields'
 import type { PairedUiState } from '../../../../shared/pairing-local-ui-fields'
-import type { PersistedUIState } from '../../../../shared/persisted-ui-state-types'
 import {
+  clipboardHasImage,
   readClipboardImagePngBase64,
   readClipboardImageThumbnail,
   saveClipboardImageAsTempFileInRuntime,
@@ -24,71 +25,43 @@ import {
   mergeWebUIState
 } from './web-preference-normalization'
 import { readLocalWebUIState } from './web-preferences-store'
-import { callRuntimeResult, getRemoteRuntimeStatus } from './web-runtime-calls'
+import { callRuntimeResult } from './web-runtime-calls'
 import { requireActiveEnvironmentOrNull } from './web-runtime-session'
 import { UI_STORAGE_KEY, noopUnsubscribe, writeJson } from './web-storage'
+import { readHostUiCapabilities } from './web-host-ui-capabilities'
 
-// Why a TTL and not a permanent answer: the host can be updated in place under a paired
-// browser, and a gated key stripped forever would never reach the host that now accepts it.
-const HOST_UI_CAPABILITIES_TTL_MS = 5 * 60_000
-let hostUiCapabilities: {
-  environmentId: string
-  readAt: number
-  capabilities: readonly string[]
-} | null = null
+export { resetHostUiCapabilitiesForTest } from './web-host-ui-capabilities'
 
-async function readHostUiCapabilities(): Promise<readonly string[] | null> {
-  const environment = requireActiveEnvironmentOrNull()
-  if (!environment) {
-    return null
-  }
-  if (
-    hostUiCapabilities?.environmentId === environment.id &&
-    Date.now() - hostUiCapabilities.readAt < HOST_UI_CAPABILITIES_TTL_MS
-  ) {
-    return hostUiCapabilities.capabilities
-  }
-  const status = await getRemoteRuntimeStatus().catch(() => null)
-  if (!status) {
-    return null
-  }
-  const capabilities = status.capabilities ?? []
-  hostUiCapabilities = { environmentId: environment.id, readAt: Date.now(), capabilities }
-  return capabilities
-}
-
-/** Reset the host capability cache; exported for tests. */
-export function resetHostUiCapabilitiesForTest(): void {
-  hostUiCapabilities = null
-}
-
-// Why strip here too when the host also strips pairing-local keys: an old host predating that
-// strip would otherwise persist this browser's runtime:web-* keys over the desktop profile's
-// order. Host-gated keys are asked about only when present, so ordinary writes cost no extra RPC.
-async function toHostUiUpdate(updates: Partial<PersistedUIState>): Promise<object> {
-  const hostUpdates = omitPairingLocalUiFields(updates)
-  if (!hasHostGatedUiFields(hostUpdates)) {
-    return hostUpdates
-  }
-  return omitUnsupportedHostGatedUiFields(hostUpdates, await readHostUiCapabilities())
-}
-
-async function writeHostUiUpdate(updates: Partial<PersistedUIState>): Promise<void> {
-  const environmentId = requireActiveEnvironmentOrNull()?.id
-  const hostUpdates = await toHostUiUpdate(updates)
-  // Discovery and mutation must refer to the same paired host.
-  if (requireActiveEnvironmentOrNull()?.id !== environmentId) {
-    throw new Error('UI persistence environment changed during capability discovery')
-  }
-  await callRuntimeResult('ui.set', hostUpdates, 15_000)
-}
-
+/** Combines browser-local preferences with host persistence; acknowledged writes remain distinct from best-effort writes. */
 export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
+  const explorerRoots = createWebExplorerRootSync()
+  /** Captures the target host and strips browser-local or unsupported fields before sending a UI update. */
+  const prepareHostUpdates = async (updates: Parameters<PreloadApi['ui']['set']>[0]) => {
+    const environmentId = requireActiveEnvironmentOrNull()?.id
+    const pairedUpdates = omitPairingLocalUiFields(updates)
+    explorerRoots.prepare(environmentId, pairedUpdates)
+    const hostUpdates = hasHostGatedUiFields(pairedUpdates)
+      ? omitUnsupportedHostGatedUiFields(pairedUpdates, await readHostUiCapabilities())
+      : pairedUpdates
+    if (requireActiveEnvironmentOrNull()?.id !== environmentId) {
+      throw new Error('UI persistence environment changed during capability discovery')
+    }
+    return { environmentId, hostUpdates }
+  }
   let zoomLevel = readLocalWebUIState().uiZoomLevel
   return {
+    /** Hydrates from the active host after replaying pending roots, falling back to local state on failure or host changes. */
     get: async () => {
       try {
+        const environmentId = requireActiveEnvironmentOrNull()?.id
         const result = await callRuntimeResult<{ ui: PairedUiState }>('ui.get', undefined, 15_000)
+        if (environmentId !== requireActiveEnvironmentOrNull()?.id) {
+          return readLocalWebUIState()
+        }
+        await explorerRoots.read(environmentId, result.ui)
+        if (environmentId !== requireActiveEnvironmentOrNull()?.id) {
+          return readLocalWebUIState()
+        }
         const local = readLocalWebUIState()
         const next = {
           ...mergeHostWebUIState(local, result.ui),
@@ -109,24 +82,33 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
         return readLocalWebUIState()
       }
     },
+    /** Persists locally first and attempts the host write without propagating offline failures to fire-and-forget callers. */
     set: async (updates) => {
       const next = mergeWebUIState(readLocalWebUIState(), updates)
       writeJson(UI_STORAGE_KEY, next)
       zoomLevel = next.uiZoomLevel
       try {
-        await writeHostUiUpdate(updates)
+        const { environmentId, hostUpdates } = await prepareHostUpdates(updates)
+        await callRuntimeResult('ui.set', hostUpdates, 15_000)
+        explorerRoots.acknowledge(environmentId, hostUpdates)
       } catch {
         // Why: unpaired/offline web clients still need local UI persistence.
       }
     },
-    // Why a separate entry point: set must stay best-effort for its many fire-and-forget
-    // callers, but the diff writer must NOT fold a patch the host never received into its
-    // baseline — that write would silently never be retried (STA-5781).
+    /** Rejects failed or stripped host updates so the diff writer cannot acknowledge preferences the host never received. */
     setWithAck: async (updates) => {
       const next = mergeWebUIState(readLocalWebUIState(), updates)
       writeJson(UI_STORAGE_KEY, next)
       zoomLevel = next.uiZoomLevel
-      await writeHostUiUpdate(updates)
+      const { environmentId, hostUpdates } = await prepareHostUpdates(updates)
+      await callRuntimeResult('ui.set', hostUpdates, 15_000)
+      explorerRoots.acknowledge(environmentId, hostUpdates)
+      if (
+        updates.explorerDisplayRootByWorktree !== undefined &&
+        hostUpdates.explorerDisplayRootByWorktree === undefined
+      ) {
+        throw new Error('Explorer root preference is pending host support')
+      }
     },
     recordFeatureInteraction: async (id: FeatureInteractionId) => {
       const current = readLocalWebUIState()
@@ -188,6 +170,9 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
       }
       return saveClipboardImageAsTempFileInRuntime(contentBase64, args)
     },
+    clipboardHasImage,
+    // Browsers expose copied files only inside a paste event.
+    readClipboardFilePaths: async () => [],
     readClipboardImageThumbnail: () => readClipboardImageThumbnail().catch(() => null),
     writeClipboardText: writeWebClipboardText,
     writeTerminalClipboardText: writeWebClipboardText,

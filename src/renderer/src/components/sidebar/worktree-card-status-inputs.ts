@@ -1,4 +1,5 @@
 import type { AppState } from '@/store/types'
+import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 import { createWorktreeRecordSelector } from '@/store/worktree-record-selector-cache'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
@@ -14,6 +15,9 @@ export const EMPTY_FOREGROUND_AGENT_PANE_IDS: Record<string, ReadonlySet<string>
   {}
 )
 export const EMPTY_FOREGROUND_AGENTS: Record<string, PaneForegroundAgentEntry> = Object.freeze({})
+export const EMPTY_PANE_FOREGROUND_AGENTS: Record<string, PaneForegroundAgentEntry> = Object.freeze(
+  {}
+)
 export const EMPTY_TERMINAL_LAYOUT_ROOTS: Record<
   string,
   TerminalPaneLayoutNode | null | undefined
@@ -23,14 +27,18 @@ type WorktreeCardStatusInputState = Pick<AppState, 'runtimePaneTitlesByTabId' | 
   tabsByWorktree: Record<string, readonly { id: string }[]>
 }
 
+type WorktreeCardForegroundPaneInputState = Partial<
+  Pick<AppState, 'paneForegroundAgentByPaneKey'>
+> & {
+  tabsByWorktree: Record<string, readonly { id: string }[]>
+}
+
 type WorktreeCardLayoutRootInputState = Pick<AppState, 'terminalLayoutsByTabId'> & {
   tabsByWorktree: Record<string, readonly { id: string }[]>
 }
 
-type WorktreeCardForegroundInputState = Pick<AppState, 'terminalLayoutsByTabId'> & {
-  tabsByWorktree: Record<string, readonly { id: string }[]>
-  paneForegroundAgentByPaneKey?: AppState['paneForegroundAgentByPaneKey']
-}
+type WorktreeCardForegroundInputState = Pick<AppState, 'terminalLayoutsByTabId'> &
+  WorktreeCardForegroundPaneInputState
 
 export const selectForegroundAgentsForWorktree = createWorktreeRecordSelector<
   WorktreeCardForegroundInputState,
@@ -50,7 +58,7 @@ export const selectForegroundAgentsForWorktree = createWorktreeRecordSelector<
       )) {
         const paneKey = `${tab.id}:${leafId}`
         const entry = state.paneForegroundAgentByPaneKey?.[paneKey]
-        if (entry?.agent && entry.processObserved === true && !entry.shellForeground) {
+        if (entry?.agent && entry.agentEvidence === 'process-read' && !entry.shellForeground) {
           out[paneKey] = entry
         }
       }
@@ -75,7 +83,7 @@ export const selectForegroundAgentPaneIdsForWorktree = createWorktreeRecordSelec
       const paneIds = Object.keys(state.terminalLayoutsByTabId[tab.id]?.ptyIdsByLeafId ?? {})
       const foreground = paneIds.filter((paneId) => {
         const entry = state.paneForegroundAgentByPaneKey?.[`${tab.id}:${paneId}`]
-        return entry?.agent && entry.processObserved === true && !entry.shellForeground
+        return entry?.agent && entry.agentEvidence === 'process-read' && !entry.shellForeground
       })
       if (foreground.length > 0) {
         out[tab.id] = new Set(foreground)
@@ -115,6 +123,64 @@ export const selectLivePtyIdsForWorktree = createWorktreeRecordSelector<
       const ids = state.ptyIdsByTabId[tab.id]
       if (ids && ids.length > 0) {
         out[tab.id] = ids
+      }
+    }
+    return out
+  }
+})
+
+type PaneForegroundAgentsByTabId = ReadonlyMap<
+  string,
+  readonly [string, PaneForegroundAgentEntry][]
+>
+
+// Why: grouped once per map identity so each card walks only its own tabs, not every pane key.
+const paneForegroundAgentsByTabIdCache = new WeakMap<
+  Record<string, PaneForegroundAgentEntry>,
+  PaneForegroundAgentsByTabId
+>()
+
+function getPaneForegroundAgentsByTabId(
+  entries: Record<string, PaneForegroundAgentEntry>
+): PaneForegroundAgentsByTabId {
+  const cached = paneForegroundAgentsByTabIdCache.get(entries)
+  if (cached) {
+    return cached
+  }
+  const byTabId = new Map<string, [string, PaneForegroundAgentEntry][]>()
+  for (const [paneKey, entry] of Object.entries(entries)) {
+    const tabId = parsePaneKey(paneKey)?.tabId
+    if (!tabId) {
+      continue
+    }
+    const group = byTabId.get(tabId)
+    if (group) {
+      group.push([paneKey, entry])
+    } else {
+      byTabId.set(tabId, [[paneKey, entry]])
+    }
+  }
+  paneForegroundAgentsByTabIdCache.set(entries, byTabId)
+  return byTabId
+}
+
+/** This worktree's pane foreground-process reads, keyed by pane key. */
+export const selectPaneForegroundAgentsForWorktree = createWorktreeRecordSelector<
+  WorktreeCardForegroundPaneInputState,
+  Record<string, PaneForegroundAgentEntry>
+>({
+  readSources: (state) => [state.tabsByWorktree, state.paneForegroundAgentByPaneKey],
+  empty: EMPTY_PANE_FOREGROUND_AGENTS,
+  build: (state, worktreeId) => {
+    const tabs = state.tabsByWorktree[worktreeId]
+    if (!tabs?.length || !state.paneForegroundAgentByPaneKey) {
+      return EMPTY_PANE_FOREGROUND_AGENTS
+    }
+    const byTabId = getPaneForegroundAgentsByTabId(state.paneForegroundAgentByPaneKey)
+    const out: Record<string, PaneForegroundAgentEntry> = {}
+    for (const tab of tabs) {
+      for (const [paneKey, entry] of byTabId.get(tab.id) ?? []) {
+        out[paneKey] = entry
       }
     }
     return out

@@ -40,6 +40,12 @@ export type WorktreeVisibilitySourcePreferences = {
   custom?: Record<string, ExternalWorktreeVisibility>
 }
 
+export type WorktreeVisibilityDefaults = {
+  external?: ExternalWorktreeVisibility
+  customSources?: CustomWorktreeVisibilitySource[]
+  sourcePreferences?: WorktreeVisibilitySourcePreferences
+}
+
 export type Repo = {
   id: string
   path: string

@@ -4,7 +4,8 @@ param(
   [string] $Target = "$env:LOCALAPPDATA\Programs\orca",
   [string] $UserData = "$env:APPDATA\orca",
   [string] $ExistingUserDataBackup = '',
-  [scriptblock] $BeforeReplace
+  [scriptblock] $BeforeReplace,
+  [scriptblock] $AfterReplace
 )
 
 $ErrorActionPreference = 'Stop'
@@ -92,12 +93,15 @@ try {
   Switch-ReviewedAppStage $stage $targetPath $backup ([ref]$backupCreated)
   Assert-ReviewedFiles $targetPath
   Write-ReviewedBackupMarker $backup $targetPath 'app'
+  if ($AfterReplace) { & $AfterReplace }
 } catch {
   $installError = $_
   if ($backupCreated -and (Test-Path -LiteralPath $backup -PathType Container)) {
     try {
       if (Test-Path -LiteralPath $targetPath) { Move-ReviewedAppDirectory $targetPath $stage }
       Move-ReviewedAppDirectory $backup $targetPath
+      $restoredMarker = Join-Path $targetPath '.orca-reviewed-backup.json'
+      if (Test-Path -LiteralPath $restoredMarker) { Remove-Item -LiteralPath $restoredMarker -Force }
     } catch {
       $recoveryFailed = $true
       throw "Installation stopped. Complete app trees remain at $targetPath, $backup or $stage; do not launch until restored. Install error: $installError Restore error: $_"

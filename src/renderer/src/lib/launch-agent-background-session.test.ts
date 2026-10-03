@@ -25,9 +25,9 @@ const mockRegisterEagerPtyBuffer = vi.fn()
 const mockSubscribeToPtyData = vi.fn()
 const mockSubscribeToPtyExit = vi.fn()
 const mockPasteDraftWhenAgentReady = vi.fn()
-const mockMarkTrusted = vi.fn()
 const mockDispatchEvent = vi.fn()
 const mockGetAgentLaunchPlatformForRepo = vi.fn<() => NodeJS.Platform>()
+const mockRegisterAutomationChat = vi.hoisted(() => vi.fn())
 const state = createAgentBackgroundSessionTestState({
   createTab: mockCreateTab,
   setTabCustomTitle: mockSetTabCustomTitle,
@@ -58,6 +58,10 @@ vi.mock('@/lib/agent-launch-platform', () => ({
   getAgentLaunchPlatformForRepo: mockGetAgentLaunchPlatformForRepo
 }))
 
+vi.mock('@/lib/register-automation-chat', () => ({
+  registerAutomationChat: mockRegisterAutomationChat
+}))
+
 vi.mock('@/components/terminal-pane/pty-dispatcher', () => ({
   registerEagerPtyBuffer: mockRegisterEagerPtyBuffer,
   subscribeToPtyExit: mockSubscribeToPtyExit
@@ -69,6 +73,8 @@ vi.mock('@/components/terminal-pane/pty-data-sidecar-subscriptions', () => ({
 
 describe('launchAgentBackgroundSession', () => {
   beforeEach(() => {
+    mockRegisterAutomationChat.mockReset()
+    mockRegisterAutomationChat.mockResolvedValue(undefined)
     currentStoreState = state
     resetAgentBackgroundSessionTestHarness({
       state,
@@ -84,7 +90,6 @@ describe('launchAgentBackgroundSession', () => {
       updateTabPtyId: mockUpdateTabPtyId,
       dispatchEvent: mockDispatchEvent,
       kill: mockKill,
-      markTrusted: mockMarkTrusted,
       spawn: mockSpawn,
       write: mockWrite
     })
@@ -347,22 +352,6 @@ describe('launchAgentBackgroundSession', () => {
     )
   })
 
-  it('pre-marks trust for agents with first-launch trust prompts', async () => {
-    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
-
-    await launchAgentBackgroundSession({
-      agent: 'codex',
-      worktreeId: 'wt-1',
-      prompt: 'run the automation'
-    })
-
-    expect(mockMarkTrusted).toHaveBeenCalledWith({
-      preset: 'codex',
-      workspacePath: '/repo/worktree'
-    })
-    expect(mockSpawn).toHaveBeenCalled()
-  })
-
   it('stamps hidden SSH status from renderer fallback when the kill switch is off', async () => {
     // Why: with main side-effect authority disabled, this sidecar is the only
     // OSC 9999 → store path for hidden SSH sessions.
@@ -520,6 +509,26 @@ describe('launchAgentBackgroundSession', () => {
       expect.stringMatching(new RegExp(`^${expectReservedAgentBackgroundTabId(mockSpawn)}:`))
     )
     expect(mockUpdateTabPtyId).not.toHaveBeenCalled()
+  })
+
+  it('releases the reserved pane when automation chat registration fails', async () => {
+    mockRegisterAutomationChat.mockRejectedValueOnce(new Error('settings write failed'))
+    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+
+    await expect(
+      launchAgentBackgroundSession({
+        agent: 'claude',
+        worktreeId: 'wt-1',
+        prompt: 'run the automation',
+        automationRun: true
+      })
+    ).rejects.toThrow('settings write failed')
+
+    expect(mockSpawn).not.toHaveBeenCalled()
+    expect(mockCreateTab).not.toHaveBeenCalled()
+    expect(state.clearAgentLaunchConfig).toHaveBeenCalledWith(
+      expect.stringMatching(new RegExp(`^${mockRegisterAutomationChat.mock.calls[0][1].tabId}:`))
+    )
   })
 
   it('closes the adopted tab if binding fails after the PTY is live', async () => {

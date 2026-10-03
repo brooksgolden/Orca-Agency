@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getDefaultUIState } from '../../../../shared/constants'
 import { SESSION_GRID_UI_FIELDS_RUNTIME_CAPABILITY } from '../../../../shared/host-gated-ui-fields'
 
 const runtime = vi.hoisted(() => ({
@@ -94,5 +95,22 @@ describe('web ui.set host-gated keys', () => {
       manualRepoOrder: []
     })
     expect(sentUiSetPayloads()).toEqual([{ sidebarWidth: 300 }])
+  })
+
+  it('preserves explorer roots while stripping unsupported grid fields from the same write', async () => {
+    runtime.callRuntimeResult.mockImplementation(async (method) =>
+      method === 'ui.get' ? { ui: getDefaultUIState() } : undefined
+    )
+    runtime.getRemoteRuntimeStatus.mockResolvedValue({ capabilities: [] })
+    const ui = createWebUiApi()
+    await ui.get()
+    await ui.setWithAck!({
+      sidebarWidth: 300,
+      sessionsGridZoom: 1.2,
+      explorerDisplayRootByWorktree: { wt: 'src' }
+    })
+    expect(sentUiSetPayloads()).toEqual([
+      { sidebarWidth: 300, explorerDisplayRootByWorktree: { wt: 'src' } }
+    ])
   })
 })

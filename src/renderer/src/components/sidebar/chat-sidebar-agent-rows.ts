@@ -78,6 +78,7 @@ export function buildAgentChatRows(args: {
       terminalLayoutsByTabId: state.terminalLayoutsByTabId,
       ptyIdsByTabId: state.ptyIdsByTabId,
       foregroundAgentsByPaneKey: state.paneForegroundAgentByPaneKey,
+      paneForegroundAgentByPaneKey: state.paneForegroundAgentByPaneKey,
       runtimeAgentOrchestrationByPaneKey: state.runtimeAgentOrchestrationByPaneKey,
       now: args.now
     }).filter((agent) => agent.rowSource !== 'subagent'),

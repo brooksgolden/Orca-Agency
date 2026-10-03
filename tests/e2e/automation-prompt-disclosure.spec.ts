@@ -9,7 +9,7 @@ const RESIZE_PROMPT = `Synthetic resize focus validation. ${'placeholder '.repea
 
 test('automation detail keeps short prompts readable and reveals a very long prompt at narrow width', async ({
   orcaPage
-}) => {
+}, testInfo) => {
   await waitForSessionReady(orcaPage)
   await orcaPage.setViewportSize({ width: 820, height: 700 })
 
@@ -125,6 +125,7 @@ test('automation detail keeps short prompts readable and reveals a very long pro
   expect(expandedMetrics.scrollWidth).toBeLessThanOrEqual(expandedMetrics.clientWidth + 1)
   expect(expandedMetrics.lineClamp).toBe('none')
   expect(expandedMetrics.overflowWrap).toBe('anywhere')
+  await orcaPage.screenshot({ path: testInfo.outputPath('automation-detail.png') })
 
   const markerProof = await prompt.evaluate(async (element, marker) => {
     const text = element.firstChild

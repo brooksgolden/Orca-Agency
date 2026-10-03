@@ -10,7 +10,7 @@ Orca brings agents, terminals, files, browsers, and automations into one app. Th
 
 - **Find your chats:** Start or resume an LLM conversation and find it in Chats, with its provider icon beside the name. Unused launches stay out. Tabs sharing a pane appear as a main chat with indented sub-chats and one folder label. Search titles, filter folders, and reopen saved conversations when their transcripts are available. File and browser tabs stay out of the chat list.
 - **Chat ordering and status:** Active runs sort first, followed by latest agent activity. Viewing or reopening a chat does not make it newly active. Group by In progress / Done, Recent, or Folder, and collapse status sections independently. Compact rows show chat titles, folder names, "Now" while running, and elapsed time afterward.
-- **Names and status:** Your saved sidebar names override generated chat titles. Closing a sub-tab removes it from nesting and leaves its saved chat separately in Done to resume later. Submitting a new prompt reactivates it. Delete marks the selected chat Done.
+- **Names and status:** Your saved sidebar names override generated chat titles. Closing a sub-tab removes it from nesting and leaves its saved chat separately in Done. Resuming it returns it to In progress and its pane group; a new prompt also reactivates a manually completed chat. Delete marks the selected chat Done.
 
 - **Arrange your view:** Drag open chats or blank workspace header space to arrange workspaces, or drop a saved chat to resume it in a pane. Idle and Done chats can be dragged too. Add panes beside, above or below others, including a full-width pane above or below an existing split. Brackets connect separate panes, each with its own folder label; elbows connect tabs sharing a pane. Close a pane directly, or close its last tab to collapse it. File links open within their workspace.
 
@@ -24,7 +24,7 @@ Orca brings agents, terminals, files, browsers, and automations into one app. Th
 
 ### Build status
 
-Orca Agency 1.4.1000 is based on Orca v1.4.218. Source review, packaged-app checks, installer preservation checks and live visual inspection are complete. Slow first history discovery and detached Claude background-session status remain known issues, as do terminal slowdowns. Mac and Linux release builds are not yet verified for this fork.
+The [release page](https://github.com/brooksgolden/orca-agency/releases/latest) identifies the current Windows x64 version, upstream stable base and verification results. Slow first history discovery, detached Claude background-session status and terminal slowdowns remain known issues. Mac and Linux release builds are not yet verified for this fork.
 
 ### Download
 
