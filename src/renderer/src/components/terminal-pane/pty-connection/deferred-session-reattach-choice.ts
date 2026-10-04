@@ -26,9 +26,10 @@ export function runDeferredSessionReattachChoice(session: ConnectPanePtySession)
       ? (session.deps.restoredPtyIdByLeafId[session.deps.restoredLeafId] ?? null)
       : null
   const storeSnapshot = useAppStore.getState()
-  const existingPtyId = storeSnapshot.tabsByWorktree[session.deps.worktreeId]?.find(
+  const currentTab = storeSnapshot.tabsByWorktree[session.deps.worktreeId]?.find(
     (t) => t.id === session.deps.tabId
-  )?.ptyId
+  )
+  const existingPtyId = currentTab?.ptyId
   // The host decides a mirrored web tab's liveness when it connects.
   const resumesFromSleepingNote =
     !isWebTerminalSurfaceTabId(session.deps.tabId) &&
@@ -92,6 +93,17 @@ export function runDeferredSessionReattachChoice(session: ConnectPanePtySession)
     session.deps.clearTabPtyId(session.deps.tabId, sleptRemoteRuntimeSessionId)
   }
   const currentTabLivePtyIds = storeSnapshot.ptyIdsByTabId[session.deps.tabId] ?? []
+  // A moved tab keeps its exact PTY; replay it without lending aliases to other tabs.
+  const movedOwnerIds =
+    currentTab?.worktreeId === session.deps.worktreeId &&
+    !session.connectionId &&
+    !session.runtimeEnvironmentId &&
+    (session.executionHostId ?? 'local') === 'local' &&
+    candidateReattachSessionId &&
+    (existingPtyId === candidateReattachSessionId ||
+      currentTabLivePtyIds.includes(candidateReattachSessionId))
+      ? (currentTab.relocatedFromWorktreeIds ?? [])
+      : []
   const candidateHasEagerBuffer = Boolean(
     candidateReattachSessionId &&
     !isRemoteRuntimePtyId(candidateReattachSessionId) &&
@@ -120,10 +132,10 @@ export function runDeferredSessionReattachChoice(session: ConnectPanePtySession)
     (candidateReattachSessionId &&
     !isRemoteRuntimePtyId(candidateReattachSessionId) &&
     !candidateHasEagerBuffer &&
-    isSessionOwnedByWorktree(
-      candidateReattachSessionId,
-      ptySessionOwnerIds(session.deps.worktreeId, storeSnapshot.worktreesByRepo)
-    )
+    isSessionOwnedByWorktree(candidateReattachSessionId, [
+      ...ptySessionOwnerIds(session.deps.worktreeId, storeSnapshot.worktreesByRepo),
+      ...movedOwnerIds
+    ])
       ? candidateReattachSessionId
       : null)
   recordPtyConnectDiagnostic(

@@ -33,6 +33,7 @@ export type AiVaultResumePlacement = {
   splitDirection?: TabSplitDirection
   onResumed?: () => void
   validateDestination?: () => boolean
+  onSettled?: (outcome: 'created' | 'not-created' | 'unverifiable') => void
 }
 
 // Why module scope: the chat sidebar and AI Vault panel can resume the same session.
@@ -103,7 +104,9 @@ export function useAiVaultSessionLaunchActions({
       placement?: AiVaultResumePlacement
     ): void => {
       if (session.structuredSession) {
-        void activateAiVaultStructuredSession(session)
+        void activateAiVaultStructuredSession(session).finally(() =>
+          placement?.onSettled?.('created')
+        )
         return
       }
       const targetId = resolveAiVaultSessionLaunchTargetOrNotify({
@@ -111,14 +114,16 @@ export function useAiVaultSessionLaunchActions({
         sessionExecutionHostId: session.executionHostId,
         activeWorktreeId: activeWorktreeId ?? activeWorktree?.id ?? null,
         targetWorktreeId,
-        targetState
+        targetState: targetWorktreeId ? useAppStore.getState() : targetState
       })
       if (!targetId) {
+        placement?.onSettled?.('not-created')
         return
       }
 
       const resumeKey = JSON.stringify([session.executionHostId, session.agent, session.sessionId])
       if (pendingResumes.has(resumeKey)) {
+        placement?.onSettled?.('not-created')
         if (placement) {
           toast.info('This chat is already reopening. Drop it again once it opens.')
         }
@@ -126,6 +131,7 @@ export function useAiVaultSessionLaunchActions({
       }
       pendingResumes.add(resumeKey)
       let settleMs = 0
+      let resumeOutcome: 'created' | 'not-created' | 'unverifiable' = 'not-created'
 
       const showQueuedToast = (): void => {
         toast.success(
@@ -159,6 +165,7 @@ export function useAiVaultSessionLaunchActions({
             splitDirection: placement?.splitDirection
           })
           if (launchResult.tabId === null) {
+            resumeOutcome = 'unverifiable'
             const outcome = await launchResult.runtimeLaunch
             if (outcome.status === 'failed') {
               toast.error(
@@ -172,8 +179,10 @@ export function useAiVaultSessionLaunchActions({
               return
             }
           } else {
+            resumeOutcome = 'created'
             linkResumedTab(launchResult.tabId, session)
           }
+          resumeOutcome = 'created'
           // Why: until the agent reports its session, a repeat click must not start a second copy.
           settleMs = RESUME_SETTLE_MS
           if (useAppStore.getState().activeWorktreeId !== targetId.worktreeId) {
@@ -185,6 +194,7 @@ export function useAiVaultSessionLaunchActions({
         .catch(notifyAiVaultSessionPreparationFailure)
         .finally(() => {
           setTimeout(() => pendingResumes.delete(resumeKey), settleMs)
+          placement?.onSettled?.(resumeOutcome)
         })
     },
     [activeWorktree?.id, activeWorktreeId, buildResumeStartup, targetState]

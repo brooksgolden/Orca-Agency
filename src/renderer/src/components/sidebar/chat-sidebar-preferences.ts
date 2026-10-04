@@ -32,7 +32,11 @@ export function setChatSidebarTitle(row: Pick<ChatSidebarRow, 'id' | 'aliases'>,
   })
 }
 
-export function setChatFolder(row: ChatSidebarRow, destination: Worktree) {
+export function setChatFolder(
+  row: ChatSidebarRow,
+  destination: Worktree,
+  movedFromWorkspaceId?: string
+) {
   return updateChatSidebar((current) => {
     const folderAssignments = { ...current.folderAssignments }
     for (const id of [row.id, ...row.aliases]) {
@@ -41,6 +45,19 @@ export function setChatFolder(row: ChatSidebarRow, destination: Worktree) {
     folderAssignments[row.id] = { worktreeId: destination.id, executionHostId: row.hostId }
     return {
       folderAssignments,
+      ...(row.tabId && movedFromWorkspaceId
+        ? {
+            sessions: Object.fromEntries(
+              Object.entries(current.sessions ?? {}).map(([key, saved]) => [
+                key,
+                saved.resumeLauncher?.tabId === row.tabId &&
+                saved.worktreeId === movedFromWorkspaceId
+                  ? { ...saved, worktreeId: row.worktree.id, ownsWorkspaceName: false }
+                  : saved
+              ])
+            )
+          }
+        : {}),
       ...(row.tabId
         ? {
             workspaceFolderAssignments: {

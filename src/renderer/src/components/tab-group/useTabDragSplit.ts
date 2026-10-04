@@ -30,6 +30,11 @@ import { canDropTabIntoPaneBody, isTabDragData, type TabDragItemData } from './t
 import { useTabDragGestureLifecycle } from './tab-drag-gesture-lifecycle'
 import { useTabDragHoverPreview, type HoveredTabDropTarget } from './tab-drag-hover-preview'
 import { commitTabDragDrop } from './tab-drag-drop-commit'
+import {
+  dispatchWorkspacePanePointerMove,
+  dispatchWorkspacePanePointerDrop,
+  dispatchWorkspacePanePointerClear
+} from '../workspace-split/workspace-pane-pointer-drag'
 
 export type { HoveredTabInsertion }
 export type { HoveredTabDropTarget }
@@ -137,6 +142,7 @@ export function useTabDragSplit({
   const sensors = useSensors(pointerSensor)
 
   const clearDragState = useCallback(() => {
+    dispatchWorkspacePanePointerClear()
     tabDragActiveRef.current = false
     releaseWebviewDragPassthrough()
     releaseMissedEndFallback()
@@ -213,9 +219,25 @@ export function useTabDragSplit({
       if (!tabDragActiveRef.current) {
         return
       }
+      const data = event.active.data.current
+      const pointer = getDragPointer(event)
+      if (
+        isTabDragData(data) &&
+        data.tabType === 'terminal' &&
+        pointer &&
+        dispatchWorkspacePanePointerMove({
+          sourceId: data.worktreeId,
+          unifiedTabId: data.unifiedTabId,
+          ...pointer
+        })
+      ) {
+        clearHoveredDropTarget()
+        tabInsertion.clear()
+        return
+      }
       handleDragUpdate(event)
     },
-    [handleDragUpdate]
+    [handleDragUpdate, clearHoveredDropTarget, tabInsertion]
   )
 
   const onDragOver = useCallback((_event: DragOverEvent) => {
@@ -227,6 +249,21 @@ export function useTabDragSplit({
     (event: DragEndEvent) => {
       if (!tabDragActiveRef.current) {
         finishDrag(true)
+        return
+      }
+      const data = event.active.data.current
+      const pointer = getDragPointer(event)
+      if (
+        isTabDragData(data) &&
+        data.tabType === 'terminal' &&
+        pointer &&
+        dispatchWorkspacePanePointerDrop({
+          sourceId: data.worktreeId,
+          unifiedTabId: data.unifiedTabId,
+          ...pointer
+        })
+      ) {
+        finishDrag(false)
         return
       }
       commitTabDragDrop({

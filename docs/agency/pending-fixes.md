@@ -13,3 +13,16 @@ Status: installed and visually verified on October 2 in Agency 1.4.1002. A runni
 2. **Installer connection recovery:** A timed-out renderer debugging connection can use the existing desktop close fallback. The fallback verifies the exact desktop process and executable, preserves unsaved-file checks and requests normal close confirmation. It never kills a terminal. Claude approved the change; 12 helper fixture checks and the October 2 installed retry passed.
 
 Installed check: resume a previously closed chat, send a prompt, and place it with two other chats in three panes. Confirm it remains in In Progress and in the full three-pane bracket after the working event ends and after restart. Also confirm resume alone preserves its earlier activity time and an explicit Mark done choice survives closing.
+
+## October 4, 2026 candidate
+
+- **Product name:** Orca Agency in application and installer display names and the real GitHub fork. Retain existing executable and profile identities for update compatibility.
+- **Pane dragging:** Terminal tabs can move from bottom panes and onto whole-window edges, including switching top/bottom panes to side-by-side.
+- **Separate chat:** Move a prompted terminal out of nesting without stopping its process or marking it Done. Pane X removes the view and retains conversations. Tab X keeps the existing Done behavior.
+- **History reopening:** Focus an existing matching session. Closed history reopens separately and does not restore its previous nested slot. Confirmed failed launches clean up only their empty new workspace; uncertain remote launches retain their workspace.
+- **Focused runs:** The focused running window group sorts first, preserving its entire bracket and conversation activity times. Idle viewing does not stamp Now.
+- **Move persistence:** Preserve PTY and pane identities, execution folder, completion status and saved resume ownership across moves and restarts. Protect moved processes from deletion of the original workspace.
+- **Moved terminal replay:** Restore scrollback for the exact moved tab even while its original workspace remains open. Preserve the same live process and accept new output after moving.
+- **Publication:** Use the real `brooksgolden/Orca-Agency` fork, preserve public edits, and export the verified tree with only public and proven upstream ancestry. The weekly automation remains Saturday at 8 am in America/New_York.
+
+Status: candidate 1.4.1005 passed 30 scoped regressions, node and web typechecks, the changed-code quality gate, and the rebuilt Windows hidden renderer drag and live terminal replay test. Claude Opus 5.5 at extra high found no remaining source blockers after follow-up repairs, and Codex independently checked the final evidence. Not installed or released. Installed desktop rollout remains held because its current process has no debugging connection for the required inventory and no approved restart path that obeys the no-focus rule. Installed 1.4.1002 remains untouched.

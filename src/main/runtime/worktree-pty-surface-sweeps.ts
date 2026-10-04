@@ -6,7 +6,7 @@
  * provider's session list, and the local pty-registry.
  */
 
-import type { IPtyProvider } from '../providers/types'
+import type { IPtyProvider, PtyProcessInfo } from '../providers/types'
 import { listRegisteredPtys } from '../memory/pty-registry'
 import { isPathInsideOrEqual } from '../../shared/cross-platform-path'
 import { splitWorktreeId, splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
@@ -31,7 +31,8 @@ export async function sweepProviderByPrefix(
     stop: () => Promise<boolean>
   ) => Promise<{ stopped: boolean; owner: boolean }>,
   onPtyStopped?: (ptyId: string) => void,
-  failClosed = false
+  failClosed = false,
+  resolveMovedOwner?: (session: PtyProcessInfo) => string | null
 ): Promise<number> {
   const prefix = `${worktreeId}@@`
   // Why (#10252): the cwd fallback only proves ownership when the filesystem path
@@ -48,7 +49,16 @@ export async function sweepProviderByPrefix(
   const sessions = failClosed
     ? await provider.listProcesses({ deadlineMs: rpcDeadline })
     : await provider.listProcesses({ deadlineMs: rpcDeadline }).catch(() => [])
+  const registrationByPtyId = new Map(listRegisteredPtys().map((entry) => [entry.ptyId, entry]))
   const ownedSessions = sessions.filter((session) => {
+    const movedOwner = resolveMovedOwner?.(session)
+    if (movedOwner) {
+      return movedOwner === worktreeId
+    }
+    const registration = registrationByPtyId.get(session.id)
+    if (registration?.worktreeId) {
+      return registration.worktreeId === worktreeId
+    }
     // Why: older daemon/relay process rows may omit cwd; their established ID
     // and authoritative worktree ownership must remain usable during teardown.
     const cwdOwned =

@@ -14,17 +14,13 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import { useNow } from '@/hooks/use-now'
-import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
-import { activateTabAndFocusPane } from '@/lib/activate-tab-and-focus-pane'
-import { activateStructuredAgentSessionTab } from '@/lib/structured-agent-session-tab-activation'
-import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import { useAiVaultSessionLaunchActions } from '../right-sidebar/ai-vault-session-launch-actions'
 import { ChatSidebarRow } from './ChatSidebarRow'
 import type { ChatSidebarRow as Row } from './chat-sidebar-types'
 import { useChatSidebarData } from './use-chat-sidebar-data'
 import { setChatSidebarTitle } from './chat-sidebar-preferences'
 import { activeChatTarget, isChatRowSelected } from './chat-sidebar-selection'
-import { chatResumeSession } from './chat-sidebar-resume'
+import { activateResidentSidebarChat, openSavedSidebarChat } from './chat-sidebar-open'
 import { startSavedChatDrag } from './chat-sidebar-saved-drag'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
 import { chatSidebarListItems, chatSidebarItemHeight } from './chat-sidebar-groups'
@@ -54,6 +50,12 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const [newFolderRow, setNewFolderRow] = useState<Row | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const target = useAppStore(useShallow(activeChatTarget))
+  const focused = useAppStore(
+    useShallow((s) => ({
+      worktreeId: s.activeView === 'terminal' ? s.activeWorktreeId : null,
+      hostId: s.activeWorkspaceExecutionHostId ?? 'local'
+    }))
+  )
   const targetState = useAppStore(
     useShallow((s) => ({
       worktreesByRepo: s.worktreesByRepo,
@@ -87,27 +89,10 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   }, [])
   const openChat = useCallback(
     (row: Row) => {
-      const resumeSession = row.tabId ? null : chatResumeSession(row)
-      if (resumeSession) {
-        handleResume(resumeSession, (row.folderWorktree ?? row.worktree).id)
-        onOpen?.()
-        return
-      }
-      if (
-        activateAndRevealWorkspace(row.worktree.id, {
-          executionHostId: row.hostId,
-          revealInSidebar: false
-        }) === false
-      ) {
-        return
-      }
       if (row.tabId) {
-        if (!activateStructuredAgentSessionTab({ worktreeId: row.worktree.id, tabId: row.tabId })) {
-          activateTabAndFocusPane(
-            row.tabId,
-            row.paneKey ? (parsePaneKey(row.paneKey)?.leafId ?? null) : null
-          )
-        }
+        activateResidentSidebarChat(row)
+      } else {
+        void openSavedSidebarChat(row, handleResume)
       }
       onOpen?.()
     },
@@ -118,8 +103,9 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     setName(row.title)
   }, [])
   const items = useMemo(
-    () => chatSidebarListItems(rows, { ...state, ...panes }, query, splits, collapsedGroups),
-    [rows, state, panes, query, splits, collapsedGroups]
+    () =>
+      chatSidebarListItems(rows, { ...state, ...panes }, query, splits, collapsedGroups, focused),
+    [rows, state, panes, query, splits, collapsedGroups, focused]
   )
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()

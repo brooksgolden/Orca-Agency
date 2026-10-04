@@ -47,8 +47,10 @@ export function createParkedTerminalCommandStatusPolicy(options: {
   /** PaneManager pane id whose runtime-title slot the watcher writes; read for status title pairing. */
   paneId: number
   paneKey: string
+  resolveWorktreeId?: () => string
 }): ParkedTerminalCommandStatusPolicy {
   const { ptyId, worktreeId, tabId, paneId, paneKey } = options
+  const currentWorktreeId = () => options.resolveWorktreeId?.() ?? worktreeId
   let disposed = false
   const clearCommandCodeOutputDoneTimer = (): void => cancelCommandCodeDoneSettle(paneKey)
 
@@ -61,13 +63,15 @@ export function createParkedTerminalCommandStatusPolicy(options: {
       state,
       paneKey,
       ptyId,
-      expectedConnectionId: getConnectionIdFromState(state, worktreeId)
+      expectedConnectionId: getConnectionIdFromState(state, currentWorktreeId())
     })
   }
 
   const canApplyCommandCodeOutputStatus = (): boolean => {
     const state = useAppStore.getState()
-    const tab = (state.tabsByWorktree[worktreeId] ?? []).find((entry) => entry.id === tabId)
+    const tab = (state.tabsByWorktree[currentWorktreeId()] ?? []).find(
+      (entry) => entry.id === tabId
+    )
     const foreground = state.paneForegroundAgentByPaneKey[paneKey]
     const paneOwnerAgent = resolvePaneAgentOwner({
       launchAgent: tab?.launchAgent,
@@ -185,7 +189,7 @@ export function createParkedTerminalCommandStatusPolicy(options: {
       }
       // Why: the finished command may have moved HEAD or the index (an agent running
       // `git checkout` in a parked worktree); nudge git UI now instead of waiting for a poll.
-      dispatchTerminalCommandFinishedEvent(worktreeId, bestEffortExitCode)
+      dispatchTerminalCommandFinishedEvent(currentWorktreeId(), bestEffortExitCode)
       void retireForegroundAgentUnlessConfirmed()
       // Why: drop the same-turn status row only for SSH PTYs — exact parity with the mounted
       // path, whose foreground tracker refuses SSH ids and drops un-probed. Local PTYs need

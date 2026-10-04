@@ -6,16 +6,53 @@ import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { cloneAgentSessionOwnerBinding } from '../../shared/claimed-agent-pty-owner-snapshot'
 import { advertisedUrlWatcher } from '../ports/advertised-url-watcher'
+import { reassignRegisteredPtyWorkspace } from '../memory/pty-registry'
 import { maxTimestamp } from './runtime-worktree-status-projection'
 import type { RuntimeSyncedLeaf } from '../../shared/runtime-types'
 import { isTerminalLeafId, makePaneKey } from '../../shared/stable-pane-id'
 import { inferWorktreeIdFromPtyId } from './runtime-worktree-path-identity'
+import { indexPersistedPtySurfaceBindings } from './runtime-worktree-binding-index'
+import { hasPersistedTerminalMoveEvidence } from './persisted-terminal-move-evidence'
+import type { PtyProcessInfo } from '../providers/types'
+import { getPtyExecutionHost } from '../../shared/terminal-execution-host'
 import {
   recordPtySurfaceClaim,
   SURFACE_CLAIM_WITHOUT_STANDING
 } from './pty-recorded-surface-topology'
 
 export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepoWorktreeScan {
+  resolveLocalTerminalMoveWorkspace(session: PtyProcessInfo): string | null {
+    const executionHost = getPtyExecutionHost(session.id)
+    if (parseAppSshPtyId(session.id) || (executionHost && executionHost !== 'local')) {
+      return null
+    }
+    const live = this.ptysById.get(session.id)
+    // The graph can arrive before the persistence write. Require the observed incarnation and a current surface.
+    if (
+      session.incarnationId &&
+      live?.incarnationId === session.incarnationId &&
+      !live.connectionId &&
+      [...this.leaves.values()].some(
+        (leaf) => leaf.ptyId === session.id && leaf.worktreeId === live.worktreeId
+      )
+    ) {
+      return live.worktreeId
+    }
+    const surface = indexPersistedPtySurfaceBindings(
+      this.store?.getWorkspaceSession?.('local')
+    ).get(session.id)
+    if (
+      hasPersistedTerminalMoveEvidence(
+        surface,
+        session.incarnationId,
+        session.worktreeId ?? inferWorktreeIdFromPtyId(session.id),
+        null
+      )
+    ) {
+      return surface.worktreeId
+    }
+    return null
+  }
   protected recordPtyWorktree(
     ptyId: string,
     worktreeId: string,
@@ -114,10 +151,16 @@ export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepo
       }
       // Why: restored/controller-discovered PTYs learn their worktree here without registerPty(), so URL enrichment must bind at this source.
       advertisedUrlWatcher.bindPty(ptyId, worktreeId)
+      if (connectionId === null) {
+        reassignRegisteredPtyWorkspace(ptyId, worktreeId)
+      }
       return pty
     }
 
     pty.worktreeId = worktreeId
+    if (pty.connectionId === null && state.connectionId == null) {
+      reassignRegisteredPtyWorkspace(ptyId, worktreeId)
+    }
     if (
       state.incarnationId !== undefined &&
       pty.incarnationId !== null &&
@@ -206,6 +249,18 @@ export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepo
       return null
     }
     // Why: daemon-backed PTY session IDs are prefixed with the worktree ID so mobile summaries survive renderer graph gaps and reloads.
-    return this.recordPtyWorktree(ptyId, inferredWorktreeId)
+    const surface = parseAppSshPtyId(ptyId)
+      ? undefined
+      : indexPersistedPtySurfaceBindings(this.store?.getWorkspaceSession?.('local')).get(ptyId)
+    // Restore presentation ownership; controller inventory still verifies its incarnation before adoption.
+    const owner = hasPersistedTerminalMoveEvidence(
+      surface,
+      surface?.incarnationId,
+      inferredWorktreeId,
+      null
+    )
+      ? surface.worktreeId
+      : inferredWorktreeId
+    return this.recordPtyWorktree(ptyId, owner)
   }
 }

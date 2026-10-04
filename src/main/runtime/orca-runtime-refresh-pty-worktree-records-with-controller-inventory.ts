@@ -30,6 +30,7 @@ import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import { NO_OBSERVING_PROVIDER_REASON } from '../../shared/pty-liveness-verdict'
 import { buildControllerTerminalIdentities } from './orca-runtime-build-controller-terminal-identities'
 import { retireOrchestrationAuthorityAbsentFromInventory } from './runtime-restored-orchestration-authority-sweep'
+import { resolveControllerWorkspaceOwner } from './persisted-terminal-move-evidence'
 
 export class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory extends OrcaRuntimeWithRefreshPtyWorktreeRecordsFromController {
   protected async refreshPtyWorktreeRecordsWithControllerInventory(
@@ -163,22 +164,19 @@ export class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory ext
       const persistedWorktree = persistedWorktreeId
         ? findResolvedWorktree(persistedWorktreeId)
         : undefined
-      const hasMigrationEvidence =
-        Boolean(session.worktreeId) &&
-        !providerWorktree &&
-        Boolean(persistedWorktree) &&
-        Boolean(inferredWorktreeId) &&
-        runtimeWorktreeIdsEqual(session.worktreeId as string, inferredWorktreeId as string)
-      // Why: an unresolved explicit provider owner remains authoritative unless the session id proves it was frozen before a persisted rename migration.
-      const worktreeId = providerWorktree
-        ? providerWorktree.id
-        : hasMigrationEvidence
-          ? (persistedWorktree?.id ?? null)
-          : (session.worktreeId ??
-            persistedWorktree?.id ??
-            inferredWorktreeId ??
-            findResolvedWorktreeIdForPath(resolvedWorktrees, session.cwd, targetWorktreeId))
       const persistedSurface = persistedIndexes.surfaceByPtyId.get(session.id)
+      const movedWorktreeId =
+        sessionConnectionId === null ? this.resolveLocalTerminalMoveWorkspace(session) : null
+      // Why: an unresolved explicit provider owner remains authoritative unless the session id proves it was frozen before a persisted rename migration.
+      const worktreeId =
+        movedWorktreeId ??
+        resolveControllerWorkspaceOwner(
+          session.worktreeId,
+          providerWorktree?.id,
+          persistedWorktree?.id,
+          inferredWorktreeId
+        ) ??
+        findResolvedWorktreeIdForPath(resolvedWorktrees, session.cwd, targetWorktreeId)
       const restoresExactSurface =
         persistedSurface &&
         session.incarnationId &&

@@ -26,6 +26,7 @@ import { translate } from '@/i18n/i18n'
 import { TerminalTabSplitMenuSection } from './TerminalTabSplitMenuSection'
 import { TAB_CONTEXT_MENU_CONTENT_CLASS } from './tab-context-menu-sizing'
 import { sessionGridVisibilityActionLabel } from '../session-grid/session-grid-visibility-labels'
+import { detachTerminalChat } from '../sidebar/chat-sidebar-detach'
 
 const TAB_COLORS = [
   {
@@ -170,6 +171,9 @@ export function SortableTabContextMenu({
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent className={TAB_CONTEXT_MENU_CONTENT_CLASS} sideOffset={0} align="start">
+        <DropdownMenuItem onSelect={() => detachTerminalChat(tab.id)}>
+          Move to separate chat
+        </DropdownMenuItem>
         <TerminalTabSplitMenuSection
           unifiedTabId={unifiedTabId}
           groupId={groupId}

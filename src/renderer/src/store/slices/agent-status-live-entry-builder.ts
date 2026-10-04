@@ -27,6 +27,7 @@ import type {
 } from './agent-status-contract'
 import { registryEntryMatchesStatus } from './agent-status-launch-config'
 import { findAgentPaneWorktreeId, getTabIdFromPaneKey } from './agent-status-pane-key-tab-binding'
+import { isWebTerminalSurfaceTabId } from '../../../../shared/terminal-surface-id'
 import { mergeCurrentOrchestrationContext } from './agent-status-orchestration-context'
 import { deriveAgentStatusLiveFacts } from './agent-status-live-facts'
 
@@ -218,6 +219,10 @@ export function buildAgentStatusLiveEntry(
     paneKey,
     terminalHandle: statusTerminalHandle,
     worktreeId:
+      (!(routing?.connectionId ?? existing?.connectionId) &&
+      !isWebTerminalSurfaceTabId(statusTabId ?? '')
+        ? findAgentPaneWorktreeId(state, paneKey)
+        : null) ??
       routing?.worktreeId ??
       existing?.worktreeId ??
       findAgentPaneWorktreeId(state, paneKey) ??

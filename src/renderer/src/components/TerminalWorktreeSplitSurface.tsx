@@ -94,6 +94,7 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
     >
       {hoverEdge ? (
         <div
+          data-workspace-drop-edge={hoverEdge}
           className={`pointer-events-none absolute z-50 border-2 border-primary bg-primary/15 ${
             hoverEdge === 'left'
               ? 'inset-y-0 left-0 w-1/2'

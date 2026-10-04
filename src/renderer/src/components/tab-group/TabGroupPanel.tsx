@@ -15,6 +15,7 @@ import TabBar from '../tab-bar/TabBar'
 
 import { TabBarQuickCommandsButton } from '../tab-bar/TabBarQuickCommandsButton'
 import { WorkspacePaneCloseButton } from '../workspace-split/WorkspacePaneCloseButton'
+import { removeChatPane } from '../workspace-split/remove-chat-pane-from-split'
 import { useWorkspaceHeaderDrag } from '../workspace-split/use-workspace-header-drag'
 import { useTabGroupWorkspaceModel } from './useTabGroupWorkspaceModel'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
@@ -325,17 +326,17 @@ export default function TabGroupPanel({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label="Close split pane"
+                    aria-label="Remove pane from split"
                     data-tab-group-close-button={groupId}
                     onClick={(event) => {
                       event.stopPropagation()
-                      commands.closeGroup()
+                      removeChatPane(worktreeId, groupId)
                     }}
                   >
                     <X className="size-3.5" aria-hidden="true" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Close split pane</TooltipContent>
+                <TooltipContent>Remove pane from split</TooltipContent>
               </Tooltip>
             ) : (
               <WorkspacePaneCloseButton worktreeId={worktreeId} />

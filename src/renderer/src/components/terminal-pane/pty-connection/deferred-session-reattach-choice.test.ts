@@ -36,9 +36,19 @@ const LEAF = '54554ce8-4673-4d11-bcad-1dabb5babc88'
 function seedStore(args: {
   tabPtyId: string | null
   worktrees: { id: string; priorWorktreeIds?: string[] }[]
+  relocatedFromWorktreeIds?: string[]
 }) {
   mocks.state = {
-    tabsByWorktree: { [NEW_ID]: [{ id: 'tab-1', ptyId: args.tabPtyId, worktreeId: NEW_ID }] },
+    tabsByWorktree: {
+      [NEW_ID]: [
+        {
+          id: 'tab-1',
+          ptyId: args.tabPtyId,
+          worktreeId: NEW_ID,
+          relocatedFromWorktreeIds: args.relocatedFromWorktreeIds
+        }
+      ]
+    },
     ptyIdsByTabId: {},
     worktreesByRepo: { repo: args.worktrees }
   }
@@ -100,6 +110,44 @@ describe('deferred session reattach choice', () => {
     expect(mocks.startDeferredSessionReattach).not.toHaveBeenCalled()
     expect(transport.attach).not.toHaveBeenCalled()
     expect(startFreshSpawn).toHaveBeenCalled()
+  })
+
+  it('replays the exact moved tab PTY even while its original workspace remains open', () => {
+    seedStore({
+      tabPtyId: LIVE_PTY,
+      worktrees: [{ id: NEW_ID }, { id: OLD_ID }],
+      relocatedFromWorktreeIds: [OLD_ID]
+    })
+    const { session, transport, startFreshSpawn } = buildSession(LIVE_PTY)
+    runDeferredSessionReattachChoice(session)
+    expect(mocks.startDeferredSessionReattach).toHaveBeenCalledWith(session, LIVE_PTY)
+    expect(transport.attach).not.toHaveBeenCalled()
+    expect(startFreshSpawn).not.toHaveBeenCalled()
+  })
+
+  it('does not lend move evidence to an unmapped PTY from that former workspace', () => {
+    seedStore({
+      tabPtyId: null,
+      worktrees: [{ id: NEW_ID }, { id: OLD_ID }],
+      relocatedFromWorktreeIds: [OLD_ID]
+    })
+    const { session, startFreshSpawn } = buildSession(LIVE_PTY)
+    runDeferredSessionReattachChoice(session)
+    expect(mocks.startDeferredSessionReattach).not.toHaveBeenCalled()
+    expect(startFreshSpawn).toHaveBeenCalled()
+  })
+
+  it('replays a secondary pane PTY mapped to the moved tab', () => {
+    seedStore({
+      tabPtyId: `${OLD_ID}@@primary`,
+      worktrees: [{ id: NEW_ID }, { id: OLD_ID }],
+      relocatedFromWorktreeIds: [OLD_ID]
+    })
+    mocks.state.ptyIdsByTabId = { 'tab-1': [LIVE_PTY] }
+    const { session, transport } = buildSession(LIVE_PTY)
+    runDeferredSessionReattachChoice(session)
+    expect(mocks.startDeferredSessionReattach).toHaveBeenCalledWith(session, LIVE_PTY)
+    expect(transport.attach).not.toHaveBeenCalled()
   })
 
   it('refuses a prior-id PTY once a live workspace uses that id again', () => {

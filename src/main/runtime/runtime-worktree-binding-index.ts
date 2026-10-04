@@ -37,11 +37,23 @@ export function indexPersistedPtySurfaceBindings(
   session: WorkspaceSessionState | null | undefined
 ): ReadonlyMap<
   string,
-  { worktreeId: string; tabId: string; paneKey: string; incarnationId: string }
+  {
+    worktreeId: string
+    tabId: string
+    paneKey: string
+    incarnationId: string
+    relocatedFromWorktreeIds?: string[]
+  }
 > {
   const bindingByPtyId = new Map<
     string,
-    { worktreeId: string; tabId: string; paneKey: string; incarnationId: string }
+    {
+      worktreeId: string
+      tabId: string
+      paneKey: string
+      incarnationId: string
+      relocatedFromWorktreeIds?: string[]
+    }
   >()
   const ambiguousPtyIds = new Set<string>()
   for (const [worktreeId, tabs] of Object.entries(session?.tabsByWorktree ?? {})) {
@@ -57,7 +69,13 @@ export function indexPersistedPtySurfaceBindings(
         if (!incarnationId) {
           continue
         }
-        const binding = { worktreeId, tabId: tab.id, paneKey, incarnationId }
+        const binding = {
+          worktreeId,
+          tabId: tab.id,
+          paneKey,
+          incarnationId,
+          relocatedFromWorktreeIds: tab.relocatedFromWorktreeIds
+        }
         const existing = bindingByPtyId.get(ptyId)
         if (
           existing &&
