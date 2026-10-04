@@ -1,0 +1,9 @@
+*.json
+*.jsonl
+*.lock
+*.tmp
+.env*
+.composio/
+__pycache__/
+replies/
+alerts/
