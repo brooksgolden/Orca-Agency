@@ -111,4 +111,20 @@ Assert-Check ($timedOut -and $script:killed.Count -eq 0) 'remaining desktop abor
 $script:records = @()
 Wait-ReviewedDesktopClosed $exe 10 $captured 0
 Assert-Check $true 'empty installation process table permits the directory transaction'
+Reset-Fixture
+$script:records = @(New-Record 20 99)
+$olderCaptured = @($script:records)
+$script:handles[20] | Add-Member ScriptMethod Kill {
+  $script:killed += $this.Id
+  $script:records = @($script:records | Where-Object { $_.ProcessId -ne $this.Id })
+} -Force
+Wait-ReviewedDesktopClosed $exe 10 $olderCaptured 0
+Assert-Check ($script:killed -contains 20) 'captured reporter from a previous exited desktop does not block installation'
+Reset-Fixture
+$script:records = @(New-Record 20 99)
+$olderCaptured = @($script:records)
+$script:handles[99] = New-Handle 99
+$timedOut = $false
+try { Wait-ReviewedDesktopClosed $exe 10 $olderCaptured 0 } catch { $timedOut = $_ -like '*did not close*' }
+Assert-Check ($timedOut -and $script:killed.Count -eq 0) 'a previous reporter with a live parent stays protected'
 Write-Host "$script:checks checks passed. No real processes were modified."
