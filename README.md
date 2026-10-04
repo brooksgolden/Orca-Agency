@@ -20,7 +20,7 @@ Orca brings agents, terminals, files, browsers, and automations into one app. Th
 - **Copy file paths:** Editor tab Copy Path uses Windows backslashes for Windows paths and preserves Mac/Linux path formats.
 - **Open short file links:** Click relative file paths printed by an agent. Orca checks the terminal's folder, then existing files identified by paths printed earlier in that pane. Ambiguous matches stay unlinked.
 - **Automations tab:** Discover Windows scheduled tasks and Hermes services. Background automation runs stay out of your Chats sidebar.
-- **Managed installer updates:** The Windows installer stages and verifies complete files before closing Orca, restarts after successful installation, and retains two managed rollback versions while safely preserving original AI chat transcripts and caches in place.
+- **Managed installer updates:** The reviewed Windows update flow stages and verifies complete files before closing Orca, restarts after successful installation, and retains two managed rollback versions while preserving original AI chat transcripts and caches in place.
 
 ### Build status
 

@@ -4,6 +4,7 @@ import { _electron as electron, expect, test } from '@stablyai/playwright-test'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
+import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
 
 test('packaged local Hermes scheduled task appears in Automations', async (// oxlint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture argument.
 {}, testInfo) => {
@@ -35,6 +36,7 @@ test('packaged local Hermes scheduled task appears in Automations', async (// ox
     env: { ...isolation.env, ORCA_BACKGROUND_LAUNCH: '1', ORCA_E2E_HEADLESS: '1' }
   })
   try {
+    await assertPackagedExecutableIdentity(app, executablePath)
     const page = await app.firstWindow()
     await app.evaluate(({ BrowserWindow }) => {
       for (const window of BrowserWindow.getAllWindows()) {

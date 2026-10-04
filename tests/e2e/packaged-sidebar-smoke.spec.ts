@@ -5,6 +5,7 @@ import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboar
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-retry'
+import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
 
 function readShellOutput(file: string): string {
   const bytes = readFileSync(file)
@@ -41,6 +42,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     env: { ...isolation.env, ORCA_BACKGROUND_LAUNCH: '1', ORCA_E2E_HEADLESS: '1' }
   })
   try {
+    await assertPackagedExecutableIdentity(app, executablePath)
     expect(
       await retryTransientMainEvaluate(() => app.evaluate(({ app }) => app.getPath('home')))
     ).toBe(isolation.isolatedHome)
