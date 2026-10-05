@@ -6,7 +6,7 @@ import { relayWorkflowUrl } from './relay-repository.mjs'
 const workflow = readFileSync(
   relayWorkflowUrl('deploy-relay-asia-topology.yml'),
   'utf8'
-)
+).replace(/\r\n/g, '\n')
 const iam = readFileSync(
   new URL('../../infra/terraform/relay-asia-topology-iam.tf', import.meta.url),
   'utf8'

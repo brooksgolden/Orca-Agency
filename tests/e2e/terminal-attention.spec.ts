@@ -257,7 +257,9 @@ test.describe('Terminal attention', () => {
 
     // The focused tab is now unread — the bell persists until the user
     // actually interacts with the pane.
-    expect((await getUnreadTerminalTabIds(orcaPage)).includes(activeTabId)).toBe(true)
+    await expect
+      .poll(async () => (await getUnreadTerminalTabIds(orcaPage)).includes(activeTabId))
+      .toBe(true)
     const activeTabBell = orcaPage
       .locator(
         `[data-testid="sortable-tab"][data-tab-id="${activeTabId}"] [data-testid="tab-activity-bell"]`

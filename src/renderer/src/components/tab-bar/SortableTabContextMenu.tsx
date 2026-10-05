@@ -172,6 +172,7 @@ export function SortableTabContextMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent className={TAB_CONTEXT_MENU_CONTENT_CLASS} sideOffset={0} align="start">
         <DropdownMenuItem onSelect={() => detachTerminalChat(tab.id)}>
+          <SquareTerminal className="size-3.5" />
           Move to separate chat
         </DropdownMenuItem>
         <TerminalTabSplitMenuSection

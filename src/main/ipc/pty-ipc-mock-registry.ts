@@ -37,6 +37,7 @@ export const trackMock: Mock = vi.fn()
 export const classifyErrorMock: Mock = vi.fn()
 export const registerPtyMock: Mock = vi.fn()
 export const unregisterPtyMock: Mock = vi.fn()
+export const reassignRegisteredPtyWorkspaceMock: Mock = vi.fn()
 export const setMigrationUnsupportedPtyMock: Mock = vi.fn()
 export const clearMigrationUnsupportedPtyMock: Mock = vi.fn()
 export const clearMigrationUnsupportedPtysForPaneKeyMock: Mock = vi.fn()
@@ -167,7 +168,8 @@ export const linuxCliShimModuleMock = () => ({
 
 export const ptyRegistryModuleMock = () => ({
   registerPty: registerPtyMock,
-  unregisterPty: unregisterPtyMock
+  unregisterPty: unregisterPtyMock,
+  reassignRegisteredPtyWorkspace: reassignRegisteredPtyWorkspaceMock
 })
 
 export const migrationUnsupportedPtyModuleMock = () => ({

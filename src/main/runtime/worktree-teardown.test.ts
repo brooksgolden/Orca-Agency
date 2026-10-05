@@ -158,7 +158,7 @@ describe('killAllProcessesForWorktree', () => {
     // Regression for #10252: folder-workspace instances share one checkout dir,
     // so splitWorktreeIdForFilesystem() strips the `::workspace:<uuid>` suffix
     // down to the shared path. An untagged session under that shared path must
-    // NOT be swept — it may belong to a sibling workspace or another repo.
+    // NOT be swept â€” it may belong to a sibling workspace or another repo.
     const deletedInstance =
       'repo-1::/Users/dev/project::workspace:11111111-1111-1111-1111-111111111111'
     const siblingInstance =
@@ -250,36 +250,32 @@ describe('killAllProcessesForWorktree', () => {
     expect(result.providerStopped).toBe(2)
   })
 
-  it('uses authoritative remote worktree ownership without sweeping the local registry', async () => {
-    const remoteProvider = createProviderStub(async () => [
-      { id: 'pty-remote', cwd: '/remote/w1', title: 'shell', worktreeId: 'w1' },
-      { id: 'pty-sibling', cwd: '/remote/w2', title: 'shell', worktreeId: 'w2' }
-    ])
-    listRegisteredPtysMock.mockReturnValue([
-      { ptyId: 'local-1', worktreeId: 'w1', sessionId: null, paneKey: null, pid: 200 }
-    ])
+  it.each([{ includeLocalRegistry: false }, { resolvedConnectionId: 'remote-host' }])(
+    'uses authoritative remote worktree ownership without sweeping the local registry: %j',
+    async (hostBoundary) => {
+      const remoteProvider = createProviderStub(async () => [
+        { id: 'pty-remote', cwd: '/remote/w1', title: 'shell', worktreeId: 'w1' },
+        { id: 'pty-sibling', cwd: '/remote/w2', title: 'shell', worktreeId: 'w2' }
+      ])
+      listRegisteredPtysMock.mockReturnValue([
+        { ptyId: 'local-1', worktreeId: 'w1', sessionId: null, paneKey: null, pid: 200 }
+      ])
 
-    const result = await killAllProcessesForWorktree('w1', {
-      localProvider: remoteProvider,
-      includeLocalRegistry: false,
-      requirePhysicalStop: true
-    })
+      const result = await killAllProcessesForWorktree('w1', {
+        localProvider: remoteProvider,
+        ...hostBoundary,
+        requirePhysicalStop: true
+      })
 
-    expect(remoteProvider.shutdown).toHaveBeenCalledWith(
-      'pty-remote',
-      expect.objectContaining({ immediate: true })
-    )
-    expect(remoteProvider.shutdown).not.toHaveBeenCalledWith(
-      'pty-sibling',
-      expect.objectContaining({ immediate: true })
-    )
-    expect(remoteProvider.shutdown).not.toHaveBeenCalledWith(
-      'local-1',
-      expect.objectContaining({ immediate: true })
-    )
-    expect(listRegisteredPtysMock).not.toHaveBeenCalled()
-    expect(result).toEqual({ runtimeStopped: 0, providerStopped: 1, registryStopped: 0 })
-  })
+      expect(remoteProvider.shutdown).toHaveBeenCalledWith(
+        'pty-remote',
+        expect.objectContaining({ immediate: true })
+      )
+      expect(remoteProvider.shutdown).toHaveBeenCalledTimes(1)
+      expect(listRegisteredPtysMock).not.toHaveBeenCalled()
+      expect(result).toEqual({ runtimeStopped: 0, providerStopped: 1, registryStopped: 0 })
+    }
+  )
 
   it('best-effort: swallows errors from listProcesses and shutdown', async () => {
     const localProvider = createProviderStub(() => Promise.reject(new Error('boom')))
@@ -292,8 +288,8 @@ describe('killAllProcessesForWorktree', () => {
 
     const result = await killAllProcessesForWorktree('w1', { localProvider })
 
-    // listProcesses rejected → provider sweep returns 0; registry shutdown
-    // rejected → counted as not-killed (registry sweep currently swallows).
+    // listProcesses rejected â†’ provider sweep returns 0; registry shutdown
+    // rejected â†’ counted as not-killed (registry sweep currently swallows).
     expect(result.providerStopped).toBe(0)
     expect(result.registryStopped).toBe(0)
   })
@@ -408,7 +404,9 @@ describe('killAllProcessesForWorktree', () => {
 
   it('invokes runtime.stopTerminalsForWorktree when runtime is provided', async () => {
     const stopTerminalsForWorktree = vi.fn().mockResolvedValue({ stopped: 3 })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
 
@@ -426,7 +424,9 @@ describe('killAllProcessesForWorktree', () => {
 
   it('forwards resolvedWorktreeId so an orphan sweep skips selector resolution', async () => {
     const stopTerminalsForWorktree = vi.fn().mockResolvedValue({ stopped: 2 })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
 
@@ -450,7 +450,9 @@ describe('killAllProcessesForWorktree', () => {
 
   it('can restrict an orphan runtime sweep to its SSH connection', async () => {
     const stopTerminalsForWorktree = vi.fn().mockResolvedValue({ stopped: 1 })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
     const localProvider = createProviderStub(async () => [])
@@ -506,7 +508,9 @@ describe('killAllProcessesForWorktree', () => {
         stopped: (await options.stopPty('w1@@same', () => false)).owner ? 1 : 0
       })
     )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
     const localProvider = createProviderStub(async () => [])
@@ -537,7 +541,9 @@ describe('killAllProcessesForWorktree', () => {
         stopped: (await options.stopPty(ptyId, () => false)).owner ? 1 : 0
       })
     )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree,
       getPtyLivenessVerdict: vi.fn(() => ({
         status: 'unverifiable',
@@ -588,7 +594,9 @@ describe('killAllProcessesForWorktree', () => {
         stopped: (await options.stopPty(ptyId, () => false)).owner ? 1 : 0
       })
     )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree,
       getPtyLivenessVerdict: vi.fn(() => ({
         status: 'unverifiable',
@@ -629,7 +637,9 @@ describe('killAllProcessesForWorktree', () => {
         stopped: (await options.stopPty('w1@@same', () => physicalStop)).owner ? 1 : 0
       })
     )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
     const localProvider = createProviderStub(async () => [
@@ -669,7 +679,9 @@ describe('killAllProcessesForWorktree', () => {
           stopped: (await options.stopPty('w1@@same', () => physicalStop)).owner ? 1 : 0
         })
       )
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
       const runtime = {
+        resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
         stopTerminalsForWorktree
       } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
       const localProvider = createProviderStub(async () => [
@@ -713,7 +725,7 @@ describe('killAllProcessesForWorktree', () => {
       // A fake daemon RPC client standing in for a wedged daemon: it answers
       // listSessions (so the session is discovered as owned) but never sends a
       // reply to 'kill'. It faithfully models the real DaemonClient.request
-      // contract — a request is only bounded by its own timeoutMs, which
+      // contract â€” a request is only bounded by its own timeoutMs, which
       // defaults to REQUEST_TIMEOUT_MS (30_000). The adapter's shutdown passes
       // no override, so the kill can only settle after 30s: long past the 10s
       // sweep deadline.
@@ -783,7 +795,7 @@ describe('killAllProcessesForWorktree', () => {
       const error = await outcome
       expect(killRequests).toBeGreaterThan(0)
       // Why: the adapter bounds its kill RPC below the sweep deadline, so a wedged
-      // daemon yields the accurate stop failure — not the confusing deadline error.
+      // daemon yields the accurate stop failure â€” not the confusing deadline error.
       expect(error.message).toContain('Failed to physically stop every PTY')
     } finally {
       vi.useRealTimers()
@@ -792,7 +804,9 @@ describe('killAllProcessesForWorktree', () => {
 
   it('tolerates runtime.stopTerminalsForWorktree throwing (headless assertGraphReady reject)', async () => {
     const stopTerminalsForWorktree = vi.fn().mockRejectedValue(new Error('runtime_unavailable'))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
 
@@ -808,7 +822,9 @@ describe('killAllProcessesForWorktree', () => {
     // Why: a just-created/removed worktree can be absent from the runtime
     // graph; that means zero runtime-owned PTYs, not a failed teardown.
     const stopTerminalsForWorktree = vi.fn().mockRejectedValue(new Error('selector_not_found'))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
     const localProvider = createProviderStub(async () => [])
@@ -825,7 +841,9 @@ describe('killAllProcessesForWorktree', () => {
 
   it('fails destructive teardown closed when the runtime sweep rejects', async () => {
     const stopTerminalsForWorktree = vi.fn().mockRejectedValue(new Error('runtime sweep failed'))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {
+      resolveLocalTerminalMoveWorkspace: vi.fn(() => null),
       stopTerminalsForWorktree
     } as unknown as Parameters<typeof killAllProcessesForWorktree>[1]['runtime']
     const localProvider = createProviderStub(async () => [])

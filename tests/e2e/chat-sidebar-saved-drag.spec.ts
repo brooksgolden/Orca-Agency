@@ -65,7 +65,7 @@ test('idle and Done saved chats drag into panes without starting on cancellation
       worktreeId: worktree.id,
       keys,
       completed,
-      initialTabs: window.__store!.getState().tabsByWorktree[worktree.id].length
+      initialTabs: Object.values(window.__store!.getState().tabsByWorktree).flat().length
     }
   })
   const rows = orcaPage.locator('[data-chat-sidebar-id]')
@@ -80,8 +80,7 @@ test('idle and Done saved chats drag into panes without starting on cancellation
   await expect
     .poll(() =>
       orcaPage.evaluate(
-        (id) => window.__store!.getState().tabsByWorktree[id].length,
-        seed.worktreeId
+        () => Object.values(window.__store!.getState().tabsByWorktree).flat().length
       )
     )
     .toBe(seed.initialTabs)
@@ -119,8 +118,7 @@ test('idle and Done saved chats drag into panes without starting on cancellation
     await expect
       .poll(() =>
         orcaPage.evaluate(
-          (id) => window.__store!.getState().tabsByWorktree[id].length,
-          seed.worktreeId
+          () => Object.values(window.__store!.getState().tabsByWorktree).flat().length
         )
       )
       .toBe(seed.initialTabs + index + 1)

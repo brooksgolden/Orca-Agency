@@ -16,6 +16,10 @@ test('pane headers close every split, keep chrome at the window edge and drag wo
     const s = window.__store!.getState()
     const worktrees = Object.values(s.worktreesByRepo).find((items) => items.length >= 2)!
     const [left, right] = worktrees.map((w) => w.id)
+    await s.createProjectGroup('Pane header folder', {
+      parentPath: worktrees[0].path,
+      hostId: 'local'
+    })
     const a = s.createTab(left),
       b = s.createTab(right)
     s.setAiVaultTabTitle(a.id, { agent: 'codex', sessionId: a.id, title: 'Main conversation' })

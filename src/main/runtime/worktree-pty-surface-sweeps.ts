@@ -32,7 +32,8 @@ export async function sweepProviderByPrefix(
   ) => Promise<{ stopped: boolean; owner: boolean }>,
   onPtyStopped?: (ptyId: string) => void,
   failClosed = false,
-  resolveMovedOwner?: (session: PtyProcessInfo) => string | null
+  resolveMovedOwner?: (session: PtyProcessInfo) => string | null,
+  includeLocalRegistry = true
 ): Promise<number> {
   const prefix = `${worktreeId}@@`
   // Why (#10252): the cwd fallback only proves ownership when the filesystem path
@@ -49,7 +50,9 @@ export async function sweepProviderByPrefix(
   const sessions = failClosed
     ? await provider.listProcesses({ deadlineMs: rpcDeadline })
     : await provider.listProcesses({ deadlineMs: rpcDeadline }).catch(() => [])
-  const registrationByPtyId = new Map(listRegisteredPtys().map((entry) => [entry.ptyId, entry]))
+  const registrationByPtyId = new Map(
+    (includeLocalRegistry ? listRegisteredPtys() : []).map((entry) => [entry.ptyId, entry])
+  )
   const ownedSessions = sessions.filter((session) => {
     const movedOwner = resolveMovedOwner?.(session)
     if (movedOwner) {
