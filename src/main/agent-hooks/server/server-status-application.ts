@@ -58,7 +58,8 @@ export abstract class AgentHookServerStatusApplication extends AgentHookServerSt
   protected refreshTerminalStatusEvidence(
     previous: EnrichedAgentHookEventPayload,
     mutationBefore?: EnrichedAgentHookEventPayload,
-    emitEnrichedStatus = false
+    emitEnrichedStatus = false,
+    origin: AgentStatusObservationOrigin = 'osc'
   ): void {
     if (!this.canWriteLegacyStatusRow(previous)) {
       return
@@ -84,7 +85,14 @@ export abstract class AgentHookServerStatusApplication extends AgentHookServerSt
       receivedAt: now,
       evidenceObservedAt: now,
       stateStartedAt,
-      observation: this.stampObservation(payload, 'osc', now)
+      observation:
+        origin === 'osc'
+          ? this.stampObservation(payload, origin, now)
+          : this.observations.observe(payload.paneKey, {
+              origin,
+              observedAt: now,
+              kind: 'snapshot'
+            })
     }
     const firstRuntimeObservation = !this.runtimeObservedStatusPaneKeys.has(refreshed.paneKey)
     this.runtimeObservedStatusPaneKeys.add(refreshed.paneKey)

@@ -74,8 +74,12 @@ export function acknowledgeViewedAutoAckTarget(
     state.unreadAgentCompletionPanes,
     subjectKey
   )
-  // A parked grid card's BEL writes only the group-level unread; nothing subject-keyed moves.
-  const hasGroupUnread = readAgentAttentionUnreadReason(state.unreadTerminalTabs[groupId]) !== null
+  const groupUnreadReason = readAgentAttentionUnreadReason(state.unreadTerminalTabs[groupId])
+  // A terminal bell without an agent completion waits for actual interaction.
+  if (groupUnreadReason === 'terminal-bell' && toAck.length === 0 && !viewedUnreadSubjectKey) {
+    return
+  }
+  const hasGroupUnread = groupUnreadReason !== null
   if (toAck.length === 0 && !viewedUnreadSubjectKey && !hasGroupUnread) {
     return
   }

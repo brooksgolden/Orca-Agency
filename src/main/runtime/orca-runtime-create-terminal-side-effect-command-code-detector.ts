@@ -88,7 +88,12 @@ export class OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector extends 
   protected emitTerminalAgentStatusEvents(
     ptyId: string,
     chunk: Pick<ProcessedAgentStatusChunk, 'payloads'>,
-    provenance?: { origin: 'process'; yieldsToHookSince: number }
+    provenance?: {
+      origin?: 'process'
+      yieldsToHookSince?: number
+      evidenceOnly?: true
+      observedTerminalHandle?: string
+    }
   ): void {
     if (chunk.payloads.length === 0) {
       return
@@ -138,10 +143,12 @@ export class OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector extends 
     for (const payload of chunk.payloads) {
       // Why not gated on a listener: the prompt lifecycle is main's own state, read by
       // terminal waits that run with no status consumer attached.
-      this.recordAgentPromptLifecycleState(
-        ptyId,
-        mapExplicitAgentStateToRuntimeTerminalStatus(payload.state)
-      )
+      if (!provenance?.evidenceOnly) {
+        this.recordAgentPromptLifecycleState(
+          ptyId,
+          mapExplicitAgentStateToRuntimeTerminalStatus(payload.state)
+        )
+      }
       for (const target of targets.values()) {
         if (!this.onTerminalAgentStatus) {
           continue

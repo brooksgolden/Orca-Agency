@@ -135,6 +135,9 @@ export type RuntimeTerminalAgentStatusEvent = {
   /** Set by the process-lifetime producer; see AgentHookServer.ingestTerminalStatus. */
   origin?: 'process'
   yieldsToHookSince?: number
+  /** A live provider working title only confirms an existing matching status. */
+  evidenceOnly?: true
+  observedTerminalHandle?: string
 }
 
 export type HookLiveAgentRow = Pick<

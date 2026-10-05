@@ -3,6 +3,7 @@ import { MAX_PANE_KEY_LEN } from '../../../shared/agent-hook-listener/listener-l
 import { parseLegacyNumericPaneKey, parsePaneKey } from '../../../shared/stable-pane-id'
 import { terminalStatusPayloadMatchesHook } from '../../../shared/agent-terminal-status-equivalence'
 import type { ParsedAgentStatusPayload } from '../../../shared/agent-status-types'
+import { AGENT_WORKING_TITLE_REFRESH_AFTER_MS } from '../../../shared/agent-working-title-freshness'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-status-fold'
 import { AgentHookServerIngestNormalization } from './server-ingest-normalization'
@@ -20,6 +21,9 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     origin?: 'process'
     /** Drop this write when a hook has reported the pane since then (the hook owns that command). */
     yieldsToHookSince?: number
+    /** Main observed a live provider title, never a cached or synthetic frame. */
+    evidenceOnly?: true
+    observedTerminalHandle?: string
   }): void {
     const physicalPaneKey = event.paneKey.trim()
     let paneKey = this.resolvePaneKeyAlias(physicalPaneKey)
@@ -55,6 +59,38 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         : undefined
     )
     if (disposition === 'suppress') {
+      return
+    }
+    if (event.evidenceOnly) {
+      const previous = this.state.lastStatusByPaneKey.get(paneKey) as
+        | EnrichedAgentHookEventPayload
+        | undefined
+      // Confirmation cannot create a row, transfer ownership, reopen a closed
+      // pane, clear restored provenance or date a new prompt/turn.
+      if (
+        disposition !== 'accept' ||
+        !event.ptyId ||
+        !event.terminalHandle ||
+        !previous ||
+        previous.restoredUnconfirmed ||
+        previous.providerSessionOnly ||
+        previous.structuredHost ||
+        previous.payload.state !== 'working' ||
+        (previous.payload.mainAgent && previous.payload.mainAgent.state !== 'working') ||
+        !event.payload.agentType ||
+        event.payload.agentType === 'unknown' ||
+        previous.payload.agentType !== event.payload.agentType ||
+        event.observedTerminalHandle !== event.terminalHandle ||
+        (previous.terminalHandle && previous.terminalHandle !== event.terminalHandle) ||
+        previous.tabId !== tabId ||
+        previous.worktreeId !== event.worktreeId ||
+        (previous.connectionId ?? null) !== (event.connectionId ?? null) ||
+        Date.now() - (previous.evidenceObservedAt ?? previous.receivedAt) <=
+          AGENT_WORKING_TITLE_REFRESH_AFTER_MS
+      ) {
+        return
+      }
+      this.refreshTerminalStatusEvidence(previous, undefined, true, previous.observation?.origin)
       return
     }
     if (disposition === 'restart') {

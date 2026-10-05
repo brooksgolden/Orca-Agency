@@ -5,6 +5,8 @@ import { shouldEmitTitleFactForFrame } from './decorative-title-fact-emission'
 import type { RuntimePtyTitleTrackerEntry } from './runtime-terminal-state-records'
 import { createTerminalTitleTracker } from '../../shared/terminal-output-side-effects'
 import { detectAgentStatusFromTitle } from '../../shared/agent-detection'
+import { AGENT_WORKING_TITLE_REFRESH_AFTER_MS } from '../../shared/agent-working-title-freshness'
+import { resolveAgentStatusBinding } from '../ipc/agent-status-ipc-boundary'
 import type { TerminalGitHubPRLink } from '../../shared/terminal-github-pr-link-detector'
 
 export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntimeWithEmitDaemonPtyTransientFact {
@@ -92,6 +94,47 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
               rawTitle,
               ...(meta?.staleWorkingTitleClear ? { staleWorkingTitleClear: true } : {})
             })
+            // Only captured native Codex working frames can confirm silent hooks.
+            const pty = this.ptysById.get(ptyId)
+            const owner = pty?.foregroundAgent ?? pty?.launchAgent
+            if (
+              live?.applyingChunk &&
+              !meta?.syntheticTitle &&
+              !meta?.staleWorkingTitleClear &&
+              owner === 'codex' &&
+              detectAgentStatusFromTitle(rawTitle) === 'working'
+            ) {
+              this.runAfterPendingTerminalSideEffectFacts(ptyId, () => {
+                const paneKey = this.resolveTerminalSideEffectAttribution(ptyId).paneKey
+                if (!paneKey) {
+                  return
+                }
+                const observed = this.readObservedAgentStatusPaneIdentityFn(paneKey)
+                const current = resolveAgentStatusBinding(paneKey, this)
+                if (
+                  observed.kind !== 'observed' ||
+                  current.kind === 'unresolved' ||
+                  observed.terminalHandle !== current.terminalHandle ||
+                  observed.processIncarnation !== current.processIncarnation ||
+                  observed.dispatchId !== (current.kind === 'worker' ? current.dispatchId : null) ||
+                  !(this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []).some(
+                    (row) =>
+                      row.state === 'working' &&
+                      !row.restoredUnconfirmed &&
+                      row.agentType === 'codex' &&
+                      nowMs - (row.evidenceObservedAt ?? row.receivedAt) >
+                        AGENT_WORKING_TITLE_REFRESH_AFTER_MS
+                  )
+                ) {
+                  return
+                }
+                this.emitTerminalAgentStatusEvents(
+                  ptyId,
+                  { payloads: [{ state: 'working', prompt: '', agentType: 'codex' }] },
+                  { evidenceOnly: true, observedTerminalHandle: observed.terminalHandle }
+                )
+              })
+            }
           }
           const changed = this.applyTrackedPtyTitle(ptyId, rawTitle, normalizedTitle, meta)
           const identityOnlyTitle = this.isLiveCursorNativeTitle(rawTitle, meta)

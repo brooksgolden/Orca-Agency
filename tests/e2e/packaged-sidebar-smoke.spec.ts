@@ -278,6 +278,29 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       )
     ).toBe(true)
   } finally {
+    const page = app.windows()[0]
+    if (page) {
+      await page
+        .screenshot({ path: testInfo.outputPath('packaged-sidebar-final.png') })
+        .catch(() => {})
+      const snapshots = await page
+        .evaluate(async () => {
+          const sessions = await window.api.pty.listSessions()
+          return Promise.all(
+            sessions.map(async (session) => ({
+              session,
+              snapshot: await window.api.pty.getMainBufferSnapshot(session.id, {
+                scrollbackRows: 100
+              })
+            }))
+          )
+        })
+        .catch(() => null)
+      writeFileSync(
+        testInfo.outputPath('terminal-snapshots.json'),
+        JSON.stringify(snapshots, null, 2)
+      )
+    }
     await closeElectronAppForE2E(app)
     await cleanupE2EDaemons(userDataDir)
   }
