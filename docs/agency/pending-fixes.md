@@ -5,9 +5,9 @@ Read this file during each weekly update. Include pending fixes in the release n
 ## October 10, 2026 local additions
 
 - **In-progress filter:** Show only in-progress chats in the grouping and folder menu hides Done while retaining idle In Progress chats. Folder collapse choices, counts, nested tabs and pane brackets remain intact.
-- **Working status after restart:** Fresh native Codex working output restores the working indicator for its connected local pane. Without a recovered launch token, it reports current activity without copying the old hook's task or session identity. Saved chat history and activity timestamps remain intact. Cached titles and closed, stopped, remote or worker sessions cannot confirm a restored row through this path. The separate orange dashed stale-evidence recovery remains covered.
+- **Working status after restart:** Reconnect the output of an inventory-confirmed retained local Codex terminal even before its tab mounts. Fresh native working output restores the working indicator. Preserve saved resume identity and activity timestamps; without a recovered launch token, discard old hook authority and task details. Cached titles and closed, stopped, remote or worker sessions cannot confirm a restored row through this path. The separate orange dashed stale-evidence recovery remains covered.
 
-Brooks requests local installation after review and checks, with publication held until Saturday October 10 at 08:00 America/New_York. Candidate 1.4.1009 is under local verification; do not publish it through an earlier GitHub email repair.
+Brooks requests local installation after review and checks, with publication held until Saturday October 10 at 08:00 America/New_York. The filter in 1.4.1009 passed installed checks; candidate 1.4.1010 adds background output reconnection and requires its own installed status verification. Do not publish either through an earlier GitHub email repair.
 
 ## October 3, 2026 update
 
