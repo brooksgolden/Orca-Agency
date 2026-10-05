@@ -1,4 +1,3 @@
-import { getAgentRowConversationName } from '../../../../shared/agent-row-conversation-name'
 import type { Worktree } from '../../../../shared/worktree/types'
 import {
   getWorktreeExecutionHostId,
@@ -16,20 +15,19 @@ import {
   chatFallbackId,
   chatSessionKey,
   chatSessionTime,
+  chatSessionHumanTurnTime,
   type ChatSidebarRow,
   type ChatSidebarState
 } from './chat-sidebar-types'
 import { buildAgentChatRows } from './chat-sidebar-agent-rows'
 import { chatPreference, isChatCompleted, outranksChatRow } from './chat-sidebar-identity'
+import { chatCompletionActivityTime } from './chat-sidebar-completion'
 import { chatWorkspaceNameOwners, manualWorkspaceName } from './chat-sidebar-workspace-names'
-import {
-  chatLiveSession,
-  chatSnapshotSessions,
-  chatSessionMap
-} from './chat-sidebar-session-snapshot'
+import { chatSnapshotSessions, chatSessionMap } from './chat-sidebar-session-snapshot'
 import { chatWorkspaceFolders } from './chat-sidebar-workspace-folder'
 import { chatSidebarWorktrees, chatFolderLabel } from './chat-sidebar-worktrees'
 import { hasChatConversation } from './chat-sidebar-conversation'
+import { idleTerminalChatRows } from './chat-sidebar-idle-terminal-rows'
 export { chatSidebarWorktrees, chatFolderLabel } from './chat-sidebar-worktrees'
 
 export function buildChatSidebarRows(
@@ -59,12 +57,6 @@ export function buildChatSidebarRows(
   const sessionMap = chatSessionMap(sessions, rememberedSessions)
   const hidden = new Set(settings?.hidden ?? [])
   const automationChats = new Set(settings?.automationChats ?? [])
-  const generatedTitles = state.settings?.tabAutoGenerateTitle === true
-  const sleepingByTabId = new Map(
-    Object.values(state.sleepingAgentSessionsByPaneKey).flatMap((record) =>
-      record.tabId ? [[`${record.worktreeId}\n${record.tabId}`, record] as const] : []
-    )
-  )
   const add = (row: ChatSidebarRow) => {
     const incumbent = rows.get(row.id)
     // Why: two resident terminals can resume the same provider session. Keep both navigable.
@@ -92,9 +84,7 @@ export function buildChatSidebarRows(
     }
     const completion = chatPreference(settings?.completed, row)
     row.completed = isChatCompleted(row, completion)
-    if (row.completed && completion) {
-      row.timestamp = completion.activityAt
-    }
+    row.timestamp = chatCompletionActivityTime(row, completion)
     const previous = rows.get(row.id)
     if (!previous || outranksChatRow(row, previous)) {
       rows.set(row.id, row)
@@ -105,62 +95,16 @@ export function buildChatSidebarRows(
     const folder = chatFolderLabel(state, worktree)
     const live = buildAgentChatRows({ state, worktree, hostId, folder, sessions: sessionMap, now })
     residentRows.push(...live.rows)
-    for (const tab of state.tabsByWorktree[worktree.id] ?? []) {
-      const sleeping = sleepingByTabId.get(`${worktree.id}\n${tab.id}`)
-      if (
-        live.representedTabIds.has(tab.id) ||
-        (!tab.launchAgent && !tab.aiVaultTitle && !sleeping)
-      ) {
-        continue
-      }
-      const agent = tab.aiVaultTitle?.agent ?? sleeping?.agent ?? tab.launchAgent ?? 'unknown'
-      const sessionId = tab.aiVaultTitle?.sessionId ?? sleeping?.providerSession.id
-      const key = sessionId ? chatSessionKey(hostId, agent, sessionId) : null
-      const session = key ? (sessionMap.get(key) ?? null) : null
-      if (
-        !hasChatConversation({
-          session,
-          saved: key ? settings?.sessions?.[key] : undefined,
-          providerTitle: tab.aiVaultTitle?.title,
-          savedPrompt: sleeping?.providerSession.id === sessionId ? sleeping?.prompt : undefined
-        })
-      ) {
-        continue
-      }
-      const fallbackIds = [
-        chatFallbackId(hostId, tab.id),
-        ...(sleeping ? [chatFallbackId(hostId, sleeping.paneKey)] : [])
-      ]
-      const sessionAt = session ? chatSessionTime(session) : tab.createdAt
-      const title =
-        getAgentRowConversationName(tab, agent, generatedTitles, undefined, sessionId) ??
-        session?.title ??
-        tab.title
-      residentRows.push({
-        id: key ?? fallbackIds[0],
-        aliases: key ? fallbackIds : fallbackIds.slice(1),
-        sessionKey: key,
-        agentType: agent,
-        title,
-        manualTitle: tab.customTitle?.trim() || null,
-        folder,
+    residentRows.push(
+      ...idleTerminalChatRows({
+        state,
         worktree,
         hostId,
-        tabId: tab.id,
-        paneKey: sleeping?.paneKey ?? null,
-        session,
-        timestamp: sleeping?.updatedAt ?? sessionAt,
-        // Why: transcript updates and tab creation do not prove a submitted prompt.
-        turnStartedAt: 0,
-        activityFromState: false,
-        state: 'idle',
-        completed: false,
-        ownsWorkspaceName: false,
-        liveSession: sleeping
-          ? chatLiveSession(sleeping.agent, sleeping.providerSession, title)
-          : null
+        folder,
+        sessions: sessionMap,
+        representedTabIds: live.representedTabIds
       })
-    }
+    )
     for (const tab of state.unifiedTabsByWorktree[worktree.id] ?? []) {
       if (tab.contentType !== 'agent-session' || live.representedTabIds.has(tab.id)) {
         continue
@@ -195,7 +139,7 @@ export function buildChatSidebarRows(
         paneKey: null,
         session,
         timestamp: sessionAt,
-        turnStartedAt: 0,
+        turnStartedAt: chatSessionHumanTurnTime(session),
         activityFromState: false,
         state: 'idle',
         completed: false,
@@ -271,7 +215,7 @@ export function buildChatSidebarRows(
       paneKey: null,
       session,
       timestamp: sessionAt,
-      turnStartedAt: 0,
+      turnStartedAt: chatSessionHumanTurnTime(session),
       activityFromState: false,
       state: 'idle',
       completed: false,

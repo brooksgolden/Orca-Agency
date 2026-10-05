@@ -11,6 +11,7 @@ vi.mock('electron', () => {
       setPath: vi.fn((name: string, value: string) => {
         paths.set(name, value)
       }),
+      setName: vi.fn(),
       quit: vi.fn(),
       exit: vi.fn(),
       isPackaged: false,
@@ -253,50 +254,53 @@ describe('patchPackagedProcessPath', () => {
 })
 
 describe('configureDevUserDataPath', () => {
-  it('forces Electron home into the disposable E2E profile', async () => {
-    const { app } = await import('electron')
-    const { configureDevUserDataPath } = await import('./configure-process')
-    const originalE2EUserDataDir = process.env.ORCA_E2E_USER_DATA_DIR
-    const originalE2EHomeDir = process.env.ORCA_E2E_HOME_DIR
-    const originalHome = process.env.HOME
-    const originalUserProfile = process.env.USERPROFILE
-    const tempRoot = mkdtempSync(join(tmpdir(), 'orca-configure-e2e-home-'))
-    const e2eRoot = join(tempRoot, 'user-data')
-    const e2eHome = join(tempRoot, 'home')
-    process.env.ORCA_E2E_USER_DATA_DIR = e2eRoot
-    process.env.ORCA_E2E_HOME_DIR = e2eHome
-    process.env.HOME = e2eHome
-    process.env.USERPROFILE = e2eHome
+  it.each([true, false])(
+    'forces Electron home into the disposable E2E profile for isDev=%s',
+    async (isDev) => {
+      const { app } = await import('electron')
+      const { configureDevUserDataPath } = await import('./configure-process')
+      const originalE2EUserDataDir = process.env.ORCA_E2E_USER_DATA_DIR
+      const originalE2EHomeDir = process.env.ORCA_E2E_HOME_DIR
+      const originalHome = process.env.HOME
+      const originalUserProfile = process.env.USERPROFILE
+      const tempRoot = mkdtempSync(join(tmpdir(), 'orca-configure-e2e-home-'))
+      const e2eRoot = join(tempRoot, 'user-data')
+      const e2eHome = join(tempRoot, 'home')
+      process.env.ORCA_E2E_USER_DATA_DIR = e2eRoot
+      process.env.ORCA_E2E_HOME_DIR = e2eHome
+      process.env.HOME = e2eHome
+      process.env.USERPROFILE = e2eHome
 
-    try {
-      configureDevUserDataPath(true)
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true })
-      if (originalE2EUserDataDir === undefined) {
-        delete process.env.ORCA_E2E_USER_DATA_DIR
-      } else {
-        process.env.ORCA_E2E_USER_DATA_DIR = originalE2EUserDataDir
+      try {
+        configureDevUserDataPath(isDev)
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true })
+        if (originalE2EUserDataDir === undefined) {
+          delete process.env.ORCA_E2E_USER_DATA_DIR
+        } else {
+          process.env.ORCA_E2E_USER_DATA_DIR = originalE2EUserDataDir
+        }
+        if (originalE2EHomeDir === undefined) {
+          delete process.env.ORCA_E2E_HOME_DIR
+        } else {
+          process.env.ORCA_E2E_HOME_DIR = originalE2EHomeDir
+        }
+        if (originalHome === undefined) {
+          delete process.env.HOME
+        } else {
+          process.env.HOME = originalHome
+        }
+        if (originalUserProfile === undefined) {
+          delete process.env.USERPROFILE
+        } else {
+          process.env.USERPROFILE = originalUserProfile
+        }
       }
-      if (originalE2EHomeDir === undefined) {
-        delete process.env.ORCA_E2E_HOME_DIR
-      } else {
-        process.env.ORCA_E2E_HOME_DIR = originalE2EHomeDir
-      }
-      if (originalHome === undefined) {
-        delete process.env.HOME
-      } else {
-        process.env.HOME = originalHome
-      }
-      if (originalUserProfile === undefined) {
-        delete process.env.USERPROFILE
-      } else {
-        process.env.USERPROFILE = originalUserProfile
-      }
+
+      expect(app.setPath).toHaveBeenCalledWith('home', e2eHome)
+      expect(app.setPath).toHaveBeenCalledWith('userData', e2eRoot)
     }
-
-    expect(app.setPath).toHaveBeenCalledWith('home', e2eHome)
-    expect(app.setPath).toHaveBeenCalledWith('userData', e2eRoot)
-  })
+  )
 
   it('rejects an E2E launch whose Node home escaped the disposable profile', async () => {
     const { configureDevUserDataPath } = await import('./configure-process')
@@ -352,14 +356,27 @@ describe('configureDevUserDataPath', () => {
     expect(app.setPath).toHaveBeenCalledWith('userData', join('/tmp/app-data', 'orca-dev'))
   })
 
-  it('leaves packaged runs on the default userData path', async () => {
+  it('keeps packaged profiles in the original directory and ignores dev overrides', async () => {
     const { app } = await import('electron')
-    const { configureDevUserDataPath } = await import('./configure-process')
+    const { configureDevUserDataPath, configureOrcaUserDataPathEnv } =
+      await import('./configure-process')
+    const originalUserDataPath = process.env.ORCA_USER_DATA_PATH
+    const originalDevPath = process.env.ORCA_DEV_USER_DATA_PATH
+    process.env.ORCA_DEV_USER_DATA_PATH = '/tmp/orca-dev-override'
 
+    app.setPath('userData', join(app.getPath('appData'), 'Orca Agency'))
     vi.mocked(app.setPath).mockClear()
-    configureDevUserDataPath(false)
-
-    expect(app.setPath).not.toHaveBeenCalled()
+    try {
+      configureDevUserDataPath(false)
+      configureOrcaUserDataPathEnv()
+      expect(app.getPath('userData')).toBe(join('/tmp/app-data', 'orca'))
+      expect(process.env.ORCA_USER_DATA_PATH).toBe(join('/tmp/app-data', 'orca'))
+      expect(app.setPath).toHaveBeenCalledWith('userData', join('/tmp/app-data', 'orca'))
+      expect(app.setName).toHaveBeenCalledWith('Orca')
+    } finally {
+      restoreEnv('ORCA_USER_DATA_PATH', originalUserDataPath)
+      restoreEnv('ORCA_DEV_USER_DATA_PATH', originalDevPath)
+    }
   })
 })
 

@@ -17,6 +17,7 @@ import {
   chatFallbackId,
   chatSessionKey,
   chatSessionTime,
+  chatSessionHumanTurnTime,
   type ChatSidebarRow,
   type ChatSidebarState
 } from './chat-sidebar-types'
@@ -54,11 +55,6 @@ function rowTimestamp(agent: DashboardAgentRow, sessionAt: number): number {
     : agentStatusEvidenceObservedAt(agent.entry)
 }
 
-function transcriptHumanTurnAt(session: AiVaultSession | null): number {
-  const parsed = Date.parse(session?.lastHumanTurnAt ?? '')
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
 export function buildAgentChatRows(args: {
   state: ChatSidebarState
   worktree: Worktree
@@ -82,6 +78,7 @@ export function buildAgentChatRows(args: {
       terminalLayoutsByTabId: state.terminalLayoutsByTabId,
       ptyIdsByTabId: state.ptyIdsByTabId,
       foregroundAgentsByPaneKey: state.paneForegroundAgentByPaneKey,
+      paneForegroundAgentByPaneKey: state.paneForegroundAgentByPaneKey,
       runtimeAgentOrchestrationByPaneKey: state.runtimeAgentOrchestrationByPaneKey,
       now: args.now
     }).filter((agent) => agent.rowSource !== 'subagent'),
@@ -222,10 +219,11 @@ export function buildAgentChatRows(args: {
       session,
       timestamp: resumed ? sessionAt : rowTimestamp(agent, sessionAt),
       turnStartedAt: resumed
-        ? transcriptHumanTurnAt(resumed)
-        : agent.startedAt === 0
-          ? 0
-          : latestTurnStart(agent.entry),
+        ? chatSessionHumanTurnTime(resumed)
+        : Math.max(
+            chatSessionHumanTurnTime(session),
+            agent.startedAt === 0 ? 0 : latestTurnStart(agent.entry)
+          ),
       activityFromState: !resumed && agent.startedAt === 0,
       state: agent.state,
       completed: false,

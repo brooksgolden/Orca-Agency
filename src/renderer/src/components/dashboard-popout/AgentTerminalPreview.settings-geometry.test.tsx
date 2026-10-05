@@ -27,6 +27,7 @@ vi.mock('@xterm/xterm', () => ({
     focus = vi.fn()
     resize = vi.fn()
     reset = vi.fn()
+    loadAddon = vi.fn()
     onData = vi.fn(() => ({ dispose: vi.fn() }))
     dispose = vi.fn(() => this.screen.remove())
     constructor(public options: ITerminalOptions) {
@@ -131,7 +132,13 @@ beforeEach(() => {
           return settings
         }
       },
-      terminalPreview: { connect, fit, unsubscribe, onData: () => vi.fn() }
+      terminalPreview: {
+        connect,
+        fit,
+        unsubscribe,
+        ack: vi.fn(async () => {}),
+        onData: () => vi.fn()
+      }
     }
   })
   useAppStore.setState({ ...initial, settings }, true)
@@ -153,6 +160,7 @@ afterEach(() => {
 })
 
 async function settleGeometry(): Promise<void> {
+  await act(async () => {})
   await act(async () => {
     await vi.advanceTimersByTimeAsync(250)
   })
@@ -208,25 +216,25 @@ it.each([
   scale: string
   anchor: string
 }[])(
-  'recreates the owner and fits the new geometry for $updates',
+  'retains the owner and fits the new geometry for $updates',
   async ({ updates, cols, rows, scale, anchor }) => {
     render(<AgentTerminalPreview ptyId="pty-1" />)
     await settleGeometry()
-    expect(fit).toHaveBeenLastCalledWith('pty-1', 60, 15)
+    expect(fit).toHaveBeenLastCalledWith('pty-1', 60, 15, expect.any(String))
     await act(async () => useAppStore.getState().updateSettings(updates))
     await settleGeometry()
 
-    expect(fit).toHaveBeenCalledTimes(2)
-    expect(fit).toHaveBeenLastCalledWith('pty-1', cols, rows)
-    expect(harness.instances).toHaveLength(2)
-    expect(connect).toHaveBeenCalledTimes(2)
-    expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('pty-1')
-    expect(harness.instances[1]?.container?.style.transform).toBe(scale)
-    expect(harness.instances[1]?.container?.style.transformOrigin).toBe(anchor)
+    expect(fit).toHaveBeenCalledTimes('terminalLigatures' in updates ? 1 : 2)
+    expect(fit).toHaveBeenLastCalledWith('pty-1', cols, rows, expect.any(String))
+    expect(harness.instances).toHaveLength(1)
+    expect(connect).toHaveBeenCalledOnce()
+    expect(unsubscribe).not.toHaveBeenCalled()
+    expect(harness.instances[0]?.container?.style.transform).toBe(scale)
+    expect(harness.instances[0]?.container?.style.transformOrigin).toBe(anchor)
   }
 )
 
-it('ignores a pending connection retired by a metric change', async () => {
+it('uses current metrics when the pending connection arrives', async () => {
   const gate = Promise.withResolvers<TerminalPreviewConnectResult>()
   connect.mockReturnValueOnce(gate.promise)
   render(<AgentTerminalPreview ptyId="pty-1" />)
@@ -236,19 +244,19 @@ it('ignores a pending connection retired by a metric change', async () => {
     gate.resolve({ snapshot: { data: '', cols: 80, rows: 24, seq: 1 }, replay: [] })
   )
   await settleGeometry()
-  expect(connect).toHaveBeenCalledTimes(2)
+  expect(connect).toHaveBeenCalledOnce()
   expect(harness.instances).toHaveLength(1)
   expect(harness.instances[0]?.options.fontSize).toBe(18)
-  expect(fit).toHaveBeenCalledExactlyOnceWith('pty-1', 50, 15)
+  expect(fit).toHaveBeenCalledExactlyOnceWith('pty-1', 50, 15, expect.any(String))
 })
 
-it('cancels an obsolete metric owner grid claim before the next change', async () => {
+it('coalesces successive metric changes into the latest grid claim', async () => {
   render(<AgentTerminalPreview ptyId="pty-1" />)
   await settleGeometry()
   await act(async () => useAppStore.getState().updateSettings({ terminalFontSize: 18 }))
   await act(async () => useAppStore.getState().updateSettings({ terminalLineHeight: 1.5 }))
   await settleGeometry()
-  expect(harness.instances).toHaveLength(3)
+  expect(harness.instances).toHaveLength(1)
   expect(fit).toHaveBeenCalledTimes(2)
-  expect(fit).toHaveBeenLastCalledWith('pty-1', 50, 10)
+  expect(fit).toHaveBeenLastCalledWith('pty-1', 50, 10, expect.any(String))
 })

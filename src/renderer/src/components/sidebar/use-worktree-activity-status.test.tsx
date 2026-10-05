@@ -17,7 +17,7 @@ type MockState = {
   ptyIdsByTabId: Record<string, string[]>
   paneForegroundAgentByPaneKey: Record<
     string,
-    { agent: 'claude' | null; processObserved?: boolean; shellForeground: boolean }
+    { agent: 'claude' | null; agentEvidence?: 'process-read'; shellForeground: boolean }
   >
   agentStatusEpoch: number
   agentStatusByPaneKey: Record<string, AgentStatusEntry>
@@ -326,7 +326,9 @@ describe('useWorktreeActivityStatus', () => {
         [worktreeId]: [makeTab('old-tab', worktreeId), makeTab('visible-tab', worktreeId)]
       },
       ptyIdsByTabId: { 'visible-tab': ['live-pty'] },
-      runtimePaneTitlesByTabId: { 'visible-tab': { 1: '◐ Anthony CPA task management prototype' } },
+      runtimePaneTitlesByTabId: {
+        'visible-tab': { 1: '◐ Example client task management prototype' }
+      },
       terminalLayoutsByTabId: {
         'visible-tab': {
           root: { type: 'leaf', leafId: LEAF_ID },
@@ -338,7 +340,7 @@ describe('useWorktreeActivityStatus', () => {
       paneForegroundAgentByPaneKey: {
         [makePaneKey('visible-tab', LEAF_ID)]: {
           agent: 'claude',
-          processObserved: true,
+          agentEvidence: 'process-read',
           shellForeground: false
         }
       },

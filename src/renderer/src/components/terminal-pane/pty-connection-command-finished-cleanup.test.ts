@@ -141,7 +141,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 describe('connectPanePty', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
     transportFactoryQueue = []
@@ -149,6 +149,9 @@ describe('connectPanePty', () => {
     storeSubscribers = []
     mockStoreState = createInitialStoreState(() => mockStoreState)
     installTerminalTestGlobals()
+    // Why: load the connection and real-store graph before tests replace timers used by module initialization.
+    await import('./pty-connection')
+    await import('@/store/slices/store-test-helpers')
   })
 
   afterEach(async () => {
@@ -286,6 +289,7 @@ describe('connectPanePty', () => {
     expect(mockStoreState.clearAgentLaunchConfig).not.toHaveBeenCalled()
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: 'droid',
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -383,7 +387,8 @@ describe('connectPanePty', () => {
   it('keeps sleeping identity when the foreground check still sees the agent', async () => {
     vi.useFakeTimers()
     const { connectPanePty } = await import('./pty-connection')
-    vi.mocked(window.api.pty.confirmForegroundProcess).mockResolvedValue('codex')
+    // Why both: the pane's process monitor reads the same foreground the confirm read sees.
+    vi.mocked(window.api.pty.getForegroundProcess).mockResolvedValue('codex')
     const dataCallbackRef: { current: ((data: string) => void) | null } = { current: null }
     const ptyId = 'pty-sleeping-leaked-shell-marker'
     const transport = createMockTransport(ptyId)
@@ -623,7 +628,8 @@ describe('connectPanePty', () => {
   it('keeps armed modes while the agent still owns the foreground after a leaked 133;D', async () => {
     vi.useFakeTimers()
     const { connectPanePty } = await import('./pty-connection')
-    vi.mocked(window.api.pty.confirmForegroundProcess).mockResolvedValue('droid')
+    // Why both: the pane's process monitor reads the same foreground the confirm read sees.
+    vi.mocked(window.api.pty.getForegroundProcess).mockResolvedValue('droid')
     const dataCallbackRef: { current: ((data: string) => void) | null } = { current: null }
     const ptyId = 'pty-stale-mode-live-agent'
     const transport = createMockTransport(ptyId)

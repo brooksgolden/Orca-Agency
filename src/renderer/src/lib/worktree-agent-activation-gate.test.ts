@@ -248,7 +248,63 @@ function seedExistingSurface(
   }
 }
 
+function orphanedTestDeps(ptyId: string, tabId = 'saved-setup') {
+  return testDeps({
+    sessions: [listed(ptyId)],
+    surfaceOwners: new Map([
+      [ptyId, { ptyId, tabId, paneKey: `${tabId}:${LIVE_LEAF_ID}`, orphaned: true }]
+    ])
+  })
+}
+
 describe('worktree agent activation gate', () => {
+  it('never overwrites a different PTY occupying the recorded surface', async () => {
+    const ptyId = `${WORKTREE_ID}@@setup`
+    const leafId = '11111111-1111-4111-8111-111111111111'
+    const { deps, createTab } = orphanedTestDeps(ptyId)
+    seedExistingSurface(deps.getState(), {
+      tabId: 'saved-setup',
+      leafId,
+      boundPtyId: 'other-live-pty'
+    })
+    await runWorktreeAgentActivationGate(WORKTREE_ID, deps)
+    expect(createTab).not.toHaveBeenCalled()
+    expect(deps.getState().terminalLayoutsByTabId['saved-setup'].ptyIdsByLeafId).toEqual({
+      [leafId]: 'other-live-pty'
+    })
+  })
+
+  it('recovers into a new surface when the recorded leaf is actually gone', async () => {
+    const ptyId = `${WORKTREE_ID}@@setup`
+    const { deps, createTab } = orphanedTestDeps(ptyId)
+    seedExistingSurface(deps.getState(), {
+      tabId: 'saved-setup',
+      leafId: SIBLING_LEAF_ID,
+      boundPtyId: 'other-live-pty'
+    })
+    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    expect(createTab).toHaveBeenCalledOnce()
+    expect(deps.getState().tabsByWorktree[WORKTREE_ID]).toHaveLength(2)
+  })
+  it('reconnects a saved unbound surface instead of creating a duplicate recovery tab', async () => {
+    const ptyId = `${WORKTREE_ID}@@setup`
+    const leafId = '11111111-1111-4111-8111-111111111111'
+    const { deps, createTab } = orphanedTestDeps(ptyId)
+    seedExistingSurface(deps.getState(), { tabId: 'saved-setup', leafId })
+    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    expect(createTab).not.toHaveBeenCalled()
+    expect(deps.getState().terminalLayoutsByTabId['saved-setup'].ptyIdsByLeafId).toEqual({
+      [leafId]: ptyId
+    })
+  })
+
+  it('creates a recovery surface when the recorded tab was actually closed', async () => {
+    const ptyId = `${WORKTREE_ID}@@setup`
+    const { deps, createTab } = orphanedTestDeps(ptyId, 'closed-setup')
+    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    expect(createTab).toHaveBeenCalledOnce()
+    expect(deps.getState().tabsByWorktree[WORKTREE_ID][0].id).not.toBe('closed-setup')
+  })
   it('uses immediately ready development restore inventory', async () => {
     const ptyId = `${WORKTREE_ID}@@live-pty`
     const { deps, createTab, resume } = testDeps({

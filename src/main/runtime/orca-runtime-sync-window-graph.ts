@@ -223,7 +223,7 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
             this.invalidateLeafHandle(oldLeafKey)
           }
         } else {
-          this.invalidateLeafHandle(oldLeafKey)
+          this.invalidateLeafHandle(oldLeafKey, true)
         }
       }
     }

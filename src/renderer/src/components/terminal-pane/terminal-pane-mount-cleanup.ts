@@ -72,7 +72,9 @@ export function cleanupTerminalPaneMount(args: {
 
   captureParkedTerminalPaneCandidates(
     tabId,
-    worktreeId,
+    Object.entries(currentStore.tabsByWorktree).find(([, tabs]) =>
+      tabs.some((tab) => tab.id === tabId)
+    )?.[0] ?? worktreeId,
     manager.getPanes().map((pane) => {
       const ptyId = paneTransportsRef.current.get(pane.id)?.getPtyId() ?? null
       const binding = panePtyBindingsRef.current.get(pane.id) as

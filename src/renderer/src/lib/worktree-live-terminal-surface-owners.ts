@@ -12,6 +12,8 @@ export type LiveTerminalSurfaceOwner = {
   paneKey: string
   ptyId: string
   tabId: string
+  /** A lost graph binding with a last-known surface, not a current ownership claim. */
+  orphaned?: true
 }
 
 /**
@@ -73,12 +75,28 @@ export function indexLiveTerminalSurfaceOwners(
     const owner =
       terminal.orphaned === true
         ? terminal.connected === true
-          ? 'unowned'
+          ? terminal.recordedSurface &&
+            !terminal.recordedSurface.tabId.includes(':') &&
+            isTerminalLeafId(terminal.recordedSurface.leafId)
+            ? {
+                paneKey: makePaneKey(
+                  terminal.recordedSurface.tabId,
+                  terminal.recordedSurface.leafId
+                ),
+                ptyId: terminal.ptyId,
+                tabId: terminal.recordedSurface.tabId,
+                orphaned: true as const
+              }
+            : 'unowned'
           : null
         : toSurfaceOwner(terminal)
     const recorded = owners.get(terminal.ptyId)
-    const recordedPane = recorded && recorded !== 'unowned' ? recorded.paneKey : recorded
-    const ownerPane = owner && owner !== 'unowned' ? owner.paneKey : owner
+    const recordedPane =
+      recorded && recorded !== 'unowned'
+        ? `${recorded.orphaned ? 'lost:' : ''}${recorded.paneKey}`
+        : recorded
+    const ownerPane =
+      owner && owner !== 'unowned' ? `${owner.orphaned ? 'lost:' : ''}${owner.paneKey}` : owner
     // Conflicting ownership claims cannot authorize adoption.
     owners.set(
       terminal.ptyId,

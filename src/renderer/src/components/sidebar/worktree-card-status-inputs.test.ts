@@ -9,9 +9,11 @@ import {
   EMPTY_LIVE_PTY_IDS,
   selectForegroundAgentsForWorktree,
   selectForegroundAgentPaneIdsForWorktree,
+  EMPTY_PANE_FOREGROUND_AGENTS,
   EMPTY_RUNTIME_PANE_TITLES,
   EMPTY_TERMINAL_LAYOUT_ROOTS,
   selectLivePtyIdsForWorktree,
+  selectPaneForegroundAgentsForWorktree,
   selectTerminalLayoutRootsForWorktree,
   selectTerminalLayoutRootsForWorktrees,
   selectRuntimePaneTitlesForWorktree
@@ -53,7 +55,11 @@ describe('worktree card status input selectors', () => {
         'tab-1': makeLayout({ type: 'leaf', leafId }, 'pty-1')
       },
       paneForegroundAgentByPaneKey: {
-        [`tab-1:${leafId}`]: { agent: 'claude', processObserved: true, shellForeground: false }
+        [`tab-1:${leafId}`]: {
+          agent: 'claude',
+          agentEvidence: 'process-read',
+          shellForeground: false
+        }
       }
     }
 
@@ -66,7 +72,11 @@ describe('worktree card status input selectors', () => {
     const shellState: ForegroundSelectorState = {
       ...state,
       paneForegroundAgentByPaneKey: {
-        [`tab-1:${leafId}`]: { agent: 'claude', processObserved: true, shellForeground: true }
+        [`tab-1:${leafId}`]: {
+          agent: 'claude',
+          agentEvidence: 'process-read',
+          shellForeground: true
+        }
       }
     }
     expect(selectForegroundAgentPaneIdsForWorktree(shellState, worktreeId)['tab-1']).toBeUndefined()
@@ -256,5 +266,69 @@ describe('worktree card status input selectors', () => {
     expect(Object.isFrozen(EMPTY_RUNTIME_PANE_TITLES)).toBe(true)
     expect(Object.isFrozen(EMPTY_LIVE_PTY_IDS)).toBe(true)
     expect(Object.isFrozen(EMPTY_TERMINAL_LAYOUT_ROOTS)).toBe(true)
+  })
+
+  it("selects only this worktree's pane foreground reads, keeping identity across other writes", () => {
+    const worktreeId = 'repo1::/path/wt1'
+    const ownPaneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
+    const ownEntry = { agent: 'codex' as const, shellForeground: false }
+    const state: Parameters<typeof selectPaneForegroundAgentsForWorktree>[0] = {
+      tabsByWorktree: {
+        [worktreeId]: [makeTab('tab-1', worktreeId)],
+        other: [makeTab('tab-2', 'other')]
+      },
+      paneForegroundAgentByPaneKey: {
+        [ownPaneKey]: ownEntry,
+        'tab-2:22222222-2222-4222-8222-222222222222': { agent: 'claude', shellForeground: false }
+      }
+    }
+    const selected = selectPaneForegroundAgentsForWorktree(state, worktreeId)
+    expect(selected).toEqual({ [ownPaneKey]: ownEntry })
+
+    const otherWrite = {
+      ...state,
+      paneForegroundAgentByPaneKey: {
+        ...state.paneForegroundAgentByPaneKey,
+        'tab-2:22222222-2222-4222-8222-222222222222': { agent: null, shellForeground: true }
+      }
+    }
+    expect(selectPaneForegroundAgentsForWorktree(otherWrite, worktreeId)).toBe(selected)
+    expect(selectPaneForegroundAgentsForWorktree(otherWrite, 'missing')).toBe(
+      EMPTY_PANE_FOREGROUND_AGENTS
+    )
+  })
+
+  it('groups foreground reads by tab, including split panes, and skips worktrees with no tabs', () => {
+    const splitLeft = 'tab-1:11111111-1111-4111-8111-111111111111'
+    const splitRight = 'tab-1:33333333-3333-4333-8333-333333333333'
+    const ownSecondTab = 'tab-3:44444444-4444-4444-8444-444444444444'
+    const state: Parameters<typeof selectPaneForegroundAgentsForWorktree>[0] = {
+      tabsByWorktree: {
+        wt1: [makeTab('tab-1', 'wt1'), makeTab('tab-3', 'wt1')],
+        wt2: [makeTab('tab-2', 'wt2')],
+        empty: []
+      },
+      paneForegroundAgentByPaneKey: {
+        [splitLeft]: { agent: 'codex', shellForeground: false },
+        'tab-2:22222222-2222-4222-8222-222222222222': { agent: 'claude', shellForeground: false },
+        [splitRight]: { agent: null, shellForeground: true },
+        [ownSecondTab]: { agent: 'gemini', shellForeground: false },
+        'not-a-pane-key': { agent: 'grok', shellForeground: false }
+      }
+    }
+
+    const selected = selectPaneForegroundAgentsForWorktree(state, 'wt1')
+    expect(selected).toEqual({
+      [splitLeft]: state.paneForegroundAgentByPaneKey?.[splitLeft],
+      [splitRight]: state.paneForegroundAgentByPaneKey?.[splitRight],
+      [ownSecondTab]: state.paneForegroundAgentByPaneKey?.[ownSecondTab]
+    })
+    expect(Object.keys(selectPaneForegroundAgentsForWorktree(state, 'wt2'))).toEqual([
+      'tab-2:22222222-2222-4222-8222-222222222222'
+    ])
+    expect(selectPaneForegroundAgentsForWorktree(state, 'empty')).toBe(EMPTY_PANE_FOREGROUND_AGENTS)
+    expect(
+      selectPaneForegroundAgentsForWorktree({ ...state, paneForegroundAgentByPaneKey: {} }, 'wt1')
+    ).toBe(EMPTY_PANE_FOREGROUND_AGENTS)
   })
 })

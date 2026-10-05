@@ -89,6 +89,8 @@ export type TerminalTab = {
   /** Why: explorer-created terminals can start below the workspace root while
    *  still belonging to that workspace for tab/session ownership. */
   startupCwd?: string
+  /** Exact former presentation owners; live PTY IDs and execution cwd remain unchanged. */
+  relocatedFromWorktreeIds?: string[]
   /** Why: the coding-harness agent Orca launched in this tab. Lets the tab bar
    *  show the provider icon immediately, before the agent emits its first hook
    *  event (a freshly-launched, idle agent reports no live status yet). Live

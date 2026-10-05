@@ -197,7 +197,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'claude',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
   })
@@ -219,7 +219,11 @@ describe('createPaneForegroundAgentTracker', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(publish).not.toHaveBeenCalledWith({ agent: 'droid', shellForeground: false })
+    expect(publish).not.toHaveBeenCalledWith({
+      agent: 'droid',
+      agentEvidence: 'process-read',
+      shellForeground: false
+    })
   })
 
   it('uses typed-agent text only to await process confirmation', async () => {
@@ -234,7 +238,7 @@ describe('createPaneForegroundAgentTracker', () => {
     await flushSettleRead(WRAPPER_RESOLVE_RETRY_MS)
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'droid',
-      processObserved: true,
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -289,7 +293,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
   })
@@ -318,7 +322,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
   })
@@ -336,7 +340,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledTimes(2)
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
   })
@@ -354,7 +358,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledTimes(2)
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
   })
@@ -380,7 +384,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledTimes(3)
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'claude',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
   })
@@ -425,7 +429,7 @@ describe('createPaneForegroundAgentTracker', () => {
 
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'gemini',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
   })
@@ -501,7 +505,7 @@ describe('createPaneForegroundAgentTracker', () => {
     await flushSettleRead(COMMAND_SETTLE_MS)
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
 
@@ -515,7 +519,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -598,7 +602,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -651,7 +655,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledTimes(2)
     expect(publish).toHaveBeenCalledExactlyOnceWith({
       agent: 'droid',
-      processObserved: true,
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -670,7 +674,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledTimes(2)
     expect(publish).toHaveBeenCalledExactlyOnceWith({
       agent: 'droid',
-      processObserved: true,
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -710,7 +714,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).toHaveBeenCalledTimes(3)
     expect(publish).toHaveBeenCalledExactlyOnceWith({
       agent: 'droid',
-      processObserved: true,
+      agentEvidence: 'process-read',
       routingTrusted: true,
       shellForeground: false
     })
@@ -786,10 +790,14 @@ describe('createPaneForegroundAgentTracker', () => {
 
     expect(publish).toHaveBeenLastCalledWith({
       agent: 'codex',
-      processObserved: true,
+      agentEvidence: 'process-read',
       shellForeground: false
     })
-    expect(publish).not.toHaveBeenCalledWith({ agent: 'claude', shellForeground: false })
+    expect(publish).not.toHaveBeenCalledWith({
+      agent: 'claude',
+      agentEvidence: 'process-read',
+      shellForeground: false
+    })
   })
 
   it('stops publishing after dispose', async () => {

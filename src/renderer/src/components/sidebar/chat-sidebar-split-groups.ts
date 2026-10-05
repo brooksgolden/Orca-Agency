@@ -1,6 +1,12 @@
 import { collectWorkspaceIds, type WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
 import { compareChatSidebarRows } from './chat-sidebar-rows'
 import type { ChatSidebarRow } from './chat-sidebar-types'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
+
+export type FocusedChatWorkspace = {
+  worktreeId: string | null
+  hostId: ExecutionHostId | null
+}
 
 export type ChatWorkspaceGroup = {
   id: string
@@ -12,7 +18,8 @@ export type ChatWorkspaceGroup = {
 export function chatSidebarSplitGroups(
   groups: ChatWorkspaceGroup[],
   splits: readonly WorkspaceSplitGroup[],
-  groupBy: 'recent' | 'status' | 'folder'
+  groupBy: 'recent' | 'status' | 'folder',
+  focused?: FocusedChatWorkspace
 ) {
   const hosts = new Map<string, Set<string>>()
   for (const group of groups) {
@@ -62,7 +69,18 @@ export function chatSidebarSplitGroups(
           : members.every((row) => row.completed)
             ? 'Done'
             : 'In progress'
-      return { ...set, latest, section }
+      const focusedWorking =
+        latest.state === 'working' &&
+        !members.every((row) => row.completed) &&
+        members.some(
+          (row) =>
+            row.tabId && row.worktree.id === focused?.worktreeId && row.hostId === focused.hostId
+        )
+      return { ...set, latest, section, focusedWorking }
     })
-    .sort((a, b) => compareChatSidebarRows(a.latest, b.latest))
+    .sort(
+      (a, b) =>
+        Number(b.focusedWorking) - Number(a.focusedWorking) ||
+        compareChatSidebarRows(a.latest, b.latest)
+    )
 }

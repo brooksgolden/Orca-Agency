@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/headless'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
+import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
 
 async function clickPrintedFileLink(
   page: Page,
@@ -99,6 +100,7 @@ test('packaged file links and folder workspace splits retain their workspace', a
     env: { ...isolation.env, ORCA_BACKGROUND_LAUNCH: '1', ORCA_E2E_HEADLESS: '1' }
   })
   try {
+    await assertPackagedExecutableIdentity(app, executablePath)
     const page = await app.firstWindow()
     await app.evaluate(({ BrowserWindow }) => {
       for (const window of BrowserWindow.getAllWindows()) {

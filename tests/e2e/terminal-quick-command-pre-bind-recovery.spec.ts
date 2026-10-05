@@ -86,6 +86,7 @@ process.stdout.write(${JSON.stringify(`${marker}\n`)})
             throw new Error('Renderer store unavailable')
           }
           await store.getState().updateSettings({
+            showPaneCommandButton: true,
             terminalQuickCommands: [
               {
                 id: 'e2e-pre-bind-recovery',

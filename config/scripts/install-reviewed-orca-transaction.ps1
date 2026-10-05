@@ -50,7 +50,10 @@ function Stop-ReviewedOrphanCrashReporters([string] $Executable, [int] $DesktopI
 function Wait-ReviewedDesktopClosed([string] $Executable, [int] $DesktopId, [object[]] $Captured, [int] $TimeoutSeconds = 90) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
-    Stop-ReviewedOrphanCrashReporters $Executable $DesktopId $Captured
+    $capturedParents = @($DesktopId) + @($Captured | Select-Object -ExpandProperty ParentProcessId -Unique)
+    foreach ($parentId in $capturedParents | Select-Object -Unique) {
+      Stop-ReviewedOrphanCrashReporters $Executable $parentId $Captured
+    }
     $remaining = @(Get-ReviewedInstallProcesses $Executable)
     if (-not $remaining.Count) { return }
     Start-Sleep -Milliseconds 500

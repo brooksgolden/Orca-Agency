@@ -55,6 +55,17 @@ export type ParkedTabWatcherEntry = {
 
 export const parkedWatchersByTabId = new Map<string, ParkedTabWatcherEntry>()
 
+export function moveParkedTerminalTabWorkspace(tabId: string, from: string, to: string): void {
+  const capture = capturedPanesByTabId.get(tabId)
+  if (capture?.worktreeId === from) {
+    capture.worktreeId = to
+  }
+  const watcher = parkedWatchersByTabId.get(tabId)
+  if (watcher?.worktreeId === from) {
+    watcher.worktreeId = to
+  }
+}
+
 export function getParkedTerminalWatcherTabIds(): string[] {
   return Array.from(parkedWatchersByTabId.keys())
 }

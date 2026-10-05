@@ -24,7 +24,7 @@ describe('chat sidebar preferences', () => {
   })
   it('moves a name and completion to the provider session once it is known', () => {
     const patch = chatSidebarPreferencePatch(
-      [chatRow({ aliases: [fallback] })],
+      [chatRow({ aliases: [fallback], turnStartedAt: 1 })],
       {
         titles: { [fallback]: 'Early name' },
         completed: { [fallback]: { activityAt: 1, at: 2 } }

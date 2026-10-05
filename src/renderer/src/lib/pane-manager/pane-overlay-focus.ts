@@ -1,3 +1,4 @@
+import { focusNativeChatCover } from '@/components/terminal-pane/native-chat-covered-pane'
 import { hasVisibleOverlay } from '../visible-overlay'
 import { sidebarListFocusIsClaimed } from '../sidebar-list-focus-claim'
 import type { ManagedPane } from './pane-manager-types'
@@ -22,6 +23,9 @@ export function focusPanePreservingOverlays(
         ignoreDismissed: true
       }))
   ) {
+    return
+  }
+  if (focusNativeChatCover(pane)) {
     return
   }
   pane.terminal.focus()

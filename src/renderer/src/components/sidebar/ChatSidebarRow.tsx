@@ -22,6 +22,7 @@ import type { ChatFolderDestination } from './chat-folder-destinations'
 import { clearAiVaultSessionDragData } from '@/lib/ai-vault-session-drag'
 import { AgentIcon } from '@/lib/agent-catalog'
 import { agentTypeToIconAgent, formatAgentTypeLabel } from '@/lib/agent-status'
+import { detachTerminalChat } from './chat-sidebar-detach'
 
 export const ChatSidebarRow = memo(function ChatSidebarRow({
   row,
@@ -184,6 +185,11 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
       <ContextMenuContent>
         <ContextMenuItem onSelect={() => onOpen(row)}>Open chat</ContextMenuItem>
         <ContextMenuItem onSelect={() => onRename(row)}>Rename chat</ContextMenuItem>
+        {row.tabId ? (
+          <ContextMenuItem onSelect={() => detachTerminalChat(row.tabId!)}>
+            Move to separate chat
+          </ContextMenuItem>
+        ) : null}
         <ContextMenuItem onSelect={() => void setChatCompleted(row, !row.completed)}>
           {row.completed ? 'Move to In progress' : 'Mark done'}
         </ContextMenuItem>

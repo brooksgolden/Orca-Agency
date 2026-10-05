@@ -12,7 +12,13 @@ const approvedCloseScript = `
 (async () => {
   window.api.ui.requestClose();
   for (let attempt = 0; attempt < 225; attempt++) {
-    if ([...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].some(d => d.innerText.includes('Unsaved Changes'))) throw new Error('Unsaved editor changes need saving before restart');
+    const unsaved = [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].find(d => d.innerText.includes('Unsaved Changes'));
+    if (unsaved) {
+      const cancel = [...unsaved.querySelectorAll('button')].find(b => b.textContent.trim() === 'Cancel');
+      if (!cancel) throw new Error('Unsaved editor changes need saving before restart; cancel button missing');
+      cancel.click();
+      throw new Error('Unsaved editor changes need saving before restart; close cancelled');
+    }
     const dialog = [...document.querySelectorAll('[role="dialog"]')].find(d => d.innerText.includes('Close Window?'));
     if (dialog) {
       const button = [...dialog.querySelectorAll('button')].find(b => b.textContent.trim() === 'Close');
@@ -126,12 +132,15 @@ async function requestCloseThroughMainProcess() {
     socket.close()
   }
 }
+function canUseMainProcessClose(error) {
+  return /ECONNREFUSED|Timeout \d+ms exceeded/.test(String(error.message))
+}
 ;(async () => {
   let browser
   try {
     browser = await chromium.connectOverCDP('http://127.0.0.1:19387', { timeout: 3000 })
   } catch (error) {
-    if (!String(error.message).includes('ECONNREFUSED')) {
+    if (!canUseMainProcessClose(error)) {
       throw error
     }
     await requestCloseThroughMainProcess()

@@ -172,7 +172,7 @@ const windowsRuntimeResources = existsSync(
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId,
-  productName: 'Orca',
+  productName: 'Orca Agency',
   protocols: [{ name: 'Orca', schemes: ['orca'] }],
   toolsets: { appimage: '1.0.3' },
   ...(devChannelBuildVersion
@@ -232,6 +232,11 @@ module.exports = {
     // Why: out/electron-dev caches `pnpm dev`'s per-branch Electron.app copies (~270MB each).
     // CI never creates it, but packaging on a machine that has run dev would pack them all.
     '!out/electron-dev{,/**/*}',
+    // Why: relayExtraResource already ships out/relay to resources/relay, which is
+    // the only path a packaged build resolves. Packing it again added 14MB and put
+    // relay.js inside app.asar, so a script-heuristic verdict on relay.js took the
+    // whole asar with it as a compound object and gutted the install (#20966, #20972).
+    '!out/relay{,/**/*}',
     '!electron.vite.config.{js,ts,mjs,cjs}',
     '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}',
     '!{.env,.env.*,.npmrc,pnpm-lock.yaml}',
@@ -506,6 +511,9 @@ module.exports = {
     entitlementsInherit: 'resources/build/entitlements.mac.plist',
     signIgnore: bundledRipgrepMacSignIgnore,
     extendInfo: {
+      // Why: retain the upstream safeStorage Keychain service across the Agency display-name change.
+      CFBundleName: 'Orca',
+      CFBundleDisplayName: 'Orca Agency',
       NSAppleEventsUsageDescription:
         'Orca allows terminal-launched developer tools to automate local apps when you request it.',
       NSBluetoothAlwaysUsageDescription:

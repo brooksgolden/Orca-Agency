@@ -45,6 +45,7 @@ export type ParkedTerminalByteWatcherOptions = {
   ptyId: string
   tabId: string
   worktreeId: string
+  resolveWorktreeId?: () => string
   /** Stable terminal-layout leaf UUID; combined with tabId into the paneKey for cache-timer, unread, and notification attribution. */
   leafId: string
   /** PaneManager pane id the unmounted pane used; the watcher must write this same slot or a stale "working" title strands. */
@@ -63,6 +64,7 @@ export function startParkedTerminalByteWatcher(
   options: ParkedTerminalByteWatcherOptions
 ): () => void {
   const { ptyId, tabId, worktreeId, paneId } = options
+  const currentWorktreeId = () => options.resolveWorktreeId?.() ?? worktreeId
   const remoteRuntimePty = isRemoteRuntimePtyId(ptyId)
   const drivesTabTitle = options.drivesTabTitle ?? true
   const paneKey = makePaneKey(tabId, options.leafId)
@@ -110,7 +112,7 @@ export function startParkedTerminalByteWatcher(
         return
       }
       pendingBellNotification = false
-      dispatchTerminalNotification(worktreeId, { source: 'terminal-bell', paneKey })
+      dispatchTerminalNotification(currentWorktreeId(), { source: 'terminal-bell', paneKey })
     }, PARKED_NOTIFICATION_GRACE_MS)
   }
 
@@ -126,7 +128,7 @@ export function startParkedTerminalByteWatcher(
     },
     onBell: (): void => {
       const state = useAppStore.getState()
-      state.markWorktreeUnread(worktreeId)
+      state.markWorktreeUnread(currentWorktreeId())
       state.markTerminalTabUnread(tabId, 'terminal-bell')
       if (state.settings?.experimentalTerminalAttention === true) {
         state.markTerminalPaneUnread(paneKey, 'terminal-bell')
@@ -163,7 +165,7 @@ export function startParkedTerminalByteWatcher(
         // Why: completion supersedes a concurrent BEL so each burst yields exactly one OS notification (live-path parity).
         pendingBellNotification = false
         clearBellNotificationTimer()
-        dispatchTerminalNotification(worktreeId, {
+        dispatchTerminalNotification(currentWorktreeId(), {
           source: 'agent-task-complete',
           terminalTitle: title,
           paneKey
@@ -189,6 +191,7 @@ export function startParkedTerminalByteWatcher(
   const commandStatusPolicy = createParkedTerminalCommandStatusPolicy({
     ptyId,
     worktreeId,
+    resolveWorktreeId: currentWorktreeId,
     tabId,
     paneId,
     paneKey
@@ -243,7 +246,7 @@ export function startParkedTerminalByteWatcher(
           onCommandCodeWorking: commandStatusPolicy.onCommandCodeWorking,
           onCommandCodeDone: commandStatusPolicy.onCommandCodeDone,
           onPrLink: (link) =>
-            useAppStore.getState().observeTerminalGitHubPullRequestLink(worktreeId, link)
+            useAppStore.getState().observeTerminalGitHubPullRequestLink(currentWorktreeId(), link)
         },
         // Why: activation-deferred tabs can start a watcher before any pane restored the title; ordinary parked tabs avoid this IPC.
         restoreTitleOnRegister: options.restoreTitleOnRegister === true
@@ -264,7 +267,7 @@ export function startParkedTerminalByteWatcher(
     commandCodeOutputStatusDetector?.observe(data)
     if (observeTerminalGitHubPRLink) {
       for (const link of observeTerminalGitHubPRLink(data)) {
-        useAppStore.getState().observeTerminalGitHubPullRequestLink(worktreeId, link)
+        useAppStore.getState().observeTerminalGitHubPullRequestLink(currentWorktreeId(), link)
       }
     }
   }

@@ -209,6 +209,10 @@ export function configureDevUserDataPath(isDev: boolean): void {
   }
 
   if (!isDev) {
+    // Why: keep the original encrypted-storage identity before Electron initializes safeStorage.
+    app.setName('Orca')
+    // Why: the Agency display name must not relocate existing profiles, CLI endpoints, or live terminals.
+    app.setPath('userData', join(app.getPath('appData'), 'orca'))
     return
   }
   const overrideUserDataPath = process.env.ORCA_DEV_USER_DATA_PATH

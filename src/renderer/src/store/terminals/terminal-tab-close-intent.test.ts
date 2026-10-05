@@ -26,6 +26,10 @@ vi.mock('@/lib/agent-status', async (importOriginal) => ({
 const mockApi = createStoreCascadesMockApi()
 const closeTerminalSurface = vi.fn()
 Object.assign(mockApi, { session: { closeTerminalSurface } })
+const captureClosedChat = vi.fn()
+vi.mock('@/lib/chat-sidebar-tab-close', () => ({
+  completeClosedChatTab: (...args: unknown[]) => captureClosedChat(...args)
+}))
 
 const SSH_WORKTREE = 'remote-repo::/srv/app'
 const SSH_PTY = 'ssh:target@@pty2:1:1'
@@ -49,6 +53,7 @@ describe('closeTab close intent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     closeTerminalSurface.mockResolvedValue(undefined)
+    captureClosedChat.mockReset()
     mockApi.worktrees.updateMeta.mockResolvedValue({})
   })
 
@@ -77,6 +82,28 @@ describe('closeTab close intent', () => {
     expect(store.getState().tabsByWorktree[SSH_WORKTREE]).toEqual([])
     await Promise.resolve()
     expect(mockApi.pty.kill).toHaveBeenCalledWith(SSH_PTY)
+  })
+
+  it('still removes and retires the terminal if sidebar capture fails', async () => {
+    const error = new Error('unavailable chat metadata')
+    captureClosedChat.mockImplementationOnce(() => {
+      throw error
+    })
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const store = storeWithSshTab()
+    try {
+      store.getState().closeTab('ssh-tab')
+      await Promise.resolve()
+      expect(store.getState().tabsByWorktree[SSH_WORKTREE]).toEqual([])
+      expect(mockApi.pty.kill).toHaveBeenCalledWith(SSH_PTY)
+      expect(closeTerminalSurface).toHaveBeenCalledTimes(1)
+      expect(report).toHaveBeenCalledWith(
+        '[terminal-tab-close] Failed to save closed chat state',
+        error
+      )
+    } finally {
+      report.mockRestore()
+    }
   })
 
   it.each([['user'], ['cleanup']] as const)('sends the intent for a %s close', (reason) => {

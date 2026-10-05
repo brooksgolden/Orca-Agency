@@ -17,6 +17,8 @@ export type RuntimeTerminalSummary = {
   ptyId: string | null
   incarnationId?: string | null
   orphaned?: boolean
+  /** Last host-recorded surface, retained when the current graph lost its binding. */
+  recordedSurface?: { tabId: string; leafId: string }
   worktreeId: string
   worktreePath: string
   branch: string

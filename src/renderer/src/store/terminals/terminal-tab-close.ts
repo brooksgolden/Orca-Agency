@@ -32,7 +32,12 @@ export function createTerminalTabCloseActions(
       const intentReason = closeReason === 'pty-exit' ? null : closeReason
       const retiresSession = intentReason !== null
       if (closeReason === 'user') {
-        completeClosedChatTab(get, tabId)
+        try {
+          completeClosedChatTab(get, tabId)
+        } catch (error) {
+          // Why: failed sidebar bookkeeping must not leave the terminal running after an explicit close.
+          console.error('[terminal-tab-close] Failed to save closed chat state', error)
+        }
       }
       const retirementPlan =
         opts?.precomputedRetirementPlan?.tabId === tabId

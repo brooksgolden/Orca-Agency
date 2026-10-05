@@ -7,9 +7,11 @@ import { useAppStore } from '@/store'
 import {
   EMPTY_FOREGROUND_AGENTS,
   EMPTY_LIVE_PTY_IDS,
+  EMPTY_PANE_FOREGROUND_AGENTS,
   EMPTY_RUNTIME_PANE_TITLES,
   selectForegroundAgentsForWorktree,
   selectLivePtyIdsForWorktree,
+  selectPaneForegroundAgentsForWorktree,
   selectRuntimePaneTitlesForWorktree
 } from './worktree-card-status-inputs'
 import { buildWorktreeAgentRows } from './worktree-agent-rows'
@@ -108,6 +110,11 @@ export function useWorktreeAgentRows(worktreeId: string, active = true): Dashboa
         : EMPTY_WORKTREE_AGENT_ORCHESTRATION
     )
   )
+  const paneForegroundAgentByPaneKey = useAppStore(
+    useShallow((s) =>
+      active ? selectPaneForegroundAgentsForWorktree(s, worktreeId) : EMPTY_PANE_FOREGROUND_AGENTS
+    )
+  )
   const agentFreshnessSignature = useAppStore((s) =>
     active ? selectAgentFreshness(s) : EMPTY_WORKTREE_AGENT_FRESHNESS_SIGNATURE
   )
@@ -139,6 +146,7 @@ export function useWorktreeAgentRows(worktreeId: string, active = true): Dashboa
         foregroundAgentsByPaneKey,
         terminalLayoutsByTabId,
         runtimeAgentOrchestrationByPaneKey,
+        paneForegroundAgentByPaneKey,
         now
       })
     )
@@ -154,6 +162,7 @@ export function useWorktreeAgentRows(worktreeId: string, active = true): Dashboa
     foregroundAgentsByPaneKey,
     terminalLayoutsByTabId,
     runtimeAgentOrchestrationByPaneKey,
+    paneForegroundAgentByPaneKey,
     agentFreshnessSignature
   ])
 }

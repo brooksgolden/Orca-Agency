@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { useAppStore, type AppState } from '@/store'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
+import { makeWorktree } from '@/store/slices/store-test-helpers'
 import {
   runKillAllTerminalSurfaces,
   snapshotKillAllTerminalSurfaceIds,
@@ -12,7 +13,16 @@ type TerminalRow = AppState['tabsByWorktree'][string][number]
 type UnifiedRow = AppState['unifiedTabsByWorktree'][string][number]
 
 function terminal(id: string, worktreeId: string): TerminalRow {
-  return { id, worktreeId } as TerminalRow
+  return {
+    id,
+    worktreeId,
+    title: 'Terminal',
+    customTitle: null,
+    ptyId: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 1
+  }
 }
 
 function unified(
@@ -550,8 +560,10 @@ describe('runKillAllTerminalSurfaces', () => {
       activeWorktreeId: null,
       repos: [],
       worktreesByRepo: {
-        'fixture-repo': [{ id: 'wt', repoId: 'fixture-repo', hostId: 'local' }]
-      } as never,
+        'fixture-repo': [
+          makeWorktree({ id: 'wt', repoId: 'fixture-repo', hostId: 'local', path: '/fixture/wt' })
+        ]
+      },
       detectedWorktreesByRepo: {},
       tabsByWorktree: { wt: tabs },
       unifiedTabsByWorktree: {},

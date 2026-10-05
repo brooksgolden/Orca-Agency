@@ -9,7 +9,7 @@ The maintainer's Orca automation runs on Saturdays at **08:00 America/New_York**
 3. Claude Opus 5.5 at extra high effort audits the changes and evidence. The same implementing Codex session reviews every finding and performs the final review. Failed reviews or checks return to editing and another audit.
 4. Assign a unique Agency version when binaries change, commit with normal hooks, and require a clean tree before building. Build Windows x64 from that commit and record it in the package manifest. The installer stages complete files, closes the desktop gracefully, preserves running terminals and chat data, installs, and restarts.
 5. Compare installed hashes and retained session identities. Verify functionality and inspect screenshots of the installed sidebar, panes, folders, and Automations. Repair failures and repeat the review and installation cycle.
-6. Publish the verified source and artifact to [Orca Agency](https://github.com/brooksgolden/orca-agency). Include the upstream base, tests, known limitations, and SHA-256 checksums in each release.
+6. Publish the verified source and artifact to [Orca Agency](https://github.com/brooksgolden/orca-agency). Include verified items from [pending release notes](./pending-fixes.md), the upstream base, tests, known limitations, and SHA-256 checksums. Record the release against each included fix after publication.
 
 An unavailable credential or external service produces a clear failure receipt and preserves the previous working installation. A blocked run is never reported as a successful release. No announcement is posted. When neither upstream stable nor Agency source has changed, verify the existing release and record that no update is needed.
 
@@ -18,7 +18,7 @@ An unavailable credential or external service produces a clear failure receipt a
 | Area | Preserve through every update |
 | --- | --- |
 | Chat identity | Prompted and resumed chats, exact saved-session recovery, manual names, provider icons |
-| Activity | Running chats first; opening a chat does not refresh its activity; closed prompted tabs become separate Done chats |
+| Activity | Running chats first; opening or resuming does not refresh activity; closed prompted tabs become separate Done chats; tabs closed after this update return to In Progress when resumed; older or explicitly marked Done chats return on their next prompt |
 | Sidebar | Elbows for tabs sharing a pane; brackets for separate panes; 1 folder label per pane; compact rows; collapsible status groups |
 | Restart | Idle open tabs retain their identities, nesting, and pane layout |
 | Layout | Drag live, idle, and Done chats; drag blank headers; horizontal and vertical splits, including full-width edges; close empty panes |

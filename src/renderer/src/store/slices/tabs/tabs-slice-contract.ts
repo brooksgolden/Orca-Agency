@@ -16,6 +16,7 @@ export type TabsSlice = {
   groupsByWorktree: Record<string, TabGroup[]>
   activeGroupIdByWorktree: Record<string, string>
   layoutByWorktree: Record<string, TabGroupLayoutNode>
+  moveTerminalTabToWorkspace: (tabId: string, destinationId: string) => boolean
   createUnifiedTab: (
     worktreeId: string,
     contentType: TabContentType,

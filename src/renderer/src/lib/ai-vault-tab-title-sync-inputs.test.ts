@@ -61,6 +61,7 @@ function makeState(count = 1): AppState {
       }
     }
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the populated title-sync collections and setter are read by this fixture.
   return {
     agentStatusByPaneKey: live,
     retainedAgentsByPaneKey: retained,
@@ -73,7 +74,9 @@ function makeState(count = 1): AppState {
     detectedWorktreesByRepo: {},
     folderWorkspaces: [],
     repos: [],
-    settings: {}
+    settings: {},
+    setAiVaultTabTitle: vi.fn()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the subscription reads only the explicitly populated collections and mocked title setter in this fixture.
   } as unknown as AppState
 }
 
@@ -112,6 +115,8 @@ describe('AI Vault title subscription inputs', () => {
       scheduleReconcile,
       resolveSessionTitles: vi.fn()
     })
+    // Initial ownership recovery scans all records once; unchanged live writes must not repeat it.
+    unchangedEnumerations = 0
     try {
       const paneKey = Object.keys(state.agentStatusByPaneKey)[0]
       for (let index = 0; index < 50; index++) {

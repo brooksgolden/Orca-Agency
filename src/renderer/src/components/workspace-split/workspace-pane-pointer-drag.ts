@@ -6,6 +6,7 @@ export type WorkspacePanePointerDetail = {
   sourceId: string
   x: number
   y: number
+  unifiedTabId?: string
 }
 
 export function readWorkspacePanePointerDetail(event: Event): WorkspacePanePointerDetail | null {
@@ -25,11 +26,20 @@ export function readWorkspacePanePointerDetail(event: Event): WorkspacePanePoint
   ) {
     return null
   }
-  return { sourceId: detail.sourceId, x: detail.x, y: detail.y }
+  return {
+    sourceId: detail.sourceId,
+    x: detail.x,
+    y: detail.y,
+    ...('unifiedTabId' in detail && typeof detail.unifiedTabId === 'string'
+      ? { unifiedTabId: detail.unifiedTabId }
+      : {})
+  }
 }
 
-export function dispatchWorkspacePanePointerMove(detail: WorkspacePanePointerDetail): void {
-  document.dispatchEvent(new CustomEvent(WORKSPACE_PANE_POINTER_MOVE, { detail }))
+export function dispatchWorkspacePanePointerMove(detail: WorkspacePanePointerDetail): boolean {
+  const event = new CustomEvent(WORKSPACE_PANE_POINTER_MOVE, { detail, cancelable: true })
+  document.dispatchEvent(event)
+  return event.defaultPrevented
 }
 
 export function dispatchWorkspacePanePointerDrop(detail: WorkspacePanePointerDetail): boolean {

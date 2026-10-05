@@ -181,7 +181,10 @@ export async function killAllProcessesForWorktree(
               deadline,
               stopPty,
               deps.onPtyStopped,
-              deps.requirePhysicalStop
+              deps.requirePhysicalStop,
+              deps.resolvedConnectionId
+                ? undefined
+                : (session) => deps.runtime?.resolveLocalTerminalMoveWorkspace(session) ?? null
             )
           ),
           0,

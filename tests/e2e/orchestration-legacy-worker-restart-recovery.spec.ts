@@ -93,14 +93,16 @@ if (process.argv.slice(2).includes('app-server')) {
   process.stderr.write("error: unrecognized subcommand 'app-server'\\n")
   process.exit(2)
 }
+if (process.argv.length === 3 && process.argv[2] === '--help') {
+  process.stdout.write('Usage: codex [OPTIONS] [PROMPT]\\n'); process.exit(0)
+}
 appendLedger('ORCA_E2E_SPAWN_LEDGER', { event: 'spawn', argv: process.argv.slice(2) })
 process.stdout.write('\\u001b]0;Codex Ready\\u0007OpenAI Codex\\nmodel: e2e\\ndirectory: e2e\\n')
 const sessionStartHook = emitAuthorityHook('SessionStart')
-let acknowledged = false
-let lifecycleSent = false
+let acknowledged = false, receivedPrompt = '', lifecycleSent = false
 ${FAKE_AGENT_PASTE_END_SCANNER_SOURCE}
 process.stdin.on('data', (chunk) => {
-  const input = chunk.toString()
+  const input = chunk.toString(); receivedPrompt += input
   const pasteEndScan = scanFakeAgentPasteEnd(fakeAgentPasteEndTail, input)
   fakeAgentPasteEndTail = pasteEndScan.tail
   if (pasteEndScan.pasteEndOffset !== null) {
@@ -113,7 +115,10 @@ process.stdin.on('data', (chunk) => {
     fakeAgentMaybeAck(pasteEndScan, input, (mode) => {
       acknowledged = true
       void sessionStartHook.then(() => emitAuthorityHook('UserPromptSubmit'))
-      const message = mode === 'bracketed' ? 'ACK' : 'PASTE_PROTOCOL_ERROR'
+      // Node's Windows console consumes paste markers; require the full task and submit instead.
+      const delivered = mode === 'bracketed' ||
+        (process.platform === 'win32' && receivedPrompt.includes('Respond ACK and remain idle'))
+      const message = delivered ? 'ACK' : 'PASTE_PROTOCOL_ERROR'
       process.stdout.write('\\u001b]0;Codex Working\\u0007' + message + '\\n')
       setTimeout(() => process.stdout.write('\\u001b]0;Codex Ready\\u0007'), 10)
     })
@@ -328,7 +333,7 @@ function assertDispatchRemainsCurrent(
     const authority = db
       .prepare(
         `SELECT dc.status AS dispatch_status, dc.assignee_handle, dc.assignee_pane_key,
-                dc.process_incarnation, dc.contract_version, dc.capability_hash,
+                dc.process_incarnation, dc.contract_version, dc.launch_token_hash,
                 wd.state AS worker_state, wd.worktree_id, wd.agent_terminal_handle
          FROM dispatch_contexts dc
          INNER JOIN worker_dispatches wd ON wd.dispatch_id = dc.id
@@ -341,7 +346,7 @@ function assertDispatchRemainsCurrent(
       assignee_pane_key: input.paneKey,
       process_incarnation: input.processIncarnation,
       contract_version: CURRENT_CONTRACT_VERSION,
-      capability_hash: expect.any(String),
+      launch_token_hash: expect.any(String),
       worker_state: 'ready',
       worktree_id: input.worktreeId,
       agent_terminal_handle: input.terminalHandle

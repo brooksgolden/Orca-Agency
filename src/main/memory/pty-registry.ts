@@ -38,6 +38,13 @@ export function unregisterPty(ptyId: string): void {
   registry.delete(ptyId)
 }
 
+export function reassignRegisteredPtyWorkspace(ptyId: string, worktreeId: string): void {
+  const entry = registry.get(ptyId)
+  if (entry && entry.worktreeId !== worktreeId) {
+    registry.set(ptyId, { ...entry, worktreeId })
+  }
+}
+
 /** Snapshot of currently-registered local PTYs for the collector to walk. */
 export function listRegisteredPtys(): PtyRegistration[] {
   return [...registry.values()]

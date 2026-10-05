@@ -75,8 +75,29 @@ describe('README local link check', () => {
     expect(findBrokenReadmeLinks(makeFixture(validReadmes))).toEqual([])
   })
 
+  it('accepts directory links only when they contain tracked files', () => {
+    const root = makeFixture(
+      {
+        ...validReadmes,
+        'README.md': `${validReadmes['README.md']}\n[Scripts](config/scripts/) [Root](./) [Escape](../) [File slash](LICENSE/) [Missing](config/script/) [Untracked](local-only/)`,
+        'config/scripts/check.mjs': 'export {}'
+      },
+      { untracked: { 'local-only/check.mjs': 'export {}' } }
+    )
+    expect(findBrokenReadmeLinks(root).map((link) => link.resolved)).toEqual([
+      null,
+      'LICENSE',
+      'config/script',
+      'local-only'
+    ])
+  })
+
   it('checks tracked media outside the detector sparse checkout', () => {
-    const root = makeFixture(validReadmes)
+    const root = makeFixture({
+      ...validReadmes,
+      'README.md': `${validReadmes['README.md']}\n[Scripts](config/scripts/)`,
+      'config/scripts/check.mjs': 'export {}'
+    })
     const workflow = parse(readFileSync(path.join(projectDir, '.github/workflows/pr.yml'), 'utf8'))
     const checkout = workflow.jobs.code_paths.steps.find((step) =>
       step.uses?.startsWith('actions/checkout@')
@@ -87,9 +108,12 @@ describe('README local link check', () => {
 
     expect(existsSync(path.join(root, 'resources/build/icon.png'))).toBe(false)
     expect(findBrokenReadmeLinks(root)).toEqual([])
+    git(root, ['update-index', '--force-remove', 'config/scripts/check.mjs'])
+    expect(findBrokenReadmeLinks(root).map((link) => link.resolved)).toEqual(['config/scripts'])
     git(root, ['update-index', '--force-remove', 'resources/build/icon.png'])
     expect(findBrokenReadmeLinks(root).map((link) => link.resolved)).toEqual([
       'resources/build/icon.png',
+      'config/scripts',
       'resources/build/icon.png'
     ])
   })

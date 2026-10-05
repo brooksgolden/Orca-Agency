@@ -12,10 +12,7 @@ import {
   resolveTuiAgentLaunchEnv
 } from '../../../shared/tui-agent-launch-defaults'
 import { requireTuiAgentConfig } from '../../../shared/require-tui-agent-config'
-import {
-  prepareAgentBackgroundHostTrust,
-  resolveAgentBackgroundLaunchHost
-} from '@/lib/agent-background-session-launch-host'
+import { resolveAgentBackgroundLaunchHost } from '@/lib/agent-background-session-launch-host'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import {
   registerEagerPtyBuffer,
@@ -69,7 +66,6 @@ export async function launchAgentBackgroundSession(
     worktreePath: worktree.path,
     repo
   })
-  await prepareAgentBackgroundHostTrust(agent, worktree.path, launchHost.connectionId)
   const { platform: launchPlatform, isRemote } = launchHost
   const startupShell = resolveLocalWindowsAgentStartupShell({
     platform: launchPlatform,
@@ -107,7 +103,12 @@ export async function launchAgentBackgroundSession(
     })
   let paneKey = makePaneKey(reservedTabId, leafId)
   if (args.automationRun) {
-    await registerAutomationChat(worktreeId, { tabId: reservedTabId, paneKey })
+    try {
+      await registerAutomationChat(worktreeId, { tabId: reservedTabId, paneKey })
+    } catch (error) {
+      store.clearAgentLaunchConfig(paneKey)
+      throw error
+    }
   }
   const sshConnectionId = launchHost.connectionId
   const sshStartupDelivery = createSshBackgroundStartupDelivery({

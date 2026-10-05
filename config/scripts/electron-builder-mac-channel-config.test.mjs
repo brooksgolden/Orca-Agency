@@ -44,6 +44,12 @@ const withDailyEnv = (assert) => withEnv({ ORCA_MAC_DAILY: '1' }, assert)
 const withAdhocEnv = (assert) => withEnv({ ORCA_MAC_ADHOC: '1' }, assert)
 
 describe('electron-builder mac channel config', () => {
+  it('keeps the upstream Keychain service name while displaying Orca Agency', () => {
+    expect(electronBuilderConfig.mac.extendInfo).toMatchObject({
+      CFBundleName: 'Orca',
+      CFBundleDisplayName: 'Orca Agency'
+    })
+  })
   // Why: Squirrel.Mac swaps the .app in place only when the replacement carries the
   // same bundle id and a valid Developer ID signature. A hourly built on the local
   // (com.stablyai.orca.local, ad-hoc) identity would be un-installable over a real

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import {
   hasWorkspaceFileDragType,
@@ -57,7 +58,7 @@ export function installPreviewTerminalFileDrop(args: {
     cwd: workspace.cwd
   }
   // A fresh registration fences preload events still in flight from a previous connection.
-  const scope = crypto.randomUUID()
+  const scope = createBrowserUuid()
   container.dataset.nativeFileDropTarget = 'terminal'
   container.dataset.terminalTabId = workspace.tabId
   container.dataset.terminalPreviewSurfaceId = scope

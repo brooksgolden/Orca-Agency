@@ -1,6 +1,6 @@
 import type { ChatSidebarRow, ChatSidebarState } from './chat-sidebar-types'
 import { hiddenChatFolderLabels } from './chat-creation-folders'
-import { chatSidebarSplitGroups } from './chat-sidebar-split-groups'
+import { chatSidebarSplitGroups, type FocusedChatWorkspace } from './chat-sidebar-split-groups'
 import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
 import { chatSidebarPaneGroups, type ChatPaneLayout } from './chat-sidebar-pane-groups'
 
@@ -28,7 +28,8 @@ export function chatSidebarListItems(
     ChatPaneLayout,
   query: string,
   splits: readonly WorkspaceSplitGroup[] = [],
-  collapsedGroups?: ReadonlySet<string>
+  collapsedGroups?: ReadonlySet<string>,
+  focused?: FocusedChatWorkspace
 ): ChatSidebarListItem[] {
   const settings = state.settings?.chatSidebar
   const groupBy = settings?.groupBy ?? 'status'
@@ -77,7 +78,12 @@ export function chatSidebarListItems(
     )
     return { id, members }
   })
-  const joined = chatSidebarSplitGroups(chatSidebarPaneGroups(groups, state), splits, groupBy)
+  const joined = chatSidebarSplitGroups(
+    chatSidebarPaneGroups(groups, state),
+    splits,
+    groupBy,
+    focused
+  )
     .filter((set) => !text || set.groups.some((group) => group.members.some(matches)))
     .map((set) => ({
       ...set,

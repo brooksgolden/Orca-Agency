@@ -44,6 +44,7 @@ const signalLedgerPath = path.join(fakeCliDir, 'terminal-signals.jsonl')
 const fakeCodexSource = `
 const { appendFileSync } = require('node:fs')
 const args = process.argv.slice(2)
+if (args.length === 1 && args[0] === '--help') { process.stdout.write('Usage: codex [OPTIONS] [PROMPT]\\n'); process.exit(0) }
 if (args.includes('app-server')) {
   process.stderr.write("error: unrecognized subcommand 'app-server'\\n")
   process.exit(2)

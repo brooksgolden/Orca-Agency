@@ -8,6 +8,7 @@ import {
 } from '../../../../../shared/task-providers'
 import { PER_REPO_FETCH_LIMIT } from '../../../../../shared/work-items'
 import { isGitRepoKind } from '../../../../../shared/repo-kind'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 import { presetToQuery } from './ui-slice-hydration-sanitizers'
 import {
   placeWorkspaceAtEdge,
@@ -30,7 +31,7 @@ export function createUiTaskActions(set: UISliceSet, get: UISliceGet): Partial<U
           source,
           target,
           edge,
-          crypto.randomUUID(),
+          createBrowserUuid(),
           wholeWindow
         )
         writeWorkspaceSplitGroups(workspaceSplitGroups)

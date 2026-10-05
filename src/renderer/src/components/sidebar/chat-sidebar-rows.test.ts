@@ -126,7 +126,7 @@ describe('chat sidebar', () => {
             aiVaultTitle: {
               agent: 'codex',
               sessionId: 'session-a',
-              title: 'Import extensions to Priceless CPA'
+              title: 'Import extensions to Example firm'
             }
           })
         ]
@@ -255,6 +255,26 @@ describe('chat sidebar', () => {
     expect(buildChatSidebarRows(state, [], 10_000)[0].timestamp).toBe(
       buildChatSidebarRows(state, [], 50_000)[0].timestamp
     )
+  })
+  it('uses the foreground process read over a stale title in Chats', () => {
+    const pane = makePaneKey('a', leafId)
+    const state = chatState({
+      tabsByWorktree: {
+        [chatWorktree.id]: [chatTab('a')]
+      },
+      ptyIdsByTabId: { a: ['pty-a'] },
+      runtimePaneTitlesByTabId: { a: { 1: 'Claude Code' } },
+      terminalLayoutsByTabId: {
+        a: { root: { type: 'leaf', leafId }, activeLeafId: leafId, expandedLeafId: null }
+      },
+      paneForegroundAgentByPaneKey: {
+        [pane]: { agent: 'codex', agentEvidence: 'process-read', shellForeground: false }
+      }
+    })
+    expect(buildChatSidebarRows(state, [], 10_000)[0]).toMatchObject({
+      agentType: 'codex',
+      paneKey: pane
+    })
   })
   it('keeps two agents split inside one tab as separate chats', () => {
     const paneA = makePaneKey('split', leafId)

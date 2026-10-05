@@ -32,6 +32,10 @@ function appendLedger(envName, event) {
     appendFileSync(ledgerPath, JSON.stringify({ pid: process.pid, at: Date.now(), ...event }) + '\\n')
   } catch {}
 }
+if (process.argv.length === 3 && process.argv[2] === '--help') {
+  process.stdout.write('Usage: codex [OPTIONS] [PROMPT]\\n')
+  process.exit(0)
+}
 if (process.argv.slice(2).includes('app-server')) {
   process.stderr.write("error: unrecognized subcommand 'app-server'\\n")
   process.exit(2)

@@ -18,6 +18,8 @@ import { chatSessionKey } from './chat-sidebar-types'
 import { activateAiVaultStructuredSession } from '@/lib/activate-ai-vault-structured-session'
 import type { ChatSidebarRow } from './chat-sidebar-types'
 import type { useAiVaultSessionLaunchActions } from '../right-sidebar/ai-vault-session-launch-actions'
+import { createSeparateChatWorkspace, discardEmptyChatWorkspace } from './chat-sidebar-detach'
+import { dropTerminalTabAtWorkspaceEdge } from '../workspace-split/workspace-tab-edge-drop'
 
 type Resume = ReturnType<typeof useAiVaultSessionLaunchActions>['handleResume']
 
@@ -47,7 +49,11 @@ export function startSavedChatDrag(event: DragEvent, row: ChatSidebarRow, resume
         sessionExecutionHostId: session.executionHostId,
         ...startup
       },
-      (target) => resumeSavedChatAtDrop(row, target, resume)
+      (target) => {
+        void resumeSavedChatAtDrop(row, target, resume).catch((error: unknown) =>
+          toast.error(error instanceof Error ? error.message : 'Could not move chat.')
+        )
+      }
     )
     window.dispatchEvent(new Event(AI_VAULT_SESSION_DRAG_START_EVENT))
   } catch (error) {
@@ -56,16 +62,16 @@ export function startSavedChatDrag(event: DragEvent, row: ChatSidebarRow, resume
   }
 }
 
-export function resumeSavedChatAtDrop(
+export async function resumeSavedChatAtDrop(
   row: ChatSidebarRow,
   target: AiVaultSessionDropPlacement,
   resume: Resume
-): void {
+): Promise<void> {
   const session = chatResumeSession(row)
   if (!session) {
     return
   }
-  const sourceId = session.structuredSession?.workspaceId ?? (row.folderWorktree ?? row.worktree).id
+  let sourceId = session.structuredSession?.workspaceId ?? row.worktree.id
   const state = useAppStore.getState()
   const destinationExists = (): boolean => {
     const current = useAppStore.getState()
@@ -106,10 +112,11 @@ export function resumeSavedChatAtDrop(
     const live = buildChatSidebarRows(current, [session], Date.now(), undefined, true).find(
       (item) =>
         item.tabId &&
-        item.worktree.id === sourceId &&
+        item.hostId === row.hostId &&
         item.sessionKey ===
           chatSessionKey(session.executionHostId, session.agent, session.sessionId)
     )
+    sourceId = live?.worktree.id ?? sourceId
     const unified = current.unifiedTabsByWorktree[sourceId]?.find((tab) =>
       session.structuredSession
         ? tab.contentType === 'agent-session' &&
@@ -125,8 +132,20 @@ export function resumeSavedChatAtDrop(
         splitDirection: target.splitDirection
       })
     } else {
-      current.activateTab(unified.id, { worktreeId: sourceId })
-      placeWorkspace()
+      if (unified.contentType === 'terminal') {
+        void dropTerminalTabAtWorkspaceEdge({
+          sourceId,
+          unifiedTabId: unified.id,
+          targetId: target.worktreeId,
+          edge,
+          wholeWindow: false
+        }).catch((error: unknown) =>
+          toast.error(error instanceof Error ? error.message : 'Could not move chat.')
+        )
+      } else {
+        current.activateTab(unified.id, { worktreeId: sourceId })
+        placeWorkspace()
+      }
     }
     return true
   }
@@ -145,17 +164,24 @@ export function resumeSavedChatAtDrop(
       )
     return
   }
-  if (sourceId === target.worktreeId) {
-    resume(session, sourceId, {
-      targetGroupId: target.groupId,
-      splitDirection: target.splitDirection,
-      validateDestination: destinationExists
-    })
+  if (ids.length >= MAX_WORKSPACE_PANES) {
+    toast.error(`A split can contain up to ${MAX_WORKSPACE_PANES} workspaces`)
     return
   }
+  const workspace = await createSeparateChatWorkspace(row)
+  if (!destinationExists() || moveExisting()) {
+    await discardEmptyChatWorkspace(workspace)
+    return
+  }
+  sourceId = workspace.id
   // Why: a sidebar drag arranges its own workspace, never files the chat under another project.
   resume(session, sourceId, {
     onResumed: placeWorkspace,
-    validateDestination: destinationExists
+    validateDestination: destinationExists,
+    onSettled: (outcome) => {
+      if (outcome === 'not-created') {
+        void discardEmptyChatWorkspace(workspace).catch(() => {})
+      }
+    }
   })
 }

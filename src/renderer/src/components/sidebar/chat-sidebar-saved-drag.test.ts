@@ -9,9 +9,22 @@ import {
 import { resumeSavedChatAtDrop } from './chat-sidebar-saved-drag'
 import { placeWorkspaceAtEdge } from '@/lib/workspace-split-layout'
 
-const mocks = vi.hoisted(() => ({ getState: vi.fn(), error: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  getState: vi.fn(),
+  error: vi.fn(),
+  createSeparate: vi.fn(),
+  discard: vi.fn(),
+  dropEdge: vi.fn()
+}))
 vi.mock('@/store', () => ({ useAppStore: { getState: mocks.getState } }))
 vi.mock('sonner', () => ({ toast: { error: mocks.error } }))
+vi.mock('./chat-sidebar-detach', () => ({
+  createSeparateChatWorkspace: mocks.createSeparate,
+  discardEmptyChatWorkspace: mocks.discard
+}))
+vi.mock('../workspace-split/workspace-tab-edge-drop', () => ({
+  dropTerminalTabAtWorkspaceEdge: mocks.dropEdge
+}))
 vi.mock('@/lib/ai-vault-resume-command', () => ({ buildAiVaultResumeStartupForWorktree: vi.fn() }))
 vi.mock('@/lib/activate-ai-vault-structured-session', () => ({
   activateAiVaultStructuredSession: vi.fn()
@@ -39,34 +52,40 @@ describe('saved chat sidebar drop', () => {
     vi.clearAllMocks()
     state = makeState()
     mocks.getState.mockReturnValue(state)
+    mocks.createSeparate.mockResolvedValue({ ...chatWorktree, id: 'separate' })
+    mocks.dropEdge.mockResolvedValue(undefined)
   })
 
   it.each([false, true])(
     'resumes an idle saved chat in the chosen pane regardless of Done=%s',
-    (completed) => {
-      resumeSavedChatAtDrop({ ...row, completed }, target, resume)
-      expect(resume).toHaveBeenCalledWith(session, chatWorktree.id, {
-        targetGroupId: 'pane',
-        splitDirection: 'right',
+    async (completed) => {
+      await resumeSavedChatAtDrop({ ...row, completed }, target, resume)
+      expect(resume).toHaveBeenCalledWith(session, 'separate', {
+        onResumed: expect.any(Function),
+        onSettled: expect.any(Function),
         validateDestination: expect.any(Function)
       })
     }
   )
 
-  it('retains its folder when dropped on another workspace', () => {
-    resumeSavedChatAtDrop(row, { ...target, worktreeId: 'other', splitDirection: 'down' }, resume)
+  it('retains its folder when dropped on another workspace', async () => {
+    await resumeSavedChatAtDrop(
+      row,
+      { ...target, worktreeId: 'other', splitDirection: 'down' },
+      resume
+    )
     const [resumed, source, placement] = resume.mock.calls[0]
     expect(resumed.sessionId).toBe('fork')
-    expect(source).toBe(chatWorktree.id)
+    expect(source).toBe('separate')
     expect(placement.targetGroupId).toBeUndefined()
     expect(state.placeWorkspaceAtEdge).not.toHaveBeenCalled()
     placement.onResumed()
-    expect(state.placeWorkspaceAtEdge).toHaveBeenCalledWith(chatWorktree.id, 'other', 'bottom')
+    expect(state.placeWorkspaceAtEdge).toHaveBeenCalledWith('separate', 'other', 'bottom')
   })
 
   it.each([false, true])(
     'honors the reported fork identity when the tab link is stale=%s',
-    (forked) => {
+    async (forked) => {
       state.tabsByWorktree[chatWorktree.id] = [
         chatTab('live', { aiVaultTitle: { agent: 'codex', sessionId: 'fork', title: 'Fork' } })
       ]
@@ -99,10 +118,10 @@ describe('saved chat sidebar drop', () => {
           providerSession: { key: 'session_id', id: 'different-fork' }
         }
       }
-      resumeSavedChatAtDrop(row, target, resume)
+      await resumeSavedChatAtDrop(row, target, resume)
       if (forked) {
         expect(state.dropUnifiedTab).not.toHaveBeenCalled()
-        expect(resume).toHaveBeenCalledWith(session, chatWorktree.id, expect.any(Object))
+        expect(resume).toHaveBeenCalledWith(session, 'separate', expect.any(Object))
         return
       }
       expect(resume).not.toHaveBeenCalled()
@@ -110,26 +129,31 @@ describe('saved chat sidebar drop', () => {
         groupId: 'pane',
         splitDirection: 'right'
       })
-      resumeSavedChatAtDrop(row, { ...target, worktreeId: 'other' }, resume)
+      await resumeSavedChatAtDrop(row, { ...target, worktreeId: 'other' }, resume)
       expect(resume).not.toHaveBeenCalled()
-      expect(state.activateTab).toHaveBeenCalledWith('unified', { worktreeId: chatWorktree.id })
-      expect(state.placeWorkspaceAtEdge).toHaveBeenCalledWith(chatWorktree.id, 'other', 'right')
+      expect(mocks.dropEdge).toHaveBeenCalledWith({
+        sourceId: chatWorktree.id,
+        unifiedTabId: 'unified',
+        targetId: 'other',
+        edge: 'right',
+        wholeWindow: false
+      })
     }
   )
 
-  it('rejects a destination that disappeared and rechecks after preparation', () => {
-    resumeSavedChatAtDrop(row, target, resume)
+  it('rejects a destination that disappeared and rechecks after preparation', async () => {
+    await resumeSavedChatAtDrop(row, target, resume)
     const placement = resume.mock.calls[0][2]
     expect(placement.validateDestination()).toBe(true)
     state.groupsByWorktree[chatWorktree.id] = []
     expect(placement.validateDestination()).toBe(false)
     resume.mockClear()
-    resumeSavedChatAtDrop(row, target, resume)
+    await resumeSavedChatAtDrop(row, target, resume)
     expect(resume).not.toHaveBeenCalled()
     expect(mocks.error).toHaveBeenCalled()
   })
 
-  it('accepts real folder workspaces through their canonical workspace key', () => {
+  it('accepts real folder workspaces through their canonical workspace key', async () => {
     state.folderWorkspaces = [
       {
         id: 'folder-only',
@@ -149,7 +173,7 @@ describe('saved chat sidebar drop', () => {
     ]
     const folderKey = 'folder:folder-only'
     state.groupsByWorktree[folderKey] = [{ id: 'pane' }]
-    resumeSavedChatAtDrop(row, { ...target, worktreeId: folderKey }, resume)
+    await resumeSavedChatAtDrop(row, { ...target, worktreeId: folderKey }, resume)
     expect(resume).toHaveBeenCalledOnce()
     const placement = resume.mock.calls[0][2]
     expect(placement.validateDestination()).toBe(true)

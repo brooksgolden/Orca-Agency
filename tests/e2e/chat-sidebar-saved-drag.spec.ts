@@ -19,7 +19,7 @@ test('idle and Done saved chats drag into panes without starting on cancellation
     s.setAiVaultTabTitle(main.id, {
       agent: 'codex',
       sessionId: 'original',
-      title: 'Anthony CPA task management'
+      title: 'Example client task management'
     })
     // Capture startup without launching a real provider against synthetic history.
     window.__store!.setState({
@@ -46,7 +46,7 @@ test('idle and Done saved chats drag into panes without starting on cancellation
                 executionHostId: 'local' as const,
                 agent: 'codex' as const,
                 sessionId,
-                title: 'Anthony CPA task management',
+                title: 'Example client task management',
                 cwd: worktree.path,
                 filePath: `/sessions/${sessionId}.jsonl`,
                 codexHome: null,

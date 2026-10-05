@@ -145,6 +145,7 @@ export function startParkedPtyWatcher(args: {
     ptyId,
     tabId: tab.id,
     worktreeId,
+    resolveWorktreeId: () => entry.worktreeId,
     leafId: pane.leafId,
     paneId: pane.paneId,
     drivesTabTitle: pane.drivesTabTitle,

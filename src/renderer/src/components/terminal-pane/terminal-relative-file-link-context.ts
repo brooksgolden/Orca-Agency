@@ -202,7 +202,11 @@ export async function resolveExistingTerminalFileLinkPath(args: {
   if (/[\\/]$/.test(args.parsed.pathText)) {
     return null
   }
-  if (await exists(mappedPath, args.pathExistsCache.get(cacheKey(mappedPath)) === false)) {
+  const mappedKey = cacheKey(mappedPath)
+  const staleMiss =
+    args.pathExistsCache.get(mappedKey) === false &&
+    !wasTerminalPathExistsCacheRecentlyProbed(args.pathExistsCache, mappedKey)
+  if (await exists(mappedPath, staleMiss)) {
     return mappedPath
   }
 

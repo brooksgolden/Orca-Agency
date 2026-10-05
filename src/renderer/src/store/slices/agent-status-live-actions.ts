@@ -1,6 +1,7 @@
 import { resolvePaneKey } from '../../lib/agent-status-pane-ownership'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
+import { isWebTerminalSurfaceTabId } from '../../../../shared/terminal-surface-id'
 import type { AgentStatusSlice } from './agent-status-slice-contract'
 import type { AgentStatusRuntime } from './agent-status-runtime'
 import type {
@@ -152,7 +153,10 @@ export function createAgentStatusLiveActions(
       entry.restoredUnconfirmed !== true &&
       Math.abs(Date.now() - observationAt) < 60_000
     if (startedNewWork) {
-      const worktreeId = entry.worktreeId ?? findAgentPaneWorktreeId(get(), paneKey)
+      const worktreeId =
+        entry.connectionId || isWebTerminalSurfaceTabId(getTabIdFromPaneKey(paneKey) ?? '')
+          ? (entry.worktreeId ?? findAgentPaneWorktreeId(get(), paneKey))
+          : (findAgentPaneWorktreeId(get(), paneKey) ?? entry.worktreeId)
       const current = get()
       let worktree =
         worktreeId && parseWorkspaceKey(worktreeId)?.type === 'folder'

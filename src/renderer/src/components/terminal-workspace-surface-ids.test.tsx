@@ -104,6 +104,7 @@ describe('workspace surface ids', () => {
       workspaceSurfaces: surfaces,
       workspaceSurfaceIds: ids,
       workspaceSurfaceIdSet: new Set(ids)
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this fixture populates every field read by collectTerminalParkingPassCandidates; unrelated controller actions are never called.
     } as unknown as TerminalParkingFoundation
 
     applyTerminalColdActivation(controller)
@@ -122,6 +123,7 @@ describe('workspace surface ids', () => {
       ['repo::/worktree-0', 1],
       ['repo::/stale', 2]
     ])
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this fixture supplies all parking-pass fields read by the function under test.
     const controller = {
       activeView: 'terminal',
       activityTerminalPortals: [],
@@ -131,6 +133,7 @@ describe('workspace surface ids', () => {
       pairedRuntimeParkingEnvironmentIds: new Set(),
       pendingStartupByTabId: {},
       renderedActiveWorktreeId: 'repo::/worktree-0',
+      visibleWorkspaceIds: ['repo::/worktree-0'],
       tabsByWorktree: {},
       terminalParkingEnabled: true,
       terminalSshParkingEnabled: true,
