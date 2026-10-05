@@ -45,22 +45,13 @@ export function resolvePaneColumnEdgeZone(
     tabStripHeightPx?: number
   }
 ): Exclude<TabDropZone, 'center'> | null {
-  const localX = point.x - panelRect.left
-  const horizontalEdge = panelRect.width * 0.2
-
-  if (localX < horizontalEdge) {
-    return 'left'
-  }
-  if (localX > panelRect.width - horizontalEdge) {
-    return 'right'
-  }
-
   const tabStripHeight = options?.tabStripHeightPx ?? TAB_GROUP_TAB_STRIP_HEIGHT_PX
   const tabStripBottom = panelRect.top + tabStripHeight
   // Why: the tab strip is for reorder/insertion targets. Vertical pane splits
   // belong on the terminal/editor body edges only.
   if (point.y < tabStripBottom) {
-    return null
+    const x = (point.x - panelRect.left) / Math.max(1, panelRect.width)
+    return x < 0.2 ? 'left' : x > 0.8 ? 'right' : null
   }
 
   const bodyRect =
@@ -76,16 +67,16 @@ export function resolvePaneColumnEdgeZone(
     return null
   }
 
-  const bodyLocalY = point.y - bodyRect.top
-  const verticalEdge = bodyRect.height * 0.2
-
-  if (bodyLocalY < verticalEdge) {
-    return 'up'
-  }
-  if (bodyLocalY > bodyRect.height - verticalEdge) {
-    return 'down'
-  }
-  return null
+  const x = (point.x - panelRect.left) / Math.max(1, panelRect.width)
+  const y = (point.y - bodyRect.top) / bodyRect.height
+  const edges = [
+    { zone: 'up', distance: y },
+    { zone: 'down', distance: 1 - y },
+    { zone: 'left', distance: x },
+    { zone: 'right', distance: 1 - x }
+  ] as const
+  const nearest = edges.reduce((best, next) => (next.distance < best.distance ? next : best))
+  return nearest.distance <= 0.25 ? nearest.zone : null
 }
 
 export type PaneColumnSplitTarget = {

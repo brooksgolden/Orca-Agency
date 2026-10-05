@@ -45,23 +45,55 @@ export function useWorkspaceDropTargets(
         ids.size > 1
       )
     })
-    const targetSurface = (event: DragEvent): HTMLElement | null => {
-      if (!Array.from(event.dataTransfer?.types ?? []).includes(WORKSPACE_STATUS_DRAG_TYPE)) {
+    const surfaceAtPoint = (element: Element | null, x: number, y: number): HTMLElement | null => {
+      const surface = element?.closest<HTMLElement>('[data-workspace-surface-id]')
+      if (surface && root.contains(surface) && ids.has(surface.dataset.workspaceSurfaceId ?? '')) {
+        return surface
+      }
+      const bounds = root.getBoundingClientRect()
+      // The split divider reaches the outer edge but belongs to neither pane.
+      // Keep full-window drops available there without accepting interior gaps.
+      if (
+        !element ||
+        !root.contains(element) ||
+        !workspaceDropTarget(bounds, bounds, x, y, ids.size > 1).wholeWindow
+      ) {
         return null
       }
-      const element = event.target instanceof Element ? event.target : null
-      const surface = element?.closest<HTMLElement>('[data-workspace-surface-id]')
-      return surface && root.contains(surface) && ids.has(surface.dataset.workspaceSurfaceId ?? '')
-        ? surface
-        : null
+      let nearest: HTMLElement | null = null
+      let distance = Infinity
+      for (const candidate of root.querySelectorAll<HTMLElement>('[data-workspace-surface-id]')) {
+        const rect = candidate.getBoundingClientRect()
+        if (
+          !ids.has(candidate.dataset.workspaceSurfaceId ?? '') ||
+          rect.width <= 0 ||
+          rect.height <= 0
+        ) {
+          continue
+        }
+        const next =
+          Math.max(rect.left - x, 0, x - rect.right) + Math.max(rect.top - y, 0, y - rect.bottom)
+        if (next < distance) {
+          nearest = candidate
+          distance = next
+        }
+      }
+      return nearest
     }
+    const targetSurface = (event: DragEvent): HTMLElement | null =>
+      Array.from(event.dataTransfer?.types ?? []).includes(WORKSPACE_STATUS_DRAG_TYPE)
+        ? surfaceAtPoint(
+            event.target instanceof Element ? event.target : null,
+            event.clientX,
+            event.clientY
+          )
+        : null
     const pointerSurface = (x: number, y: number): HTMLElement | null => {
-      const element = document.elementFromPoint(x, y)
-      const surface = element?.closest<HTMLElement>('[data-workspace-surface-id]')
-      return surface && root.contains(surface) && ids.has(surface.dataset.workspaceSurfaceId ?? '')
-        ? surface
-        : null
+      return surfaceAtPoint(document.elementFromPoint(x, y), x, y)
     }
+    const overSourceTabStrip = (sourceId: string, surface: HTMLElement, x: number, y: number) =>
+      surface.dataset.workspaceSurfaceId === sourceId &&
+      Boolean(document.elementFromPoint(x, y)?.closest('[data-tab-group-strip-id] [data-tab-id]'))
     const placeWorkspace = (sourceId: string, surface: HTMLElement, x: number, y: number) => {
       const targetId = surface.dataset.workspaceSurfaceId!
       const target = dropTarget(surface, x, y)
@@ -130,7 +162,7 @@ export function useWorkspaceDropTargets(
         return
       }
       const surface = pointerSurface(x, y)
-      if (!surface) {
+      if (!surface || (detail.unifiedTabId && overSourceTabStrip(sourceId, surface, x, y))) {
         setHover(null)
         return
       }
@@ -163,7 +195,7 @@ export function useWorkspaceDropTargets(
       }
       const surface = pointerSurface(x, y)
       setHover(null)
-      if (!surface) {
+      if (!surface || (detail.unifiedTabId && overSourceTabStrip(sourceId, surface, x, y))) {
         return
       }
       const target = dropTarget(surface, x, y)

@@ -278,35 +278,14 @@ module.exports = {
   // Why: the OpenCode SQLite worker entry is also spawned by the scanner
   // service, which runs under ELECTRON_RUN_AS_NODE and so cannot see into
   // app.asar. Left packed, that spawn fails closed and every OpenCode session
-  // disappears from Agent Session History in packaged builds only. Worker
-  // entries reached solely from the Electron main process stay packed, since
-  // asar redirects their app.asar paths.
+  // disappears from Agent Session History in packaged builds only. Electron
+  // redirects app.asar paths for worker-thread entries to their unpacked copies.
   asarUnpack: [
     'out/package.json',
     'out/cli/**',
     'out/shared/**',
-    'out/main/agent-hooks/**',
-    'out/main/antigravity/**',
-    'out/main/claude/**',
-    'out/main/claude-accounts/keychain.js',
-    'out/main/codex/**',
-    'out/main/copilot/**',
-    'out/main/cursor/**',
-    'out/main/droid/**',
-    'out/main/gemini/**',
-    'out/main/grok/**',
-    'out/main/hermes/**',
-    'out/main/orca-profiles/profile-index-store.js',
-    'out/main/persistence/profile-state/**',
-    'out/main/startup/http1-compatibility-marker.js',
-    'out/main/daemon-entry.js',
-    'out/main/session-scanner-service-entry.js',
-    'out/main/wsl-transcript-fs-process-entry.js',
-    'out/main/session-scanner-opencode-sqlite-worker-entry.js',
-    'out/main/plugin-host-entry.js',
-    'out/main/computer-sidecar.js',
-    'out/main/parcel-watcher-process-entry.js',
-    'out/main/chunks/**',
+    // The unbundled CLI reaches profile, SQLite and hook helpers across main; keep its full closure on disk.
+    'out/main/**',
     'resources/**',
     'node_modules/ws/**',
     'node_modules/tweetnacl/**',
