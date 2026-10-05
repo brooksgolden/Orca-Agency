@@ -45,6 +45,10 @@ if (process.argv.slice(2).includes('app-server')) {
   process.stderr.write("error: unrecognized subcommand 'app-server'\\n")
   process.exit(2)
 }
+if (process.argv.length === 3 && process.argv[2] === '--help') {
+  process.stdout.write('Usage: codex [OPTIONS] [PROMPT]\\n')
+  process.exit(0)
+}
 appendLedger('ORCA_E2E_SPAWN_LEDGER', { event: 'spawn' })
 process.stdout.write('\\u001b]0;Codex Ready\\u0007OpenAI Codex\\nmodel: e2e\\ndirectory: e2e\\n')
 let acknowledged = false

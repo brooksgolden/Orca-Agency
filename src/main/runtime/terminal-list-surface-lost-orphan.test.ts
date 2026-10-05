@@ -128,6 +128,24 @@ function dropOnePane(runtime: OrcaRuntimeService): void {
 }
 
 describe('terminal inventory after a pane is dropped', () => {
+  it('retains the recorded surface and process handle when a live pane loses its graph binding', async () => {
+    const runtime = makeRuntime()
+    const before = (await runtime.listTerminals(`id:${WORKTREE_ID}`)).terminals.find(
+      (terminal) => terminal.ptyId === DROPPED_PTY
+    )
+    dropOnePane(runtime)
+    const after = (await runtime.listTerminals(`id:${WORKTREE_ID}`)).terminals.find(
+      (terminal) => terminal.ptyId === DROPPED_PTY
+    )
+    expect(after).toMatchObject({
+      handle: before!.handle,
+      incarnationId: before!.incarnationId,
+      orphaned: true,
+      connected: true,
+      recordedSurface: { tabId: 'tab-dropped', leafId: DROPPED_LEAF }
+    })
+    expect(after!.tabId).toBe(`pty:${DROPPED_PTY}`)
+  })
   it('reports both terminals attached while both panes exist', async () => {
     const runtime = makeRuntime()
     const { terminals } = await runtime.listTerminals(`id:${WORKTREE_ID}`)

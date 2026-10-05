@@ -21,8 +21,7 @@ function readmeFiles(root) {
   return ['README.md', ...translated]
 }
 
-// Why only the referenced paths: a full `git ls-files` of this repo overflows the
-// default child buffer; asking about a few dozen pathspecs stays bounded.
+// Why: ask only about referenced paths, with room for a linked directory's tracked descendants.
 function trackedFiles(root, candidates) {
   if (candidates.length === 0) {
     return new Set()
@@ -30,7 +29,7 @@ function trackedFiles(root, candidates) {
   const stdout = execFileSync(
     'git',
     ['--literal-pathspecs', 'ls-files', '-z', '--', ...candidates],
-    { cwd: root, encoding: 'utf8' }
+    { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
   )
   return new Set(stdout.split('\0').filter(Boolean))
 }
@@ -55,10 +54,10 @@ function resolveTarget(readme, target) {
   if (!bare) {
     return null
   }
-  const resolved = path.posix.normalize(
-    path.posix.join(path.posix.dirname(readme), decodeURIComponent(bare))
-  )
-  return resolved.startsWith('../') ? null : resolved
+  const resolved = path.posix
+    .normalize(path.posix.join(path.posix.dirname(readme), decodeURIComponent(bare)))
+    .replace(/\/$/, '')
+  return resolved === '..' || resolved.startsWith('../') ? null : resolved
 }
 
 function collectLinks(root) {
@@ -77,9 +76,28 @@ function collectLinks(root) {
 
 export function findBrokenReadmeLinks(root) {
   const links = collectLinks(root)
-  const candidates = [...new Set(links.map((link) => link.resolved).filter(Boolean))]
+  const candidates = [
+    ...new Set(links.map((link) => link.resolved).filter((target) => target && target !== '.'))
+  ]
   const tracked = trackedFiles(root, candidates)
-  return links.filter(({ resolved }) => resolved === null || !tracked.has(resolved))
+  const trackedDirectories = new Set(['.'])
+  // Why: GitHub also renders directory links when that directory contains committed files.
+  for (const file of tracked) {
+    let directory = path.posix.dirname(file)
+    while (directory !== '.') {
+      trackedDirectories.add(directory)
+      directory = path.posix.dirname(directory)
+    }
+  }
+  return links.filter(({ resolved, target }) => {
+    if (resolved === null) {
+      return true
+    }
+    const directoryLink = decodeURIComponent(target.split(/[?#]/)[0]).endsWith('/')
+    return directoryLink
+      ? !trackedDirectories.has(resolved)
+      : !tracked.has(resolved) && !trackedDirectories.has(resolved)
+  })
 }
 
 export function main(root = process.cwd()) {

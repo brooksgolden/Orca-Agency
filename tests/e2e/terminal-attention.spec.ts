@@ -14,6 +14,7 @@ import {
 import { getRendererTitleLog, installRendererTitleLog } from './helpers/terminal-title-log'
 import { POST_REPLAY_MODE_RESET } from '../../src/shared/terminal-mode-reset-profiles'
 import { waitForPtyShellEcho } from './terminal-pty-readiness'
+import { nodeTerminalCommand } from './terminal-node-command'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -86,8 +87,16 @@ async function emitBellAndWaitForTitleFlush(
   await waitForPtyShellEcho(page, ptyId, 30_000)
   // Why: the OSC title marker is a deterministic byte-stream fence. Once it
   // lands in the renderer, the preceding BEL has traversed the same PTY path.
-  // printf is a shell builtin, so this still works in stripped CI PATHs.
-  await execInTerminal(page, ptyId, `printf '\\a\\033]0;${markerTitle}\\007'`)
+  // Use the fixture's absolute Node path in both Windows and POSIX shells.
+  const encoded = Buffer.from(`\x07\x1b]0;${markerTitle}\x07`).toString('base64')
+  await execInTerminal(
+    page,
+    ptyId,
+    nodeTerminalCommand([
+      '-e',
+      `process.stdout.write(Buffer.from('${encoded}', 'base64'));setTimeout(() => {}, 1000)`
+    ])
+  )
   await expect
     .poll(async () => (await getRendererTitleLog(page)).includes(markerTitle), {
       timeout: 10_000,

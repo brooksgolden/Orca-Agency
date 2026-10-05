@@ -98,6 +98,21 @@ async function hoverLink(page: Page, probe: LinkProbe): Promise<string | null> {
 
 async function clickLink(page: Page, probe: LinkProbe): Promise<void> {
   const target = await linkClientPoint(page, probe)
+  const hit = await page.evaluate(
+    ({ tabId, x, y }) => {
+      const manager = window.__paneManagers?.get(tabId)
+      const pane = manager?.getActivePane?.() ?? manager?.getPanes?.()[0] ?? null
+      const element = document.elementFromPoint(x, y)
+      return {
+        insideTerminal: Boolean(pane?.terminal.element?.contains(element)),
+        element: element?.outerHTML.slice(0, 500) ?? null
+      }
+    },
+    { tabId: probe.tabId, ...target }
+  )
+  expect(hit, 'terminal file link click must reach its terminal surface').toMatchObject({
+    insideTerminal: true
+  })
   await page.mouse.move(target.x, target.y)
   await page.mouse.click(target.x, target.y)
 }

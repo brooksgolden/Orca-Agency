@@ -120,6 +120,28 @@ class QueueTests(unittest.TestCase):
         self.assertFalse(signal.called)
         self.assertEqual(bridge.state()['activeRun']['token'], 'new')
 
+    def test_heartbeat_cannot_extend_another_batch(self):
+        saved = bridge.state(); saved['activeRun']['token'] = 'new'; bridge.write(self.root / 'state.json', saved)
+        self.assertEqual(bridge.heartbeat('old')['result'], 'expired_batch')
+        self.assertNotIn('lastProgressAt', bridge.state()['activeRun'])
+        with self.assertRaisesRegex(ValueError, 'token'):
+            bridge.heartbeat(None)
+
+    def test_progress_keeps_a_long_repair_run_leased(self):
+        saved = bridge.state()
+        saved['activeRun'] = {'startedAt': '2026-10-04T10:00:00Z', 'token': 'batch1', 'receipt': {'run': {'id': 'run1'}}}
+        bridge.write(self.root / 'state.json', saved)
+        bridge.write(self.root / 'config.json', {'orcaExecutable': 'orca', 'automationId': 'a1'})
+        current = '2026-10-04T12:00:00Z'
+        result = {'ok': True, 'result': {'runs': [{'id': 'run1', 'status': 'dispatched'}]}}
+        epoch = bridge.datetime.fromisoformat(current.replace('Z', '+00:00')).timestamp()
+        with patch.object(bridge, 'now', return_value=current), patch.object(bridge.time, 'time', return_value=epoch), patch.object(bridge, 'command', return_value=json.dumps(result)):
+            self.assertEqual(bridge.heartbeat('batch1')['result'], 'progress_recorded')
+            self.assertTrue(bridge.inspect_active_run())
+        with patch.object(bridge.time, 'time', return_value=epoch + 1801), patch.object(bridge, 'command', return_value=json.dumps(result)), patch.object(bridge, 'wake'):
+            self.assertFalse(bridge.inspect_active_run())
+        self.assertIsNone(bridge.state()['activeRun'])
+
     def test_three_failed_attempts_require_review(self):
         saved = bridge.state(); saved['activeRun'] = None; saved['items']['key']['attempts'] = 3
         bridge.write(self.root / 'state.json', saved)
@@ -127,6 +149,41 @@ class QueueTests(unittest.TestCase):
             bridge.dispatch()
         self.assertFalse(run.called)
         self.assertEqual(bridge.state()['items']['key']['status'], 'needs_review')
+
+    def test_monitor_rechecks_a_heartbeat_recorded_during_the_cli_call(self):
+        saved = bridge.state()
+        saved['activeRun'] = {'startedAt': '2026-10-04T10:00:00Z', 'token': 'batch1', 'receipt': {'run': {'id': 'run1'}}}
+        bridge.write(self.root / 'state.json', saved)
+        bridge.write(self.root / 'config.json', {'orcaExecutable': 'orca', 'automationId': 'a1'})
+        current = '2026-10-04T12:00:00Z'
+        epoch = bridge.datetime.fromisoformat(current.replace('Z', '+00:00')).timestamp()
+        def concurrent_heartbeat(*args, **kwargs):
+            bridge.heartbeat('batch1')
+            return json.dumps({'ok': True, 'result': {'runs': [{'id': 'run1', 'status': 'dispatched'}]}})
+        with patch.object(bridge, 'now', return_value=current), patch.object(bridge.time, 'time', return_value=epoch), patch.object(bridge, 'command', side_effect=concurrent_heartbeat), patch.object(bridge, 'wake') as signal:
+            self.assertTrue(bridge.inspect_active_run())
+            self.assertFalse(signal.called)
+        self.assertEqual(bridge.state()['activeRun']['lastProgressAt'], current)
+
+    def test_finished_run_is_released_even_with_a_concurrent_heartbeat(self):
+        saved = bridge.state()
+        saved['activeRun'] = {'startedAt': '2026-10-04T10:00:00Z', 'token': 'batch1', 'receipt': {'run': {'id': 'run1'}}}
+        saved['items']['key']['runToken'] = 'batch1'
+        bridge.write(self.root / 'state.json', saved)
+        bridge.write(self.root / 'config.json', {'orcaExecutable': 'orca', 'automationId': 'a1'})
+        def concurrent_heartbeat(*args, **kwargs):
+            bridge.heartbeat('batch1')
+            return json.dumps({'ok': True, 'result': {'runs': [{'id': 'run1', 'status': 'completed'}]}})
+        with patch.object(bridge, 'command', side_effect=concurrent_heartbeat), patch.object(bridge, 'wake'):
+            self.assertFalse(bridge.inspect_active_run())
+        self.assertIsNone(bridge.state()['activeRun'])
+        self.assertEqual(bridge.state()['items']['key']['status'], 'needs_review')
+
+    def test_recording_a_decision_refreshes_the_matching_batch(self):
+        saved = bridge.state(); saved['activeRun']['token'] = 'batch1'
+        saved['items']['key']['runToken'] = 'batch1'; bridge.write(self.root / 'state.json', saved)
+        bridge.finish('key', 'Verified repair', run_token='batch1')
+        self.assertIn('lastProgressAt', bridge.state()['activeRun'])
 
     def test_paginated_catchup_advances_cursor_and_keeps_all_ids(self):
         first = {'value': [{'id': 'mail1', 'subject': '[stablyai/orca] reply', 'receivedDateTime': '2026-10-04T15:00:00Z'}],
@@ -182,7 +239,7 @@ class QueueTests(unittest.TestCase):
         saved = bridge.state(); saved['activeRun'] = {'startedAt': '2026-10-04T14:00:00Z', 'token': 'lost'}
         saved['items']['key']['runToken'] = 'lost'; bridge.write(self.root / 'state.json', saved)
         bridge.write(self.root / 'config.json', {'orcaExecutable': 'orca', 'automationId': 'a1'})
-        with patch.object(bridge, 'command', return_value=json.dumps({'ok': True, 'result': {'runs': []}})), patch.object(bridge, 'wake'):
+        with patch.object(bridge.time, 'time', return_value=1791122700), patch.object(bridge, 'command', return_value=json.dumps({'ok': True, 'result': {'runs': []}})), patch.object(bridge, 'wake'):
             self.assertFalse(bridge.inspect_active_run())
         self.assertIsNone(bridge.state()['activeRun'])
         self.assertEqual(bridge.state()['items']['key']['status'], 'needs_review')

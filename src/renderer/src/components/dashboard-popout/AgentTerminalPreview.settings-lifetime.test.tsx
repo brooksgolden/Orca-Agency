@@ -33,6 +33,7 @@ vi.mock('@xterm/xterm', () => ({
     dispose = vi.fn()
     resize = vi.fn()
     reset = vi.fn()
+    loadAddon = vi.fn()
     onData = vi.fn(() => ({ dispose: vi.fn() }))
     constructor(options: ITerminalOptions) {
       this.options = options
@@ -50,10 +51,16 @@ vi.mock('@/lib/keyboard-layout/use-effective-mac-option-as-alt', () => ({
   useEffectiveMacOptionAsAlt: (value: string) => value
 }))
 vi.mock('./preview-grid-claim', () => ({
-  createPreviewGridClaim: () => ({ schedule: vi.fn(), dispose: vi.fn() })
+  createPreviewGridClaim: () => ({
+    schedule: vi.fn(),
+    dispose: vi.fn(),
+    getApplied: () => null,
+    noteAppliedFromSnapshot: vi.fn()
+  })
 }))
 vi.mock('./preview-terminal-box-fit', () => ({
-  createPreviewBoxFit: () => ({ schedule: vi.fn() })
+  createPreviewBoxFit: () => ({ schedule: vi.fn() }),
+  observePreviewBoxResize: () => null
 }))
 vi.mock('./preview-terminal-ligatures', () => ({ syncPreviewTerminalLigatures: vi.fn() }))
 vi.mock('./preview-terminal-compatibility', () => ({
@@ -123,6 +130,7 @@ beforeEach(() => {
       terminalPreview: {
         connect,
         unsubscribe,
+        ack: vi.fn(async () => {}),
         onData
       }
     }
@@ -152,7 +160,10 @@ describe('preview terminal settings lifetime', () => {
     for (let index = 1; index <= 10; index += 1) {
       await updateSettings({ editorAutoSaveDelayMs: 1000 + index })
     }
-    expect(connect).toHaveBeenCalledExactlyOnceWith('pty-1', { scrollbackRows: 24 })
+    expect(connect).toHaveBeenCalledExactlyOnceWith('pty-1', {
+      scrollbackRows: 24,
+      surfaceId: expect.any(String)
+    })
     expect(harness.instances).toHaveLength(1)
     expect(terminal().options.theme).toBe(theme)
     expect(unsubscribe).not.toHaveBeenCalled()
@@ -176,16 +187,15 @@ describe('preview terminal settings lifetime', () => {
     { terminalThemeDark: 'Builtin Tango Light' },
     { terminalColorOverrides: { background: '#123456' } },
     { terminalBackgroundOpacity: 0.5 },
-    { terminalCursorOpacity: 0.5 },
-    { terminalMinimumContrastRatio: 7 }
+    { terminalCursorOpacity: 0.5 }
   ] satisfies Partial<GlobalSettings>[])(
-    'replaces the terminal when theme or contrast changes: %o',
+    'replaces the terminal when theme colors change: %o',
     async (updates) => {
       render(<AgentTerminalPreview ptyId="pty-1" />)
       await act(async () => {})
       await updateSettings(updates)
       expect(connect).toHaveBeenCalledTimes(2)
-      expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('pty-1')
+      expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('pty-1', expect.any(String))
       expect(terminal().dispose).toHaveBeenCalledOnce()
       expect(harness.instances).toHaveLength(2)
       if ('terminalMinimumContrastRatio' in updates) {
@@ -243,13 +253,13 @@ describe('preview terminal settings lifetime', () => {
     expect(terminal().options.cursorStyle).toBe('bar')
   })
 
-  it('ignores an old pending connection after a relevant theme change', async () => {
+  it('uses current contrast when a pending connection arrives', async () => {
     const gate = Promise.withResolvers<TerminalPreviewConnectResult>()
     connect.mockReturnValueOnce(gate.promise)
     render(<AgentTerminalPreview ptyId="pty-1" />)
     await updateSettings({ terminalMinimumContrastRatio: 7 })
-    expect(connect).toHaveBeenCalledTimes(2)
-    expect(harness.instances).toHaveLength(1)
+    expect(connect).toHaveBeenCalledOnce()
+    expect(harness.instances).toHaveLength(0)
     await act(async () => gate.resolve(connection))
     expect(harness.instances).toHaveLength(1)
     expect(terminal().options.minimumContrastRatio).toBe(7)
@@ -264,7 +274,7 @@ describe('preview terminal settings lifetime', () => {
     await act(async () => gate.resolve(connection))
     expect(harness.instances).toHaveLength(0)
     expect(connect).toHaveBeenCalledOnce()
-    expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('ssh:host@@pty-1')
+    expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('ssh:host@@pty-1', expect.any(String))
   })
 
   it('keeps a hidden mounted preview connected through unrelated settings updates', async () => {

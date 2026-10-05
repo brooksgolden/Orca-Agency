@@ -511,6 +511,9 @@ module.exports = {
     entitlementsInherit: 'resources/build/entitlements.mac.plist',
     signIgnore: bundledRipgrepMacSignIgnore,
     extendInfo: {
+      // Why: retain the upstream safeStorage Keychain service across the Agency display-name change.
+      CFBundleName: 'Orca',
+      CFBundleDisplayName: 'Orca Agency',
       NSAppleEventsUsageDescription:
         'Orca allows terminal-launched developer tools to automate local apps when you request it.',
       NSBluetoothAlwaysUsageDescription:

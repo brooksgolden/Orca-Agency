@@ -261,6 +261,8 @@ def finish(key, reason, reply=None, run_token=None):
                 posted = gh(route, method='POST', body={'body': body + '\n\n' + marker})
                 item['replyUrl'] = posted['html_url']
         item.update(status='handled', decision='reply' if reply else 'no_reply', reason=reason, finishedAt=now())
+        if run_token and (saved['activeRun'] or {}).get('token') == run_token:
+            saved['activeRun']['lastProgressAt'] = now()
         write(ROOT / 'state.json', saved)
     return item
 
@@ -275,6 +277,19 @@ def complete_run(run_token=None):
         write(ROOT / 'state.json', saved)
     wake()
     return {'result': 'completed'}
+
+
+def heartbeat(run_token):
+    if not run_token:
+        raise ValueError('A batch token is required')
+    with lock('state.lock'):
+        saved = state()
+        active = saved['activeRun']
+        if not active or active.get('token') != run_token:
+            return {'result': 'expired_batch'}
+        active['lastProgressAt'] = now()
+        write(ROOT / 'state.json', saved)
+    return {'result': 'progress_recorded'}
 
 
 def dispatch():
@@ -332,22 +347,29 @@ def inspect_active_run():
         raise RuntimeError('Orca run monitoring unavailable')
     run_id = active.get('receipt', {}).get('run', {}).get('id')
     run = next((run for run in result['result']['runs'] if run['id'] == run_id), None)
-    started = datetime.fromisoformat(active['startedAt'].replace('Z', '+00:00')).timestamp()
-    elapsed = time.time() - started
-    uncertain = not run_id and elapsed > 120
-    expired = elapsed > 1800
     ended = run and run['status'] in ('completed', 'dispatch_failed', 'skipped_unavailable', 'skipped_needs_interactive_auth')
-    if uncertain or expired or ended:
-        with lock('state.lock'):
-            saved = state()
-            if saved['activeRun'] == active:
-                saved['lastRun'] = active
-                saved['activeRun'] = None
-                # A failed reviewer remains visible for deliberate recovery.
-                for item in saved['items'].values():
-                    if item['status'] == 'pending' and item.get('runToken') == active.get('token'):
-                        item.update(status='needs_review', reason='Reviewer ended without recording a decision')
-                write(ROOT / 'state.json', saved)
+    # The CLI call releases the lock. Re-read the lease so a concurrent progress heartbeat wins.
+    with lock('state.lock'):
+        saved = state()
+        current = saved['activeRun']
+        if not current:
+            return False
+        if current.get('token') != active.get('token'):
+            return True
+        started = datetime.fromisoformat(current['startedAt'].replace('Z', '+00:00')).timestamp()
+        elapsed = time.time() - started
+        uncertain = not run_id and elapsed > 120
+        progress = datetime.fromisoformat(current.get('lastProgressAt', current['startedAt']).replace('Z', '+00:00')).timestamp()
+        expired = time.time() - progress > 1800 or elapsed > 14400
+        released = uncertain or expired or ended
+        if released:
+            saved['lastRun'] = current
+            saved['activeRun'] = None
+            for item in saved['items'].values():
+                if item['status'] == 'pending' and item.get('runToken') == current.get('token'):
+                    item.update(status='needs_review', reason='Reviewer ended without recording a decision')
+            write(ROOT / 'state.json', saved)
+    if released:
         write(ROOT / 'last-error.json', {'at': now(), 'operation': 'run_monitor', 'runId': run_id,
                                         'error': 'DispatchOutcomeUncertain' if uncertain else 'RunExpired' if expired else 'IncompleteBatch'})
         wake()
@@ -541,7 +563,7 @@ def listen():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['setup', 'listen', 'replay', 'pending', 'finish', 'complete-run'])
+    parser.add_argument('action', choices=['setup', 'listen', 'replay', 'pending', 'finish', 'complete-run', 'heartbeat'])
     parser.add_argument('--message-id')
     parser.add_argument('--key')
     parser.add_argument('--reason')
@@ -560,6 +582,8 @@ def main():
         result = finish(args.key, args.reason, args.reply_file, args.run_token)
     elif args.action == 'complete-run':
         result = complete_run(args.run_token)
+    elif args.action == 'heartbeat':
+        result = heartbeat(args.run_token)
     else:
         with lock('state.lock'):
             saved = state()

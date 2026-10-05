@@ -90,3 +90,22 @@ it('drops stale wrapped links while a batch is pending', async () => {
   await flushAsyncWork()
   expect(callback).not.toHaveBeenCalled()
 })
+
+it('rechecks a cached miss after five seconds and links a newly created file', async () => {
+  let clock = 1_000
+  vi.spyOn(Date, 'now').mockImplementation(() => clock)
+  let created = false
+  const batch = vi.fn(async (paths: string[]) => paths.map(() => created))
+  window.api.shell.pathsExist = batch
+  const { provider } = createProviderSetup([makeBufferLine('./created.ts')], new Map())
+  const hover = () =>
+    new Promise<ILink[]>((resolve) => provider.provideLinks(1, (links) => resolve(links ?? [])))
+  expect(await hover()).toEqual([])
+  created = true
+  clock += 4_999
+  expect(await hover()).toEqual([])
+  expect(batch).toHaveBeenCalledTimes(1)
+  clock += 2
+  expect((await hover()).map((link) => link.text)).toEqual(['./created.ts'])
+  expect(batch).toHaveBeenCalledTimes(2)
+})

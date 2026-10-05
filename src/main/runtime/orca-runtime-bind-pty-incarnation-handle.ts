@@ -149,18 +149,36 @@ export class OrcaRuntimeWithBindPtyIncarnationHandle extends OrcaRuntimeWithBuil
     }
   }
 
-  protected invalidateLeafHandle(leafKey: string): void {
+  protected invalidateLeafHandle(leafKey: string, retainLiveProcess = false): void {
     const handle = this.handleByLeafKey.get(leafKey)
     if (!handle) {
       return
     }
     const record = this.handles.get(handle)
+    const wasSynthetic = this.syntheticTerminalHandles.has(handle)
+    const retained = record?.ptyId ? this.handleByPtyIncarnation.get(record.ptyId) : null
+    const livePty = record?.ptyId ? this.ptysById.get(record.ptyId) : null
+    const sameLiveProcess =
+      retainLiveProcess &&
+      livePty?.connected &&
+      retained?.handle === handle &&
+      retained.incarnationId !== null &&
+      retained.incarnationId === livePty.incarnationId
     if (record?.ptyId && this.handleByPtyIncarnation.get(record.ptyId)?.handle === handle) {
       this.handleByPtyIncarnation.delete(record.ptyId)
     }
     this.handleByLeafKey.delete(leafKey)
     this.handles.delete(handle)
     this.syntheticTerminalHandles.delete(handle)
+    if (sameLiveProcess) {
+      // Dropping a graph leaf cannot change the control handle of the same live process.
+      this.handleByPtyId.set(livePty.ptyId, handle)
+      this.issuePtyHandle(livePty)
+      if (wasSynthetic) {
+        this.syntheticTerminalHandles.add(handle)
+      }
+      return
+    }
     this.rejectWaitersForHandle(handle, 'terminal_handle_stale')
   }
 

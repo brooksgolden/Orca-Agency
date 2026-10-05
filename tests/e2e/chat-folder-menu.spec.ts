@@ -39,7 +39,10 @@ test('live workspace chats share folders, create real directories, and filter pe
   await expect(moving).toHaveAttribute('aria-label', /Alpha folder/)
   expect(existsSync(path.join(parent, 'Alpha folder'))).toBe(true)
   expect(existsSync(path.join(parent, 'Alpha folder', '.git'))).toBe(false)
-  await expect(sibling).toContainText('Alpha folder')
+  await expect(sibling).toHaveAttribute('aria-label', /Alpha folder/)
+  await expect(
+    orcaPage.locator('[data-chat-folder]').filter({ hasText: 'Alpha folder' })
+  ).toHaveCount(1)
   await expect(moving).toHaveAttribute('data-worktree-id', ids.worktree)
   await moving.click()
   await expect
@@ -65,7 +68,10 @@ test('live workspace chats share folders, create real directories, and filter pe
   await orcaPage.getByRole('menuitem', { name: 'Show all folders', exact: true }).click()
   await expect(moving).toBeVisible()
   await expect(moving).toHaveAttribute('aria-label', /Alpha folder/)
-  await expect(sibling).toContainText('Alpha folder')
+  await expect(sibling).toHaveAttribute('aria-label', /Alpha folder/)
+  await expect(
+    orcaPage.locator('[data-chat-folder]').filter({ hasText: 'Alpha folder' })
+  ).toHaveCount(1)
   await moving.click({ button: 'right' })
   await orcaPage.getByRole('menuitem', { name: 'Change folder', exact: true }).hover()
   const newFolder = orcaPage.getByRole('menuitem', { name: 'New folder...', exact: true })

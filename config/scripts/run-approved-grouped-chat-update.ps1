@@ -34,6 +34,7 @@ if ((Get-FileHash -LiteralPath $desktopLifecycle).Hash -ne $frozenManifest.insta
 . $desktopLifecycle
 
 function Start-IndependentOrca {
+    param([string] $ExpectedVersion = [string]$frozenManifest.packageVersion)
     # WMI keeps the restart outside this terminal's kill-on-close job.
     $launch = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
         CommandLine = '"' + $exe + '" --remote-debugging-address=127.0.0.1 --remote-debugging-port=19387'
@@ -48,6 +49,30 @@ function Start-IndependentOrca {
             throw 'Desktop restart process did not match the installed executable.'
         }
     } finally { $started.Dispose() }
+    $restartedIdentity = $null
+    $identityDeadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $identityDeadline) {
+        # Electron may not accept the debug signal immediately after Windows creates it.
+        try { & $node -e 'process._debugProcess(Number(process.argv[1]))' $launch.ProcessId 2>$null } catch {
+            # Windows PowerShell can promote early native stderr to a terminating error.
+        }
+        try { $identityJson = & $node $inspector 2>$null } catch { $identityJson = $null }
+        if ($LASTEXITCODE -eq 0 -and $identityJson) {
+            $restartedIdentity = ($identityJson | ConvertFrom-Json).result.result.value
+            if ($restartedIdentity.pid -eq $launch.ProcessId) { break }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not $restartedIdentity -or $restartedIdentity.pid -ne $launch.ProcessId -or
+        $restartedIdentity.version -ne $ExpectedVersion -or
+        -not [string]::Equals($restartedIdentity.userData, (Join-Path $env:APPDATA 'orca'), [StringComparison]::OrdinalIgnoreCase)) {
+        $restartReporters = @(Get-ReviewedInstallProcesses $exe | Where-Object { Test-ReviewedCrashReporter $_ })
+        $env:ORCA_DESKTOP_QUIT_PID = [string]$launch.ProcessId
+        & $node $closeHelper
+        if ($LASTEXITCODE -ne 0) { throw 'Restart profile verification failed, and graceful recovery close failed. Complete app backups remain intact.' }
+        Wait-ReviewedDesktopClosed $exe $launch.ProcessId $restartReporters
+        throw 'Restart used a different profile or could not prove its identity. Recovering the previous complete app.'
+    }
     Write-Host "Started independent Orca desktop PID $($launch.ProcessId)."
 }
 
@@ -80,6 +105,9 @@ for ($attempt = 0; $attempt -lt 10; $attempt++) {
 if (-not $inspectedIdentity -or $inspectedIdentity.pid -ne $inspectedDesktopId -or
     -not [string]::Equals($inspectedIdentity.exe, $exe, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Inspector identity differs from the installed desktop; no files changed.'
+}
+if (-not [string]::Equals($inspectedIdentity.userData, (Join-Path $env:APPDATA 'orca'), [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'The installed desktop uses a different profile; no files changed.'
 }
 
 Start-Transcript -Path (Join-Path $PSScriptRoot 'approved-grouped-chat-update.log') -Force | Out-Null
@@ -156,7 +184,7 @@ try {
         (Get-FileHash -LiteralPath $exe).Hash -eq $priorExeHash -and
         (Get-FileHash -LiteralPath (Join-Path $target 'resources\app.asar')).Hash -eq $priorAsarHash
     if ($priorAppIntact -and (Test-ReviewedDesktopAbsent $exe)) {
-        Start-IndependentOrca
+        Start-IndependentOrca -ExpectedVersion ([string]$inspectedIdentity.version)
     }
     throw
 } finally {

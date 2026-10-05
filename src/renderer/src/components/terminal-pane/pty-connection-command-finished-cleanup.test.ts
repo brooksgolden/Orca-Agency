@@ -141,7 +141,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 describe('connectPanePty', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
     transportFactoryQueue = []
@@ -149,6 +149,9 @@ describe('connectPanePty', () => {
     storeSubscribers = []
     mockStoreState = createInitialStoreState(() => mockStoreState)
     installTerminalTestGlobals()
+    // Why: load the connection and real-store graph before tests replace timers used by module initialization.
+    await import('./pty-connection')
+    await import('@/store/slices/store-test-helpers')
   })
 
   afterEach(async () => {

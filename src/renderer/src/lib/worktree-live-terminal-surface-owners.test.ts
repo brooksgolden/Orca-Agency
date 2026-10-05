@@ -40,6 +40,27 @@ afterEach(() => {
 })
 
 describe('live terminal surface owners', () => {
+  it('retains an orphan process last-known surface for exact reconnection', () => {
+    const ptyId = `${WORKTREE_ID}@@orphan`
+    const owners = indexLiveTerminalSurfaceOwners(
+      [
+        summary({
+          ptyId,
+          orphaned: true,
+          tabId: `pty:${ptyId}`,
+          leafId: `pty:${ptyId}`,
+          recordedSurface: { tabId: 'saved-setup', leafId: LEAF_ID }
+        })
+      ],
+      WORKTREE_ID
+    )
+    expect(owners.get(ptyId)).toEqual({
+      tabId: 'saved-setup',
+      paneKey: `saved-setup:${LEAF_ID}`,
+      ptyId,
+      orphaned: true
+    })
+  })
   it('records the exact pane the host binds a live PTY to', () => {
     const owners = indexLiveTerminalSurfaceOwners([summary({})], WORKTREE_ID)
 

@@ -51,9 +51,11 @@ export function bindLivePtyToExactSurface(
   const existing = ownerEntries[0]
   if (existing) {
     const layout = store.terminalLayoutsByTabId[terminal.tabId]
+    const heldPtyId = layout?.ptyIdsByLeafId?.[pane.leafId]
     if (
       !worktreeIdsEqual(existing.ownerWorktreeId, worktreeId) ||
-      !layoutContainsLeaf(layout?.root ?? null, pane.leafId)
+      !layoutContainsLeaf(layout?.root ?? null, pane.leafId) ||
+      (heldPtyId && heldPtyId !== terminal.ptyId)
     ) {
       return false
     }
@@ -155,7 +157,35 @@ export async function adoptLiveWorkspacePtySurfaces(
       continue
     }
     const owner = surfaceOwners?.get(ptyId)
-    if (owner && owner !== 'unowned') {
+    if (owner && owner !== 'unowned' && owner.orphaned && tabExists(getState(), owner.tabId)) {
+      // Reconnect an existing empty surface before minting a recovery tab. A conflicting
+      // or retired leaf must not create a duplicate tab on the same live process.
+      if (bindLivePtyToExactSurface(getState(), worktreeId, owner)) {
+        surfaced = true
+        continue
+      }
+      const current = getState()
+      const pane = parsePaneKey(owner.paneKey)
+      const matchingTabs = Object.entries(current.tabsByWorktree).flatMap(([id, tabs]) =>
+        tabs.filter((tab) => tab.id === owner.tabId).map(() => id)
+      )
+      const heldPtyId =
+        pane && current.terminalLayoutsByTabId[owner.tabId]?.ptyIdsByLeafId?.[pane.leafId]
+      if (
+        !pane ||
+        matchingTabs.length !== 1 ||
+        !worktreeIdsEqual(matchingTabs[0], worktreeId) ||
+        (heldPtyId && heldPtyId !== ptyId) ||
+        Object.entries(current.ptyIdsByTabId).some(
+          ([tabId, ids]) => tabId !== owner.tabId && ids.includes(ptyId)
+        )
+      ) {
+        declinedPtyIds.push(ptyId)
+        continue
+      }
+      // The old tab survived, but its leaf did not. Give this process a fresh recovery surface.
+    }
+    if (owner && owner !== 'unowned' && !owner.orphaned) {
       if (adoptHostOwnedSurface(getState, worktreeId, owner, materializedTabIds)) {
         surfaced = true
       } else {
@@ -165,7 +195,7 @@ export async function adoptLiveWorkspacePtySurfaces(
     }
     // Why: only the execution host can prove a live PTY is unowned, and minting
     // on anything weaker forks a running agent onto a second empty surface.
-    if (owner !== 'unowned') {
+    if (owner !== 'unowned' && !(owner && owner.orphaned)) {
       declinedPtyIds.push(ptyId)
       continue
     }
