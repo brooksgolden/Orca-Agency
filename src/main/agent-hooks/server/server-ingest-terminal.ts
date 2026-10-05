@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { track } from '../../telemetry/client'
 import { MAX_PANE_KEY_LEN } from '../../../shared/agent-hook-listener/listener-limits'
 import { parseLegacyNumericPaneKey, parsePaneKey } from '../../../shared/stable-pane-id'
@@ -24,6 +25,10 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     /** Main observed a live provider title, never a cached or synthetic frame. */
     evidenceOnly?: true
     observedTerminalHandle?: string
+    /** Fresh native Codex output from the same retained local terminal. */
+    confirmRestoredWorkingTitle?: true
+    /** Current local PTY launch authority; checked against any durable commitment. */
+    restoredLaunchToken?: string
   }): void {
     const physicalPaneKey = event.paneKey.trim()
     let paneKey = this.resolvePaneKeyAlias(physicalPaneKey)
@@ -65,16 +70,36 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
       const previous = this.state.lastStatusByPaneKey.get(paneKey) as
         | EnrichedAgentHookEventPayload
         | undefined
-      // Confirmation cannot create a row, transfer ownership, reopen a closed
-      // pane, clear restored provenance or date a new prompt/turn.
+      const confirmsRestored =
+        event.confirmRestoredWorkingTitle === true &&
+        previous?.restoredUnconfirmed === true &&
+        (!previous.terminalHandle || previous.terminalHandle === event.terminalHandle) &&
+        previous.payload.agentType === 'codex' &&
+        (previous.connectionId ?? null) === null &&
+        (event.connectionId ?? null) === null
+      const savedLaunchTokenHash = previous?.restoredUnconfirmed
+        ? (this.hydratedLaunchTokenHashByPaneKey.get(paneKey) ??
+          this.persistedAuthorityCommitmentsByPaneKey.get(paneKey)?.launchTokenHash ??
+          (previous.launchToken
+            ? createHash('sha256').update(previous.launchToken.trim()).digest('hex')
+            : undefined))
+        : undefined
+      const matchesSavedLaunch =
+        !savedLaunchTokenHash ||
+        (Boolean(event.restoredLaunchToken?.trim()) &&
+          createHash('sha256').update(event.restoredLaunchToken!.trim()).digest('hex') ===
+            savedLaunchTokenHash)
+      // Only fresh same-terminal native output can confirm restored working state.
       if (
         disposition !== 'accept' ||
         !event.ptyId ||
         !event.terminalHandle ||
         !previous ||
-        previous.restoredUnconfirmed ||
+        (previous.restoredUnconfirmed && !confirmsRestored) ||
+        (confirmsRestored && Boolean(event.restoredLaunchToken?.trim()) && !matchesSavedLaunch) ||
         previous.providerSessionOnly ||
         previous.structuredHost ||
+        event.payload.state !== 'working' ||
         previous.payload.state !== 'working' ||
         (previous.payload.mainAgent && previous.payload.mainAgent.state !== 'working') ||
         !event.payload.agentType ||
@@ -85,12 +110,20 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         previous.tabId !== tabId ||
         previous.worktreeId !== event.worktreeId ||
         (previous.connectionId ?? null) !== (event.connectionId ?? null) ||
-        Date.now() - (previous.evidenceObservedAt ?? previous.receivedAt) <=
-          AGENT_WORKING_TITLE_REFRESH_AFTER_MS
+        (!confirmsRestored &&
+          Date.now() - (previous.evidenceObservedAt ?? previous.receivedAt) <=
+            AGENT_WORKING_TITLE_REFRESH_AFTER_MS)
       ) {
         return
       }
-      this.refreshTerminalStatusEvidence(previous, undefined, true, previous.observation?.origin)
+      this.refreshTerminalStatusEvidence(
+        previous,
+        undefined,
+        true,
+        confirmsRestored ? 'osc' : previous.observation?.origin,
+        confirmsRestored ? event.terminalHandle : undefined,
+        confirmsRestored && !(savedLaunchTokenHash && matchesSavedLaunch)
+      )
       return
     }
     if (disposition === 'restart') {

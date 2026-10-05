@@ -39,7 +39,11 @@ export function chatSidebarListItems(
     `${row.title}\n${row.folder}`.toLocaleLowerCase().includes(text)
   const byWorkspace = new Map<string, ChatSidebarRow[]>()
   for (const row of rows) {
-    if (row.automated || hiddenFolders.includes(row.folder)) {
+    if (
+      row.automated ||
+      hiddenFolders.includes(row.folder) ||
+      (settings?.showOnlyInProgress && row.completed)
+    ) {
       continue
     }
     const key = JSON.stringify([

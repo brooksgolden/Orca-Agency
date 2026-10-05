@@ -93,6 +93,8 @@ export class OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector extends 
       yieldsToHookSince?: number
       evidenceOnly?: true
       observedTerminalHandle?: string
+      confirmRestoredWorkingTitle?: true
+      restoredLaunchToken?: string
     }
   ): void {
     if (chunk.payloads.length === 0) {

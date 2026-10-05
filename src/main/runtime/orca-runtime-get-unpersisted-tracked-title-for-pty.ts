@@ -111,27 +111,48 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
                 }
                 const observed = this.readObservedAgentStatusPaneIdentityFn(paneKey)
                 const current = resolveAgentStatusBinding(paneKey, this)
+                const row = (this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []).find(
+                  (row) => row.state === 'working' && row.agentType === 'codex'
+                )
+                const confirmsRestored =
+                  row?.restoredUnconfirmed === true &&
+                  this.graphStatus === 'ready' &&
+                  current.kind === 'pane' &&
+                  (!row.terminalHandle || row.terminalHandle === current.terminalHandle) &&
+                  this.ptysById.get(ptyId)?.connected === true &&
+                  (row.connectionId ?? null) === null &&
+                  (this.ptysById.get(ptyId)?.connectionId ?? null) === null &&
+                  this.ptysById.get(ptyId)?.lastAgentStatus === 'working' &&
+                  this.ptysById.get(ptyId)?.lastAgentStatusObservedLive === true
                 if (
-                  observed.kind !== 'observed' ||
                   current.kind === 'unresolved' ||
-                  observed.terminalHandle !== current.terminalHandle ||
-                  observed.processIncarnation !== current.processIncarnation ||
-                  observed.dispatchId !== (current.kind === 'worker' ? current.dispatchId : null) ||
-                  !(this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []).some(
-                    (row) =>
-                      row.state === 'working' &&
-                      !row.restoredUnconfirmed &&
-                      row.agentType === 'codex' &&
-                      nowMs - (row.evidenceObservedAt ?? row.receivedAt) >
-                        AGENT_WORKING_TITLE_REFRESH_AFTER_MS
-                  )
+                  (observed.kind === 'observed'
+                    ? observed.terminalHandle !== current.terminalHandle ||
+                      observed.processIncarnation !== current.processIncarnation ||
+                      observed.dispatchId !==
+                        (current.kind === 'worker' ? current.dispatchId : null)
+                    : !confirmsRestored) ||
+                  !row ||
+                  (row.restoredUnconfirmed && !confirmsRestored) ||
+                  (!confirmsRestored &&
+                    nowMs - (row.evidenceObservedAt ?? row.receivedAt) <=
+                      AGENT_WORKING_TITLE_REFRESH_AFTER_MS)
                 ) {
                   return
                 }
                 this.emitTerminalAgentStatusEvents(
                   ptyId,
                   { payloads: [{ state: 'working', prompt: '', agentType: 'codex' }] },
-                  { evidenceOnly: true, observedTerminalHandle: observed.terminalHandle }
+                  {
+                    evidenceOnly: true,
+                    observedTerminalHandle: current.terminalHandle,
+                    ...(confirmsRestored
+                      ? {
+                          confirmRestoredWorkingTitle: true,
+                          restoredLaunchToken: this.ptysById.get(ptyId)?.launchToken ?? undefined
+                        }
+                      : {})
+                  }
                 )
               })
             }

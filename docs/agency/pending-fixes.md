@@ -2,6 +2,13 @@
 
 Read this file during each weekly update. Include pending fixes in the release notes only after the source, Claude review, package, installed functionality and visual checks pass. Then record the published release next to each included item.
 
+## October 10, 2026 local additions
+
+- **In-progress filter:** Show only in-progress chats in the grouping and folder menu hides Done while retaining idle In Progress chats. Folder collapse choices, counts, nested tabs and pane brackets remain intact.
+- **Working status after restart:** Fresh native Codex working output restores the working indicator for its connected local pane. Without a recovered launch token, it reports current activity without copying the old hook's task or session identity. Saved chat history and activity timestamps remain intact. Cached titles and closed, stopped, remote or worker sessions cannot confirm a restored row through this path. The separate orange dashed stale-evidence recovery remains covered.
+
+Brooks requests local installation after review and checks, with publication held until Saturday October 10 at 08:00 America/New_York. Candidate 1.4.1009 is under local verification; do not publish it through an earlier GitHub email repair.
+
 ## October 3, 2026 update
 
 1. **Resumed chat status:** For tabs closed after this update, resuming their saved chat in a replacement tab returns it to In Progress and its open pane group. Resume metadata does not change its activity time. A real prompt clears the previous Done status, including Claude quick turns that finish before working-state history is retained. An explicit Mark done choice survives closing and resuming until a new prompt. Older completion records also return to In Progress on their next prompt; they do not record whether Done came from a tab close or a manual choice.

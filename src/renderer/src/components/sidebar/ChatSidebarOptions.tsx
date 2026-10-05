@@ -24,6 +24,9 @@ import { hiddenChatFolderLabels } from './chat-creation-folders'
 
 export function ChatSidebarOptions() {
   const groupBy = useAppStore((state) => state.settings?.chatSidebar?.groupBy ?? 'status')
+  const showOnlyInProgress = useAppStore(
+    (state) => state.settings?.chatSidebar?.showOnlyInProgress ?? false
+  )
   const savedHiddenFolders = useAppStore((state) => state.settings?.chatSidebar?.hiddenFolders)
   const state = useAppStore(
     useShallow((s) => ({
@@ -79,6 +82,16 @@ export function ChatSidebarOptions() {
           <DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="folder">Folder</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuCheckboxItem
+          checked={showOnlyInProgress}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(checked) =>
+            void updateChatSidebar({ showOnlyInProgress: checked === true })
+          }
+        >
+          Show only in-progress chats
+        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>Folders</DropdownMenuSubTrigger>

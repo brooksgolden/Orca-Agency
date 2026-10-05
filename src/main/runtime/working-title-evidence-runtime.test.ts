@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { OrcaRuntimeService } from './orca-runtime-test-mocks.spec'
 import { store, TEST_WORKTREE_ID } from './orca-runtime-test-fixtures.spec'
 import { makeAgentStatusStoreWiring } from './agent-status-store-wiring.test-fixture'
@@ -19,6 +23,10 @@ class EvidenceRuntime extends OrcaRuntimeService {
   readPromptLifecycle() {
     return this.agentPromptLifecycleByPtyId.get('pty-1')
   }
+
+  setRetainedLaunchToken(token: string | null) {
+    this.ptysById.get('pty-1')!.launchToken = token
+  }
 }
 
 const servers: AgentHookServer[] = []
@@ -29,7 +37,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-async function setup() {
+async function setup(launchToken?: string) {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(1_000)
   const wiring = makeAgentStatusStoreWiring()
@@ -71,6 +79,9 @@ async function setup() {
   await new Promise<void>((resolve) => setImmediate(resolve))
   const terminalHandle = runtime.getAgentStatusTerminalHandleForPaneKey(paneKey)
   expect(terminalHandle).toBeTruthy()
+  if (launchToken) {
+    runtime.setRetainedLaunchToken(launchToken)
+  }
   wiring.statusStore.setListener((event) =>
     recordObservedAgentStatusPaneIdentity(identities, event.paneKey, runtime)
   )
@@ -80,15 +91,20 @@ async function setup() {
     buildBody(
       {
         hook_event_name: 'UserPromptSubmit',
-        prompt: 'Continue after compaction'
+        prompt: 'Continue after compaction',
+        session_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
       },
-      { paneKey, worktreeId: TEST_WORKTREE_ID }
+      { paneKey, worktreeId: TEST_WORKTREE_ID, launchToken }
     ),
     '/hook/codex'
   )
   expect(response.status).toBe(204)
   const previous = wiring.statusStore.getStatusSnapshot()[0]
   expect(previous).toMatchObject({ state: 'working', observation: { origin: 'hook' } })
+  expect(previous.providerSession).toEqual({
+    key: 'session_id',
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  })
   expect(previous.terminalHandle).toBeUndefined()
   expect(identities.read(paneKey)).toMatchObject({ kind: 'observed', terminalHandle })
   const listener = vi.fn()
@@ -98,7 +114,122 @@ async function setup() {
   return { runtime, wiring, previous, listener, identities }
 }
 
+function restoreWorkingRow(context: Awaited<ReturnType<typeof setup>>) {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Exercise the server's real persistence boundary without starting another HTTP listener.
+  const internal = context.wiring.statusStore as unknown as {
+    serializeStatusFile(): string
+    hydrateLastStatusFromDisk(): void
+    lastStatusFilePath: string | null
+  }
+  const timing = context.wiring.statusStore.getStatusSnapshot()[0]
+  const directory = mkdtempSync(join(tmpdir(), 'orca-working-title-'))
+  const originalPath = internal.lastStatusFilePath
+  try {
+    internal.lastStatusFilePath = join(directory, 'last-status.json')
+    writeFileSync(internal.lastStatusFilePath, internal.serializeStatusFile())
+    internal.hydrateLastStatusFromDisk()
+  } finally {
+    internal.lastStatusFilePath = originalPath
+    rmSync(directory, { recursive: true, force: true })
+  }
+  const restored = context.wiring.statusStore.getStatusSnapshot()[0]
+  expect(restored.restoredUnconfirmed).toBe(true)
+  expect(restored.terminalHandle).toBeUndefined()
+  vi.spyOn(context.identities, 'read').mockReturnValue({ kind: 'unobserved' })
+  return timing
+}
+
 describe('main runtime working-title evidence', () => {
+  it.each(['retained-launch', null, 'replacement-launch'])(
+    'checks the saved launch commitment against %s after real persistence',
+    async (launchToken) => {
+      const context = await setup('retained-launch')
+      restoreWorkingRow(context)
+      const previous = context.wiring.statusStore.getStatusSnapshot()[0]
+      context.runtime.setRetainedLaunchToken(launchToken)
+      context.runtime.onPtyData('pty-1', fixture.frames[1], Date.now())
+      if (launchToken === 'retained-launch' || launchToken === null) {
+        expect(context.wiring.statusStore.getStatusSnapshot()[0]).toMatchObject({
+          state: 'working',
+          terminalHandle: context.runtime.getAgentStatusTerminalHandleForPaneKey(paneKey)
+        })
+        expect(
+          context.wiring.statusStore.getStatusSnapshot()[0].restoredUnconfirmed
+        ).toBeUndefined()
+        expect(context.listener).toHaveBeenCalledTimes(1)
+        if (launchToken === null) {
+          expect(context.wiring.statusStore.getStatusSnapshot()[0]).toMatchObject({
+            prompt: '',
+            stateStartedAt: previous.stateStartedAt,
+            turnStartedAt: previous.turnStartedAt,
+            observation: { origin: 'osc' }
+          })
+          expect(context.wiring.statusStore.getStatusSnapshot()[0].providerSession).toEqual(
+            previous.providerSession
+          )
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Read the real server's protected serializer to verify resume identity and the existing commitment survive.
+          const persistence = context.wiring.statusStore as unknown as {
+            serializeStatusFile(): string
+          }
+          const saved = JSON.parse(persistence.serializeStatusFile()).entries[paneKey]
+          expect(saved.providerSession).toEqual(previous.providerSession)
+          expect(saved.source).toBeUndefined()
+          expect(saved.hookEventName).toBeUndefined()
+          expect(saved.launchToken).toBeUndefined()
+          expect(saved.launchTokenHash).toBe(
+            createHash('sha256').update('retained-launch').digest('hex')
+          )
+        }
+      } else {
+        expect(context.wiring.statusStore.getStatusSnapshot()[0]).toEqual(previous)
+        expect(context.listener).not.toHaveBeenCalled()
+      }
+    }
+  )
+
+  it('confirms a cold restored working row from fresh native output without a new prompt', async () => {
+    const context = await setup()
+    const previous = restoreWorkingRow(context)
+    context.runtime.onPtyData('pty-1', fixture.frames[1], Date.now())
+    const confirmed = context.wiring.statusStore.getStatusSnapshot()[0]
+    expect(confirmed.restoredUnconfirmed).toBeUndefined()
+    expect(confirmed).toMatchObject({
+      state: 'working',
+      stateStartedAt: previous.stateStartedAt,
+      turnStartedAt: previous.turnStartedAt,
+      prompt: '',
+      evidenceObservedAt: Date.now(),
+      terminalHandle: context.runtime.getAgentStatusTerminalHandleForPaneKey(paneKey)
+    })
+    expect(context.listener).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['synthetic', 'snapshot', 'idle', 'permission', 'closed'])(
+    'does not confirm a restored row from %s evidence',
+    async (kind) => {
+      const context = await setup()
+      restoreWorkingRow(context)
+      const previous = context.wiring.statusStore.getStatusSnapshot()[0]
+      if (kind === 'synthetic') {
+        context.runtime.ingestSyntheticTitleFrame('pty-1', fixture.frames[1])
+      } else if (kind === 'snapshot') {
+        context.runtime.getTerminalSideEffectSnapshot('pty-1')
+      } else {
+        if (kind === 'closed') {
+          context.runtime.markGraphUnavailable(1)
+        }
+        context.runtime.onPtyData(
+          'pty-1',
+          kind === 'closed'
+            ? fixture.frames[1]
+            : `${fixture.frames[1]}\x1b]0;Codex ${kind === 'idle' ? 'idle' : 'waiting for permission'}\x07`,
+          Date.now()
+        )
+      }
+      expect(context.wiring.statusStore.getStatusSnapshot()[0]).toEqual(previous)
+      expect(context.listener).not.toHaveBeenCalled()
+    }
+  )
   it.each(['idle', 'waiting for permission'])(
     'preserves the final %s lifecycle when working and settled titles share a chunk',
     async (title) => {

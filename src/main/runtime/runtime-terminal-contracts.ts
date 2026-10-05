@@ -138,6 +138,8 @@ export type RuntimeTerminalAgentStatusEvent = {
   /** A live provider working title only confirms an existing matching status. */
   evidenceOnly?: true
   observedTerminalHandle?: string
+  confirmRestoredWorkingTitle?: true
+  restoredLaunchToken?: string
 }
 
 export type HookLiveAgentRow = Pick<

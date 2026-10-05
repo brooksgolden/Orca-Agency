@@ -147,6 +147,29 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await page.reload()
     await expect(renamed).toBeVisible()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
+    await page
+      .getByRole('button', { name: 'Chat grouping and folder filters', exact: true })
+      .click()
+    const progressFilter = page.getByRole('menuitemcheckbox', {
+      name: 'Show only in-progress chats',
+      exact: true
+    })
+    await progressFilter.click()
+    await expect(progressFilter).toHaveAttribute('aria-checked', 'true')
+    await page.keyboard.press('Escape')
+    await expect(renamed).toHaveCount(0)
+    await expect(rows).toHaveCount(1)
+    await page.reload()
+    await expect(renamed).toHaveCount(0)
+    await expect(rows).toHaveCount(1)
+    await page
+      .getByRole('button', { name: 'Chat grouping and folder filters', exact: true })
+      .click()
+    await expect(progressFilter).toHaveAttribute('aria-checked', 'true')
+    await progressFilter.click()
+    await page.keyboard.press('Escape')
+    await expect(renamed).toBeVisible()
+    await expect(rows).toHaveCount(2)
     await renamed.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Change folder', exact: true }).hover()
     await page.getByRole('menuitem', { name: 'local-tools', exact: true }).click()

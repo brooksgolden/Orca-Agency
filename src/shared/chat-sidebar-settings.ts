@@ -53,6 +53,7 @@ export type ChatSidebarSessionEntry = {
 export type ChatSidebarSettings = {
   view?: 'chats' | 'workspaces'
   groupBy?: 'recent' | 'status' | 'folder'
+  showOnlyInProgress?: boolean
   /** Unchecked folder labels; new folders remain visible by default. */
   hiddenFolders?: string[]
   /** Automation-owned tab/pane and provider identities; retained after run cleanup. */
