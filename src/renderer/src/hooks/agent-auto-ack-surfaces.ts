@@ -75,8 +75,13 @@ export function acknowledgeViewedAutoAckTarget(
     subjectKey
   )
   const groupUnreadReason = readAgentAttentionUnreadReason(state.unreadTerminalTabs[groupId])
-  // A terminal bell without an agent completion waits for actual interaction.
-  if (groupUnreadReason === 'terminal-bell' && toAck.length === 0 && !viewedUnreadSubjectKey) {
+  // A focused terminal bell waits for interaction; selected grid cards acknowledge previews.
+  if (
+    groupUnreadReason === 'terminal-bell' &&
+    target.viewOrigin !== 'session-grid' &&
+    toAck.length === 0 &&
+    !viewedUnreadSubjectKey
+  ) {
     return
   }
   const hasGroupUnread = groupUnreadReason !== null

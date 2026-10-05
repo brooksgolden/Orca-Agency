@@ -9,6 +9,7 @@ import {
 } from '../store/slices/store-test-helpers'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { structuredAgentSessionPaneKey } from '../../../shared/structured-agent-session-projection'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 
 const WORKSPACE = 'wt-1'
 const GROUP = 'group-1'
@@ -101,6 +102,48 @@ describe('auto-ack in a workspace holding both a terminal and a structured chat'
     expect(clearWorktreeUnread).not.toHaveBeenCalled()
     store.getState().clearTerminalTabUnread(TERMINAL_TAB)
     expect(store.getState().unreadTerminalTabs[TERMINAL_TAB]).toBeUndefined()
+  })
+
+  it('acknowledges a selected grid card without clearing a floating terminal bell', () => {
+    const { store } = seedMixedWorkspace({ visible: 'terminal', unreadSubjectKeys: [] })
+    const floatingTab = 'floating-tab'
+    store.setState({
+      activeView: 'sessions',
+      activeSessionGridTabId: TERMINAL_TAB,
+      activeSessionGridWorktreeId: WORKSPACE,
+      tabsByWorktree: {
+        ...store.getState().tabsByWorktree,
+        [FLOATING_TERMINAL_WORKTREE_ID]: [
+          makeTab({ id: floatingTab, worktreeId: FLOATING_TERMINAL_WORKTREE_ID })
+        ]
+      },
+      activeTabIdByWorktree: {
+        ...store.getState().activeTabIdByWorktree,
+        [FLOATING_TERMINAL_WORKTREE_ID]: floatingTab
+      }
+    })
+    store.getState().markTerminalTabUnread(TERMINAL_TAB, 'terminal-bell')
+    store.getState().markTerminalTabUnread(floatingTab, 'terminal-bell')
+    for (const target of resolveAutoAckTabTargets(store.getState(), {
+      floatingPanelVisible: true
+    })) {
+      acknowledgeViewedAutoAckTarget(store.getState(), target)
+    }
+    expect(store.getState().unreadTerminalTabs[TERMINAL_TAB]).toBeUndefined()
+    expect(store.getState().unreadTerminalTabs[floatingTab]).toBe('terminal-bell')
+    store.setState({
+      activeSessionGridTabId: floatingTab,
+      activeSessionGridWorktreeId: FLOATING_TERMINAL_WORKTREE_ID
+    })
+    runAutoAckScan(store)
+    expect(store.getState().unreadTerminalTabs[floatingTab]).toBeUndefined()
+    store.getState().markTerminalTabUnread(floatingTab, 'terminal-bell')
+    for (const target of resolveAutoAckTabTargets(store.getState(), {
+      floatingPanelVisible: true
+    })) {
+      acknowledgeViewedAutoAckTarget(store.getState(), target)
+    }
+    expect(store.getState().unreadTerminalTabs[floatingTab]).toBe('terminal-bell')
   })
 
   it('sends the visible surface to the adapter that owns its address', () => {
