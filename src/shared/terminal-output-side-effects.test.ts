@@ -12,6 +12,17 @@ const ESC = '\x1b'
 const BEL = '\x07'
 const ST = `${ESC}\\`
 
+it('distinguishes a live working title from a synthetic hook spinner', () => {
+  const observations: unknown[] = []
+  const tracker = createTerminalTitleTracker({
+    onTitle: (_title, _raw, meta) => observations.push(meta)
+  })
+  tracker.handleChunk(`${ESC}]0;⠋ Codex${BEL}`)
+  tracker.applySyntheticTitleFrame(`${ESC}]0;⠹ Codex${BEL}`)
+  expect(observations).toEqual([undefined, { syntheticTitle: true }])
+  tracker.dispose()
+})
+
 type RecordedEvent =
   | ['title', string]
   | ['bell']

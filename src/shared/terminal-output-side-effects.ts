@@ -43,6 +43,7 @@ export function stripBrailleSpinnerGlyphs(title: string): string {
 /** Provenance for title/idle facts; `staleWorkingTitleClear` marks facts synthesized by the 3s stale timer — not genuine task completions. */
 export type TerminalTitleFactMeta = {
   staleWorkingTitleClear?: boolean
+  syntheticTitle?: boolean
 }
 
 type TerminalTitleTrackerChunkOptions = {
@@ -171,7 +172,7 @@ export function createTerminalTitleTracker(
     }
   }
 
-  function applyObservedTitle(rawTitle: string): void {
+  function applyObservedTitle(rawTitle: string, meta?: TerminalTitleFactMeta): void {
     // Why: cursor-agent re-emits its bare native title mid-turn; passing it through would stomp Orca's synthesized spinner state.
     if (isCursorNativeAgentTitle(rawTitle)) {
       if (shouldSuppressCursorNativeTitle(lastEmittedTitle)) {
@@ -180,11 +181,11 @@ export function createTerminalTitleTracker(
       // Why: a hookless Cursor pane needs the literal once so it has an identity (#10258),
       // but never as activity — its null status would read as an exit in the status tracker.
       lastEmittedTitle = normalizeTerminalTitle(rawTitle)
-      onTitle?.(lastEmittedTitle, rawTitle)
+      onTitle?.(lastEmittedTitle, rawTitle, meta)
       return
     }
     lastEmittedTitle = normalizeTerminalTitle(rawTitle)
-    onTitle?.(lastEmittedTitle, rawTitle)
+    onTitle?.(lastEmittedTitle, rawTitle, meta)
     agentTracker?.handleTitle(rawTitle)
   }
 
@@ -259,7 +260,7 @@ export function createTerminalTitleTracker(
     if (titles.length > 0) {
       clearStaleTitleTimer()
       for (const title of titles) {
-        applyObservedTitle(title)
+        applyObservedTitle(title, { syntheticTitle: true })
       }
     }
     // The permission BEL rides outside the OSC title; a FRESH detector avoids touching the chunk detector's cross-chunk escape state.

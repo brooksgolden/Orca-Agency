@@ -15,6 +15,11 @@ test('idle and Done saved chats drag into panes without starting on cancellation
   const seed = await orcaPage.evaluate(async () => {
     const s = window.__store!.getState()
     const worktree = Object.values(s.worktreesByRepo).flat()[0]
+    // Saved drags create a separate view of the chat's real folder.
+    const folder = await s.createProjectGroup('Saved drag folder', { parentPath: worktree.path })
+    if (!folder) {
+      throw new Error('Could not create the saved chat folder')
+    }
     const main = s.createTab(worktree.id)
     s.setAiVaultTabTitle(main.id, {
       agent: 'codex',
@@ -125,6 +130,7 @@ test('idle and Done saved chats drag into panes without starting on cancellation
     await expect
       .poll(() => orcaPage.evaluate(() => document.body.dataset.savedDragCommand))
       .toContain(index === 0 ? 'idle-fork' : 'done-fork')
+    await expect(orcaPage.locator('[data-chat-split-bracket]')).toHaveCount(index + 2)
     await expect(row).not.toHaveAttribute('data-chat-sub-tab', 'true')
     await transfer.dispose()
   }

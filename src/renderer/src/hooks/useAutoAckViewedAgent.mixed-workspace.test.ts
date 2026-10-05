@@ -90,6 +90,19 @@ function runAutoAckScan(store: TestStore): void {
 }
 
 describe('auto-ack in a workspace holding both a terminal and a structured chat', () => {
+  it('keeps a focused terminal bell until actual interaction', () => {
+    const { store, clearWorktreeUnread } = seedMixedWorkspace({
+      visible: 'terminal',
+      unreadSubjectKeys: []
+    })
+    store.getState().markTerminalTabUnread(TERMINAL_TAB, 'terminal-bell')
+    runAutoAckScan(store)
+    expect(store.getState().unreadTerminalTabs[TERMINAL_TAB]).toBe('terminal-bell')
+    expect(clearWorktreeUnread).not.toHaveBeenCalled()
+    store.getState().clearTerminalTabUnread(TERMINAL_TAB)
+    expect(store.getState().unreadTerminalTabs[TERMINAL_TAB]).toBeUndefined()
+  })
+
   it('sends the visible surface to the adapter that owns its address', () => {
     expect(
       resolveAutoAckTabTargets(

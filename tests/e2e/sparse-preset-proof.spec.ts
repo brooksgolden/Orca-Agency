@@ -5,6 +5,8 @@ import { test, expect } from './helpers/orca-app'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 
 test('sparse preset editor visual proof', async ({ orcaPage, electronApp }, testInfo) => {
+  // This single scenario captures sixteen distinct editor states through Electron.
+  test.setTimeout(240_000)
   await electronApp.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.setBackgroundThrottling(false)

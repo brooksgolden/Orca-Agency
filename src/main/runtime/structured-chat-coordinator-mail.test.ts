@@ -491,7 +491,16 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     await new Promise((resolve) => setTimeout(resolve, 1_500))
     expect(providerFaults.starts - before).toBe(1)
     expect(await pointerSends()).toHaveLength(1)
-    await edgesAnswered()
+    // An idle edge may be coalesced while the previous delivery is still settling.
+    const reads = vi.spyOn(host, 'journalSnapshot')
+    await vi.waitFor(() => {
+      runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: null })
+      runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
+      expect(reads).toHaveBeenCalled()
+    }, WAIT)
+    await Promise.all(reads.mock.results.map((read) => read.value))
+    await new Promise((resolve) => setImmediate(resolve))
+    reads.mockRestore()
     expect(providerFaults.starts - before).toBe(1)
     expect(providerFaults.turnStarts).toBe(0)
     expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
