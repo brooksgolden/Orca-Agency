@@ -163,6 +163,7 @@ export function buildChatSidebarRows(
   for (const session of sessionMap.values()) {
     if (
       session.subagent ||
+      session.isHeadless ||
       (!rememberedSessions.has(session) && !isAiVaultSessionResumableContent(session))
     ) {
       continue

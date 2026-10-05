@@ -24,6 +24,8 @@ export type ChatSidebarSessionSnapshot = {
   createdAt: string | null
   updatedAt: string | null
   modifiedAt: string
+  /** Present after an exact Claude transcript was classified. */
+  isHeadless?: boolean
   /** Latest real Claude prompt timestamp retained across no-history restarts. */
   lastHumanTurnAt?: string
   /** Host-built resume command; only remote hosts need it. */

@@ -53,6 +53,7 @@ const SNAPSHOT_FIELDS = [
   'createdAt',
   'updatedAt',
   'modifiedAt',
+  'isHeadless',
   'lastHumanTurnAt',
   'resumeCommand'
 ] as const
@@ -72,6 +73,9 @@ export function chatSessionSnapshot(session: AiVaultSession): ChatSidebarSession
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     modifiedAt: session.modifiedAt,
+    ...(session.agent === 'claude' && session.isHeadless !== undefined
+      ? { isHeadless: session.isHeadless }
+      : {}),
     ...(session.lastHumanTurnAt ? { lastHumanTurnAt: session.lastHumanTurnAt } : {}),
     ...(session.executionHostId !== LOCAL_EXECUTION_HOST_ID && session.resumeCommand
       ? { resumeCommand: session.resumeCommand }

@@ -6,8 +6,9 @@ Read this file during each weekly update. Include pending fixes in the release n
 
 - **In-progress filter:** Show only in-progress chats in the grouping and folder menu hides Done while retaining idle In Progress chats. Folder collapse choices, counts, nested tabs and pane brackets remain intact.
 - **Working status after restart:** Reconnect the output of an inventory-confirmed retained local Codex terminal even before its tab mounts. Fresh native working output restores the working indicator. Preserve saved resume identity and activity timestamps; without a recovered launch token, discard old hook authority and task details. Cached titles and closed, stopped, remote or worker sessions cannot confirm a restored row through this path. The separate orange dashed stale-evidence recovery remains covered.
+- **Headless Claude history:** Keep `claude -p` transcripts in session history, but exclude transcripts used only through `sdk-cli` from resumable Chats. A later interactive turn restores the chat. Classify old sidebar snapshots through the scan or an exact transcript lookup when they fall outside its bounded window.
 
-Brooks requests local installation after review and checks, with publication held until Saturday October 10 at 08:00 America/New_York. The filter in 1.4.1009 passed installed checks; candidate 1.4.1010 adds background output reconnection and requires its own installed status verification. Do not publish either through an earlier GitHub email repair.
+Brooks requests local installation after review and checks, with publication held until Saturday October 10 at 08:00 America/New_York. The filter and background output reconnection in 1.4.1010 passed installed checks. Candidate 1.4.1011 adds headless Claude history classification and requires its own installed verification. Do not publish these additions through an earlier GitHub email repair.
 
 ## October 3, 2026 update
 
@@ -27,6 +28,7 @@ Installed check: resume a previously closed chat, send a prompt, and place it wi
 - **Pane dragging:** Terminal tabs can move from bottom panes and onto whole-window edges, including switching top/bottom panes to side-by-side.
 - **Separate chat:** Move a prompted terminal out of nesting without stopping its process or marking it Done. Pane X removes the view and retains conversations. Tab X keeps the existing Done behavior.
 - **History reopening:** Focus an existing matching session. Closed history reopens separately and does not restore its previous nested slot. Confirmed failed launches clean up only their empty new workspace; uncertain remote launches retain their workspace.
+- **Running chat click:** A saved conversation already bound to a live plain Claude tab focuses that tab instead of creating another PTY. The live and saved views appear as one chat row. Regression: `src/renderer/src/components/sidebar/chat-sidebar-open-existing-live.test.ts`.
 - **Focused runs:** The focused running window group sorts first, preserving its entire bracket and conversation activity times. Idle viewing does not stamp Now.
 - **Move persistence:** Preserve PTY and pane identities, execution folder, completion status and saved resume ownership across moves and restarts. Protect moved processes from deletion of the original workspace.
 - **Moved terminal replay:** Restore scrollback for the exact moved tab even while its original workspace remains open. Preserve the same live process and accept new output after moving.

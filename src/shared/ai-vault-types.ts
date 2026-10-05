@@ -111,6 +111,8 @@ export type AiVaultSession = {
   messageCount: number
   totalTokens: number
   previewMessages: AiVaultSessionPreviewMessage[]
+  /** Claude `-p` transcript; retained in history but excluded from resumable chats. */
+  isHeadless?: boolean
   /** Claude `/resume` launcher transcript's explicit background session ID prefix. */
   resumedSessionIdPrefix?: string
   /** Latest real Claude user turn timestamp, excluding meta and known harness turns. */
