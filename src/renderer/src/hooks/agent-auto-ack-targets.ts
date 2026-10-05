@@ -9,6 +9,7 @@ export type AutoAckTabTarget = {
   worktreeId: string | null
   /** Which adapter owns `tabId`: a terminal tab id, or a structured chat's unified tab id. */
   surfaceKind: 'terminal' | 'structured'
+  viewOrigin?: 'session-grid'
 }
 
 type AutoAckTargetState = {
@@ -55,9 +56,11 @@ function sessionGridSelectionOnTheBoard(
   // itself drops (buildSessionGridListing), so honouring it here would suppress every ack.
   const filter = state.sessionsGridFilter
   if (filter !== 'all' && (state.tabsByWorktree[filter]?.length ?? 0) > 0) {
-    return worktreeId === filter ? { tabId, worktreeId, surfaceKind: 'terminal' } : null
+    return worktreeId === filter
+      ? { tabId, worktreeId, surfaceKind: 'terminal', viewOrigin: 'session-grid' }
+      : null
   }
-  return { tabId, worktreeId, surfaceKind: 'terminal' }
+  return { tabId, worktreeId, surfaceKind: 'terminal', viewOrigin: 'session-grid' }
 }
 
 /**

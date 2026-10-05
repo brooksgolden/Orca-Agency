@@ -99,7 +99,7 @@ test('terminal tabs rearrange bottom and outer right panes without losing conver
   // A recorded PTY ID alone does not prove its shell has finished starting.
   await expect.poll(content, { timeout: 20_000 }).toMatch(/\S/)
   await orcaPage.evaluate(
-    (ptyId) => window.api.pty.write(ptyId, 'echo MOVE_BEFORE_742\r'),
+    (ptyId) => window.api.pty.write(ptyId, 'echo MOVE_BEFORE_742\r', 'driving'),
     childPtys[0]
   )
   await expect.poll(content, { timeout: 20_000 }).toContain('MOVE_BEFORE_742')
@@ -152,7 +152,7 @@ test('terminal tabs rearrange bottom and outer right panes without losing conver
     .toEqual(childPtys)
   await expect.poll(content, { timeout: 20_000 }).toContain('MOVE_BEFORE_742')
   await orcaPage.evaluate(
-    (ptyId) => window.api.pty.write(ptyId, 'echo MOVE_AFTER_742\r'),
+    (ptyId) => window.api.pty.write(ptyId, 'echo MOVE_AFTER_742\r', 'driving'),
     childPtys[0]
   )
   await expect.poll(content, { timeout: 20_000 }).toContain('MOVE_AFTER_742')
