@@ -1,11 +1,6 @@
 import type * as ReactModule from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  createTestStore,
-  makeTab,
-  makeWorktree,
-  TEST_REPO
-} from '../store/slices/store-test-helpers'
+import { makeTab, makeWorktree, TEST_REPO } from '../store/slices/store-test-helpers'
 import type { AppState } from '../store/types'
 import type { MigrationUnsupportedPtyEntry } from '../../../shared/agent-status-types'
 import type { TerminalPaneLayoutNode } from '../../../shared/terminal-tab-types'
@@ -393,6 +388,7 @@ describe('useIpcEvents agent status snapshot integration', () => {
           resolveSnapshot = resolve
         })
     )
+    const { createTestStore } = await import('../store/slices/store-test-helpers')
     const store = createTestStore()
     store.setState({
       workspaceSessionReady: true,
@@ -502,6 +498,7 @@ describe('useIpcEvents agent status snapshot integration', () => {
           resolveSnapshot = resolve
         })
     )
+    const { createTestStore } = await import('../store/slices/store-test-helpers')
     const store = createTestStore()
     store.setState({
       workspaceSessionReady: true,
@@ -604,6 +601,7 @@ describe('useIpcEvents agent status snapshot integration', () => {
           resolveUnsupportedSnapshot = resolve
         })
     )
+    const { createTestStore } = await import('../store/slices/store-test-helpers')
     const store = createTestStore()
     store.setState({
       workspaceSessionReady: true,

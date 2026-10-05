@@ -14,8 +14,10 @@ function createProvider(sessionIds: string[]): IPtyProvider {
 }
 
 function createRuntime(): OrcaRuntimeService {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Reconciliation calls only these two runtime methods.
   return {
-    stopTerminalsForWorktree: vi.fn(async () => ({ stopped: 0 }))
+    stopTerminalsForWorktree: vi.fn(async () => ({ stopped: 0 })),
+    resolveLocalTerminalMoveWorkspace: vi.fn(() => null)
   } as unknown as OrcaRuntimeService
 }
 

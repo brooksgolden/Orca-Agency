@@ -133,7 +133,18 @@ test('keeps mail pending across a restart and delivers it when the agent reports
     await expect
       .poll(
         async () => {
-          const listed = await secondClient.call<RuntimeTerminalListResult>('terminal.list')
+          let listed: RuntimeTerminalListResult
+          try {
+            listed = await secondClient.call<RuntimeTerminalListResult>('terminal.list')
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message === 'terminal_surface_ownership_unavailable'
+            ) {
+              return null
+            }
+            throw error
+          }
           const restored = listed.result.terminals.find(
             (entry) => entry.ptyId === originalPtyId && entry.writable
           )

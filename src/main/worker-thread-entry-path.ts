@@ -2,9 +2,8 @@ import { join } from 'node:path'
 import { getAppEnvironment, hasAppEnvironment } from '../shared/app-environment'
 
 /**
- * Where a built worker-thread entry lives at runtime. Packaged builds leave
- * these entries inside app.asar — only forked child processes are asarUnpack'd —
- * so they resolve off resourcesPath rather than the bundler's `__dirname`.
+ * Where a built worker-thread entry lives at runtime. Packaged entries resolve
+ * through app.asar off resourcesPath; Electron redirects to the unpacked copy.
  *
  * This module must not contain the literal text require('electron'): it is
  * reachable from worker clients that plain-Node fork entries also import, and

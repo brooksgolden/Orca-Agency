@@ -74,7 +74,12 @@ vi.mock('@dnd-kit/sortable', () => ({
   })
 }))
 
+vi.mock('../sidebar/chat-sidebar-detach', () => ({ detachTerminalChat: vi.fn() }))
+
 vi.mock('lucide-react', () => ({
+  CircleX: function CircleX(props: Record<string, unknown>) {
+    return { type: 'CircleX', props }
+  },
   ArrowDown: function ArrowDown(props: Record<string, unknown>) {
     return { type: 'ArrowDown', props }
   },

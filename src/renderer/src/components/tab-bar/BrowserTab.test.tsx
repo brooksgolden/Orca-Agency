@@ -1,5 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserTab as BrowserTabState } from '../../../../shared/browser-workspace-types'
+
+vi.mock('../sidebar/chat-sidebar-detach', () => ({ detachTerminalChat: vi.fn() }))
+vi.mock('./SortableTab', () => ({ CLOSE_ALL_CONTEXT_MENUS_EVENT: 'close-all-context-menus' }))
+vi.mock('./TabWorkspaceLayoutMenuSection', () => ({
+  TabWorkspaceLayoutMenuSection: () => null
+}))
 
 const reactHookRuntime = vi.hoisted(() => ({
   states: [] as unknown[],
@@ -46,6 +52,9 @@ vi.mock('@dnd-kit/sortable', () => ({
 }))
 
 vi.mock('lucide-react', () => ({
+  CircleX: function CircleX(props: Record<string, unknown>) {
+    return { type: 'CircleX', props }
+  },
   ArrowDown: function ArrowDown(props: Record<string, unknown>) {
     return { type: 'ArrowDown', props }
   },
@@ -244,6 +253,9 @@ async function renderExpandedBrowserTab(tab: BrowserTabState): Promise<unknown> 
 }
 
 describe('BrowserTab favicon', { timeout: 30_000 }, () => {
+  beforeAll(async () => {
+    await import('./BrowserTab')
+  })
   beforeEach(() => {
     reactHookRuntime.states = []
     reactHookRuntime.index = 0

@@ -8,6 +8,8 @@ import { REQUEST_ACTIVE_TERMINAL_PANE_SPLIT_EVENT } from '@/constants/terminal'
 import { requestActiveTerminalPaneSplit } from './request-active-terminal-pane-split'
 import { SortableTabContextMenu } from './SortableTabContextMenu'
 
+vi.mock('../sidebar/chat-sidebar-detach', () => ({ detachTerminalChat: vi.fn() }))
+
 const storeMock = vi.hoisted(
   (): {
     dropUnifiedTab: ReturnType<typeof vi.fn>
@@ -58,6 +60,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }))
 
 vi.mock('lucide-react', () => ({
+  CircleX: () => null,
   ArrowDown: () => null,
   ArrowLeft: () => null,
   ArrowRight: () => null,

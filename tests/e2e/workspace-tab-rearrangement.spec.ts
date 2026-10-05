@@ -107,8 +107,12 @@ test('terminal tabs rearrange bottom and outer right panes without losing conver
     (child) => window.__paneManagers?.get(child),
     child
   )
-  await tab(child).click({ button: 'right' })
-  await orcaPage.getByRole('menuitem', { name: 'Move to separate chat', exact: true }).click()
+  const destination = await surface(ids.b).boundingBox()
+  await drag(
+    child,
+    destination!.x + destination!.width / 2,
+    destination!.y + destination!.height * 0.85
+  )
   await expect
     .poll(() =>
       orcaPage.evaluate(

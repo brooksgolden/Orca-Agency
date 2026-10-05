@@ -184,7 +184,8 @@ export async function killAllProcessesForWorktree(
               deps.requirePhysicalStop,
               deps.resolvedConnectionId
                 ? undefined
-                : (session) => deps.runtime?.resolveLocalTerminalMoveWorkspace(session) ?? null
+                : (session) => deps.runtime?.resolveLocalTerminalMoveWorkspace(session) ?? null,
+              deps.includeLocalRegistry !== false && !deps.resolvedConnectionId
             )
           ),
           0,
@@ -192,7 +193,7 @@ export async function killAllProcessesForWorktree(
           deps.requirePhysicalStop ? deadlineError : undefined
         )
   const registrySweep =
-    deps.includeLocalRegistry === false
+    deps.includeLocalRegistry === false || deps.resolvedConnectionId
       ? Promise.resolve(0)
       : settleBeforeDeadline(
           sweeps.track(() =>

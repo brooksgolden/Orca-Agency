@@ -4,7 +4,12 @@ import path from 'node:path'
 import { test, expect } from './helpers/orca-app'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 
-test('sparse preset editor visual proof', async ({ orcaPage }, testInfo) => {
+test('sparse preset editor visual proof', async ({ orcaPage, electronApp }, testInfo) => {
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.setBackgroundThrottling(false)
+    }
+  })
   await waitForSessionReady(orcaPage)
   await waitForActiveWorktree(orcaPage)
   await orcaPage.setViewportSize({ width: 1200, height: 800 })

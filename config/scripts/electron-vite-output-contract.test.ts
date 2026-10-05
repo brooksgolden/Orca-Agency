@@ -71,6 +71,7 @@ function failBootstrapWithBanner(options: {
 }
 
 const electronBuilderConfig = createRequire(import.meta.url)('../electron-builder.config.cjs')
+const { FileMatcher } = createRequire(import.meta.url)('app-builder-lib/out/fileMatcher')
 
 describe('Electron Vite output contract', () => {
   it("minifies main and renderer with rolldown's in-process minifier", () => {
@@ -121,13 +122,20 @@ describe('Electron Vite output contract', () => {
     ]) {
       expect(input).toHaveProperty(name)
     }
-    expect(electronBuilderConfig.asarUnpack).toContain('out/main/persistence/profile-state/**')
-    expect(electronBuilderConfig.asarUnpack).toContain(
-      'out/main/orca-profiles/profile-index-store.js'
+    const matcher = new FileMatcher(
+      '/app',
+      '/dest',
+      (value: string) => value,
+      electronBuilderConfig.asarUnpack
     )
-    expect(electronBuilderConfig.asarUnpack).toContain(
-      'out/main/startup/http1-compatibility-marker.js'
-    )
+    const isUnpacked = matcher.createFilter()
+    for (const file of [
+      'persistence/profile-state/profile-state-access.js',
+      'orca-profiles/profile-index-store.js',
+      'startup/http1-compatibility-marker.js'
+    ]) {
+      expect(isUnpacked(join('/app', 'out/main', file), { isDirectory: () => false })).toBe(true)
+    }
   })
 
   it('externalizes packaged dependencies but bundles self-contained main dependencies', () => {

@@ -31,4 +31,26 @@ Installed check: resume a previously closed chat, send a prompt, and place it wi
 - **Email-triggered repairs:** Refresh active review leases from real progress, reject stale completions safely, and repair launch failures immediately rather than deferring them to Saturday.
 - **Installer verification:** Bound debugging timeouts, tolerate the new desktop's startup delay, and verify the expected version and original profile before accepting a restart.
 
-Release gate: actual Claude Opus 5.5 extra high review, Codex regressions, packaged checks, original-profile installation, preserved terminal identities, and rendered sidebar verification. The failed 1.4.1005 package must not be installed or published. Publish 1.4.1006 after these gates pass; keep the scheduled weekly update at Saturday 8 am America/New_York.
+Release gate: actual Claude Opus 5.5 extra high review, Codex regressions, packaged checks and rendered sidebar verification. The failed 1.4.1005 package must not be installed or published. The October 4 instruction authorizes publication before local installation, but requires Brooks's approval before installing this update. Keep the scheduled weekly update at Saturday 8 am America/New_York.
+
+## Immediate CI hotfix, October 4, 2026
+
+Candidate 1.4.1008 includes the reviewed 1.4.1006 changes above, plus:
+
+- Restore the workflows compatible with stable v1.4.219 after its incomplete future-main workflow sync. Keep full unit, Node 24/26, Windows, Bun and SSH checks.
+- Index tab ownership once per immutable snapshot instead of repeatedly scanning all tabs during startup recovery.
+- Keep remote terminal cleanup away from local registry entries, including same-ID workspaces on different hosts.
+- Reject undefined SQLite parameters consistently across supported Node versions; valid null remains accepted.
+- Update test fixtures for current onboarding labels, pane moves, saved-chat restoration and asynchronous terminal attention.
+
+Claude Opus 5.5 extra high audited the CI fixes and rechecked the remote cleanup repair. Release requires the exact packaged smoke checks and relevant GitHub reruns. Local installation and installed visual checks are held for Brooks's approval. A failed run from an older source commit is evidence for repair, not evidence that the current installed package failed.
+
+## Quadrant dragging, October 4, 2026
+
+- Keep the dragged tab preview transparent to pointer detection so it cannot hide the destination pane.
+- Use pane proportions to select a local split. Corner areas of a full-height or full-width pane target quadrants; outer edge midpoints retain full-window splits.
+- Keep blue internal tab-group splits usable at the body quarters while preserving the central merge area and tab-strip reorder behavior.
+- Exercise actual pointer drags into all four workspace quadrants, including outer-side corner drops, and the blue bottom-right split. Check preview bounds, final pane geometry, retained conversations and sidebar brackets.
+- Unpack the complete compiled main-module set so the packaged Node CLI can load its profile, SQLite and agent-hook dependencies. Keep the existing packaged runtime guard enabled.
+
+Candidate 1.4.1007 failed its packaging guard and was not installed or published. Candidate 1.4.1008 passed 71 scoped unit checks, web typecheck, changed-code quality and all three actual pointer smoke scenarios. Every quadrant, outer-divider half-window drops, native blue bottom-right splits and nested-chat edge detachment passed. Terminal output and ownership survived. Claude reviewed the repairs with no code blockers. Hidden packaged launch and GitHub reruns remain release gates. Publish after verification; ask Brooks before local installation.

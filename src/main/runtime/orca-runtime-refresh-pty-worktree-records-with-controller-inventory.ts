@@ -168,12 +168,15 @@ export class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory ext
       const movedWorktreeId =
         sessionConnectionId === null ? this.resolveLocalTerminalMoveWorkspace(session) : null
       // Why: an unresolved explicit provider owner remains authoritative unless the session id proves it was frozen before a persisted rename migration.
+      const providerWorktreeId = providerWorktree?.id
+      const persistedResolvedId =
+        persistedWorktree === providerWorktree ? providerWorktreeId : persistedWorktree?.id
       const worktreeId =
         movedWorktreeId ??
         resolveControllerWorkspaceOwner(
           session.worktreeId,
-          providerWorktree?.id,
-          persistedWorktree?.id,
+          providerWorktreeId,
+          persistedResolvedId,
           inferredWorktreeId
         ) ??
         findResolvedWorktreeIdForPath(resolvedWorktrees, session.cwd, targetWorktreeId)

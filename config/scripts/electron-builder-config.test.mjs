@@ -15,6 +15,16 @@ const { copyFiles, FileMatcher } = require('app-builder-lib/out/fileMatcher')
 const FpmTarget = require('app-builder-lib/out/targets/FpmTarget').default
 const electronBuilderNativeRebuild = require('./electron-builder-native-rebuild.cjs')
 
+function isUnpacked(repoPath) {
+  const matcher = new FileMatcher(
+    '/app',
+    '/dest',
+    (value) => value,
+    electronBuilderConfig.asarUnpack
+  )
+  return matcher.createFilter()(join('/app', repoPath), { isDirectory: () => false })
+}
+
 describe('electron-builder config', () => {
   it('keeps the packaged app identity aligned with local-build validation', () => {
     expect(electronBuilderConfig.appId).toBe(
@@ -309,26 +319,20 @@ describe('electron-builder config', () => {
 
   it('unpacks the compiled CommonJS boundary with CLI runtime files', () => {
     expect(electronBuilderConfig.asarUnpack).toEqual(
-      expect.arrayContaining([
-        'out/package.json',
-        'out/cli/**',
-        'out/shared/**',
-        'out/main/claude-accounts/keychain.js'
-      ])
+      expect.arrayContaining(['out/package.json', 'out/cli/**', 'out/shared/**'])
     )
+    expect(isUnpacked('out/main/claude-accounts/keychain.js')).toBe(true)
   })
 
   // Why: without the unpacked entry the watcher client silently falls back to
   // in-process @parcel/watcher, reintroducing the #7547 main-process crash.
   it('unpacks the forked parcel-watcher process entry', () => {
-    expect(electronBuilderConfig.asarUnpack).toEqual(
-      expect.arrayContaining(['out/main/parcel-watcher-process-entry.js'])
-    )
+    expect(isUnpacked('out/main/parcel-watcher-process-entry.js')).toBe(true)
   })
 
   it('unpacks the replaceable WSL transcript filesystem process entry', async () => {
     const entryFilename = 'wsl-transcript-fs-process-entry.js'
-    expect(electronBuilderConfig.asarUnpack).toContain(`out/main/${entryFilename}`)
+    expect(isUnpacked(`out/main/${entryFilename}`)).toBe(true)
 
     const viteConfig = await readFile(join(REPO_ROOT, 'electron.vite.config.ts'), 'utf8')
     expect(viteConfig).toMatch(new RegExp(`'${entryFilename.replace(/\.js$/, '')}':\\s*resolve\\(`))
@@ -346,7 +350,7 @@ describe('electron-builder config', () => {
     const entryFilename = spawnSource.match(/WORKER_ENTRY_FILENAME = '([^']+)'/)?.[1]
 
     expect(entryFilename).toBeDefined()
-    expect(electronBuilderConfig.asarUnpack).toContain(`out/main/${entryFilename}`)
+    expect(isUnpacked(`out/main/${entryFilename}`)).toBe(true)
 
     // Why: the emitted path comes from the rollup input key under
     // entryFileNames '[name].js', not from the source filename — renaming the
@@ -355,12 +359,6 @@ describe('electron-builder config', () => {
     const viteConfig = await readFile(join(REPO_ROOT, 'electron.vite.config.ts'), 'utf8')
     expect(viteConfig).toContain("entryFileNames: '[name].js'")
     expect(viteConfig).toMatch(new RegExp(`'${entryFilename.replace(/\.js$/, '')}':\\s*resolve\\(`))
-  })
-
-  it('keeps the worker-thread hang watchdog inside app.asar', () => {
-    expect(electronBuilderConfig.asarUnpack).not.toContain(
-      'out/main/main-thread-hang-watchdog-entry.js'
-    )
   })
 
   it('uses the multi-size icon source for Linux packages', () => {

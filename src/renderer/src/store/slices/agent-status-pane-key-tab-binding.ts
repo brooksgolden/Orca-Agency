@@ -7,6 +7,7 @@ import type {
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { DropAgentStatusByWorktreeOptions, RetainedAgentEntry } from './agent-status-contract'
 import type { AgentStatusTabPrefixDropState } from './agent-status-drop-reducer'
+import { getAgentStatusTabIndex } from '@/lib/agent-status-tab-index'
 
 export function paneKeyMatchesAnyTabPrefix(paneKey: string, tabPrefixes: string[]): boolean {
   for (const prefix of tabPrefixes) {
@@ -38,23 +39,11 @@ export function agentStatusTabAlreadyHasProtectedOrGeneratedTitle(
   if (!tabId) {
     return false
   }
-  const ownerTabs = worktreeId ? state.tabsByWorktree[worktreeId] : undefined
-  if (ownerTabs) {
-    const tab = ownerTabs.find((candidate) => candidate.id === tabId)
-    return Boolean(
-      tab?.customTitle?.trim() || tab?.quickCommandLabel?.trim() || tab?.generatedTitle?.trim()
-    )
-  }
-  for (const tabs of Object.values(state.tabsByWorktree)) {
-    const tab = tabs.find((candidate) => candidate.id === tabId)
-    if (!tab) {
-      continue
-    }
-    return Boolean(
-      tab.customTitle?.trim() || tab.quickCommandLabel?.trim() || tab.generatedTitle?.trim()
-    )
-  }
-  return false
+  const index = getAgentStatusTabIndex(state.tabsByWorktree)
+  const tab = worktreeId ? index.byWorktree.get(worktreeId)?.get(tabId) : index.byId.get(tabId)?.tab
+  return Boolean(
+    tab?.customTitle?.trim() || tab?.quickCommandLabel?.trim() || tab?.generatedTitle?.trim()
+  )
 }
 
 export function getLeafIdFromPaneKey(paneKey: string): string | null {
@@ -104,12 +93,7 @@ export function findAgentPaneWorktreeId(state: AppState, paneKey: string): strin
   if (!tabId) {
     return null
   }
-  for (const [worktreeId, tabs] of Object.entries(state.tabsByWorktree)) {
-    if (tabs.some((tab) => tab.id === tabId)) {
-      return worktreeId
-    }
-  }
-  return null
+  return getAgentStatusTabIndex(state.tabsByWorktree).byId.get(tabId)?.owningWorktreeId ?? null
 }
 
 export function findTabForAgentEntry(
@@ -121,7 +105,7 @@ export function findTabForAgentEntry(
   if (!tabId) {
     return undefined
   }
-  return (state.tabsByWorktree[worktreeId] ?? []).find((tab) => tab.id === tabId)
+  return getAgentStatusTabIndex(state.tabsByWorktree).byWorktree.get(worktreeId)?.get(tabId)
 }
 
 export function getRetainedFallbackTab(entry: AgentStatusEntry, worktreeId: string): TerminalTab {

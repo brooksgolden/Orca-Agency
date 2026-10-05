@@ -3,6 +3,7 @@ import { getRepoMapFromState, getWorktreeMapFromState } from '@/store/selectors'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 import type { AppState } from '../../store/types'
+import { getAgentStatusTabIndex } from '@/lib/agent-status-tab-index'
 
 type AgentStatusPaneResolution = {
   exists: boolean
@@ -85,16 +86,10 @@ function getIndexedTabs(
   }
   agentStatusPaneRoutingIndexCounters.tabIndexBuilds += 1
   const tabsById = new Map<string, IndexedAgentStatusTab>()
-  for (const [worktreeId, tabs] of Object.entries(tabsByWorktree)) {
-    for (const tab of tabs) {
-      agentStatusPaneRoutingIndexCounters.tabVisits += 1
-      // Read the id once: retained selectors assert one read per row, and it is a getter on some snapshots.
-      const tabId = tab.id
-      // First wins: the standalone resolver stops at the first worktree owning this tab id.
-      if (!tabsById.has(tabId)) {
-        tabsById.set(tabId, { title: tab.title, owningWorktreeId: worktreeId })
-      }
-    }
+  const indexed = getAgentStatusTabIndex(tabsByWorktree)
+  agentStatusPaneRoutingIndexCounters.tabVisits += indexed.tabVisits
+  for (const [tabId, { tab, owningWorktreeId }] of indexed.byId) {
+    tabsById.set(tabId, { title: tab.title, owningWorktreeId })
   }
   tabsByIdCache.set(tabsByWorktree, tabsById)
   return tabsById
