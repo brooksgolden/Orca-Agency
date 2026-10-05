@@ -31,4 +31,16 @@ Installed check: resume a previously closed chat, send a prompt, and place it wi
 - **Email-triggered repairs:** Refresh active review leases from real progress, reject stale completions safely, and repair launch failures immediately rather than deferring them to Saturday.
 - **Installer verification:** Bound debugging timeouts, tolerate the new desktop's startup delay, and verify the expected version and original profile before accepting a restart.
 
-Release gate: actual Claude Opus 5.5 extra high review, Codex regressions, packaged checks, original-profile installation, preserved terminal identities, and rendered sidebar verification. The failed 1.4.1005 package must not be installed or published. Publish 1.4.1006 after these gates pass; keep the scheduled weekly update at Saturday 8 am America/New_York.
+Release gate: actual Claude Opus 5.5 extra high review, Codex regressions, packaged checks, original-profile installation, preserved terminal identities, and rendered sidebar verification. The failed 1.4.1005 package must not be installed or published. Publish 1.4.1007 after these gates pass; keep the scheduled weekly update at Saturday 8 am America/New_York.
+
+## Immediate CI hotfix, October 4, 2026
+
+Candidate 1.4.1007 includes the reviewed 1.4.1006 changes above, plus:
+
+- Restore the workflows compatible with stable v1.4.219 after its incomplete future-main workflow sync. Keep full unit, Node 24/26, Windows, Bun and SSH checks.
+- Index tab ownership once per immutable snapshot instead of repeatedly scanning all tabs during startup recovery.
+- Keep remote terminal cleanup away from local registry entries, including same-ID workspaces on different hosts.
+- Reject undefined SQLite parameters consistently across supported Node versions; valid null remains accepted.
+- Update test fixtures for current onboarding labels, pane moves, saved-chat restoration and asynchronous terminal attention.
+
+Claude Opus 5.5 extra high audited the fixes and rechecked the remote cleanup repair. Release requires the exact packaged smoke checks, original-profile installation, retained terminals and chats, installed visual review, and the relevant GitHub reruns. A failed run from an older source commit is evidence for repair, not evidence that the current installed package failed.
