@@ -208,7 +208,27 @@ describe('main runtime working-title evidence', () => {
     }
   )
 
-  it.each(['synthetic', 'replacement', 'closed', 'later-working', 'background-task', 'child'])(
+  it('settles the idle Claude lead while preserving registered background shell work', async () => {
+    const context = await setup(undefined, 'claude')
+    const state = context.wiring.statusStore._getStateForTests()
+    state.claudeRunningNonAgentTaskPaneKeys.add(paneKey)
+    const previous = context.wiring.statusStore.getStatusSnapshot()[0]
+    context.runtime.onPtyData('pty-1', claudeFixture.frames[2], Date.now())
+    const next = context.wiring.statusStore.getStatusSnapshot()[0]
+    expect(next).toMatchObject({
+      state: 'working',
+      workingMode: 'monitoring',
+      mainAgent: { state: 'done' },
+      providerSession: previous.providerSession,
+      prompt: previous.prompt,
+      stateStartedAt: previous.stateStartedAt,
+      turnStartedAt: previous.turnStartedAt
+    })
+    expect(state.claudeRunningNonAgentTaskPaneKeys.has(paneKey)).toBe(true)
+    expect(next.mainAgent?.outcome).toBeUndefined()
+  })
+
+  it.each(['synthetic', 'replacement', 'closed', 'later-working', 'child'])(
     'does not settle a Claude turn from %s idle evidence',
     async (kind) => {
       const context = await setup(undefined, 'claude')
@@ -221,11 +241,6 @@ describe('main runtime working-title evidence', () => {
       }
       if (kind === 'closed') {
         context.runtime.markGraphUnavailable(1)
-      }
-      if (kind === 'background-task') {
-        context.wiring.statusStore
-          ._getStateForTests()
-          .claudeRunningNonAgentTaskPaneKeys.add(paneKey)
       }
       if (kind === 'child') {
         await postHookEvent(

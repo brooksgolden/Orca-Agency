@@ -1,5 +1,8 @@
 import type { ParsedAgentStatusPayload } from '../../../shared/agent-status-types'
-import { setClaudeMainAgentTurnState } from '../../../shared/agent-hook-listener/providers/claude-roster-state'
+import {
+  resolveClaudePaneStatus,
+  setClaudeMainAgentTurnState
+} from '../../../shared/agent-hook-listener/providers/claude-roster-state'
 import { setCodexMainAgentTurnState } from '../../../shared/agent-hook-listener/providers/codex-state'
 import { AgentHookServerIngestNormalization } from './server-ingest-normalization'
 import type { EnrichedAgentHookEventPayload } from './server-types'
@@ -37,7 +40,7 @@ export abstract class AgentHookServerTerminalNativeIdle extends AgentHookServerI
       previous.payload.mainAgent?.state !== 'working' ||
       previous.payload.workingMode !== undefined ||
       previous.payload.subagents?.some((child) => child.state !== 'idle') ||
-      this.state.claudeRunningNonAgentTaskPaneKeys.has(paneKey) ||
+      (agent !== 'claude' && this.state.claudeRunningNonAgentTaskPaneKeys.has(paneKey)) ||
       this.state.claudeActiveSessionCronPaneKeys.has(paneKey) ||
       previous.tabId !== event.tabId ||
       previous.worktreeId !== event.worktreeId ||
@@ -51,13 +54,23 @@ export abstract class AgentHookServerTerminalNativeIdle extends AgentHookServerI
       agent === 'claude'
         ? setClaudeMainAgentTurnState(this.state, paneKey, { state: 'done' })
         : setCodexMainAgentTurnState(this.state, paneKey, { state: 'done' })
+    // Native idle ends only the lead's turn. Keep positively reported shell work alive.
+    const resolved =
+      agent === 'claude'
+        ? resolveClaudePaneStatus(this.state, paneKey, mainAgent)
+        : { stateName: 'done' as const, workingMode: undefined }
     // Native idle repairs display state without inventing a prompt or a success verdict.
     this.refreshTerminalStatusEvidence(
       {
         ...previous,
         source: undefined,
         hookEventName: undefined,
-        payload: { ...previous.payload, state: 'done', mainAgent }
+        payload: {
+          ...previous.payload,
+          state: resolved.stateName,
+          workingMode: resolved.workingMode,
+          mainAgent
+        }
       },
       previous,
       true,
