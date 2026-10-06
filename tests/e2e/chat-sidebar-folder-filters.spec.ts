@@ -152,10 +152,24 @@ test('Done folder collapse, open-only filtering and sidebar renaming persist wit
   const resumed = orcaPage.locator(`[data-testid="sortable-tab"][data-tab-id="${resumedId}"]`)
   await expect(renamed).toHaveCount(1)
   await expect(resumed).toContainText('Consistent chat name')
+  // Why: the fixture reopens a tab directly; wait for the main-process session before reloading.
+  await expect
+    .poll(() =>
+      orcaPage.evaluate(async (tabId) => {
+        const saved = await window.api.session.get()
+        return Object.values(saved.tabsByWorktree)
+          .flat()
+          .some((tab) => tab.id === tabId && tab.customTitle === 'Consistent chat name')
+      }, resumedId)
+    )
+    .toBe(true)
   await orcaPage.reload()
   await expect(rows).toHaveCount(1)
   await expect(renamed).toHaveCount(1)
   await expect(resumed).toContainText('Consistent chat name')
   await menu.click()
+  await expect(
+    orcaPage.getByRole('menuitemcheckbox', { name: 'Show only open chats', exact: true })
+  ).toBeVisible()
   await orcaPage.screenshot({ path: testInfo.outputPath('folder-filter-menu.png') })
 })
