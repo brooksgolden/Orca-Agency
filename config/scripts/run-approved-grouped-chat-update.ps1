@@ -65,14 +65,20 @@ function Start-IndependentOrca {
         try { $identityJson = & $restartNode $inspector 2>$null } catch { $identityJson = $null }
         if ($LASTEXITCODE -eq 0 -and $identityJson) {
             $restartedIdentity = ($identityJson | ConvertFrom-Json).result.result.value
-            if ($restartedIdentity.pid -eq $launch.ProcessId) { break }
+            if ($restartedIdentity.pid -eq $launch.ProcessId -and
+                [string]::Equals($restartedIdentity.exe, $exe, [StringComparison]::OrdinalIgnoreCase) -and
+                $restartedIdentity.version -eq $ExpectedVersion -and
+                [string]::Equals($restartedIdentity.userData, (Join-Path $env:APPDATA 'orca'), [StringComparison]::OrdinalIgnoreCase) -and
+                @($restartedIdentity.windows | Where-Object { $_.visible -and -not $_.destroyed -and $_.url -match '/out/renderer/index\.html$' }).Count) { break }
         }
         Start-Sleep -Milliseconds 500
     }
     if (-not $restartedIdentity -or $restartedIdentity.pid -ne $launch.ProcessId -or
         -not [string]::Equals($restartedIdentity.exe, $exe, [StringComparison]::OrdinalIgnoreCase) -or
         $restartedIdentity.version -ne $ExpectedVersion -or
-        -not [string]::Equals($restartedIdentity.userData, (Join-Path $env:APPDATA 'orca'), [StringComparison]::OrdinalIgnoreCase)) {
+        -not [string]::Equals($restartedIdentity.userData, (Join-Path $env:APPDATA 'orca'), [StringComparison]::OrdinalIgnoreCase) -or
+        -not @($restartedIdentity.windows | Where-Object { $_.visible -and -not $_.destroyed -and $_.url -match '/out/renderer/index\.html$' }).Count) {
+        Write-Warning ('Restart identity was not proven: ' + (@{expectedPid=$launch.ProcessId; expectedVersion=$ExpectedVersion; observed=$restartedIdentity} | ConvertTo-Json -Depth 6 -Compress))
         $restartReporters = @(Get-ReviewedInstallProcesses $exe | Where-Object { Test-ReviewedCrashReporter $_ })
         $env:ORCA_DESKTOP_QUIT_PID = [string]$launch.ProcessId
         $env:ORCA_CLOSE_THROUGH_MAIN_PROCESS = '1'
