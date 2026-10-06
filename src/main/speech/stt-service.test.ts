@@ -158,6 +158,27 @@ vi.mock('./openai-transcription-client', () => ({
 import { IDLE_WORKER_TEARDOWN_MS, START_DICTATION_TIMEOUT_MS, SttService } from './stt-service'
 
 describe('SttService', () => {
+  it('rejects offline startup on Windows ARM64 but starts cloud dictation without a native worker', async () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const architecture = vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64')
+    try {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Cloud startup uses only getModelState; local startup rejects before other manager methods.
+      const service = new SttService({
+        getModelState: vi.fn().mockResolvedValue({ id: 'openai-model', status: 'ready' })
+      } as never)
+      await expect(service.startDictation('model-a', vi.fn())).rejects.toThrow(
+        'Local dictation is unavailable on Windows ARM64.'
+      )
+      expect(getCreatedWorkerCount()).toBe(0)
+      await service.startDictation('openai-model', vi.fn())
+      expect(getCloudSessions()).toHaveLength(1)
+      expect(getCreatedWorkerCount()).toBe(0)
+      await service.stopDictation()
+    } finally {
+      platform.mockRestore()
+      architecture.mockRestore()
+    }
+  })
   beforeEach(() => {
     resetCloudSessions()
     resetWorkers()

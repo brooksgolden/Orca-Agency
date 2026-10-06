@@ -46,6 +46,37 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       }
     })
     await page.waitForFunction(() => Boolean(window.api))
+    const nativeArchitecture = await app.evaluate(() => process.arch)
+    if (process.platform === 'win32' && nativeArchitecture === 'arm64') {
+      const speechPolicy = await page.evaluate(async () => {
+        const catalog = await window.api.speech.getCatalog()
+        let rejected = false
+        try {
+          await window.api.speech.startDictation('whisper-tiny', undefined, 'arm-policy-smoke')
+        } catch (error) {
+          rejected = String(error).includes('Local dictation is unavailable on Windows ARM64.')
+        }
+        return {
+          nativeArchitecture: 'arm64',
+          localModels: catalog.filter((model) => model.provider === 'local').length,
+          cloudModels: catalog.filter((model) => model.provider === 'openai').length,
+          localStartupRejected: rejected
+        }
+      })
+      expect(speechPolicy).toEqual({
+        nativeArchitecture: 'arm64',
+        localModels: 0,
+        cloudModels: 2,
+        localStartupRejected: true
+      })
+      console.log(`ORCA_ARM64_SPEECH_POLICY:${JSON.stringify(speechPolicy)}`)
+      await page.evaluate(() => window.api.updater.check())
+      const updateStatus = await page.evaluate(() => window.api.updater.getStatus())
+      expect(updateStatus).toMatchObject({ state: 'error' })
+      expect(JSON.stringify(updateStatus)).toContain(
+        'Native Windows ARM64 updates use the reviewed Orca Agency installer.'
+      )
+    }
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -156,6 +187,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     })
     await progressFilter.click()
     await expect(progressFilter).toHaveAttribute('aria-checked', 'true')
+    await page.screenshot({ path: testInfo.outputPath('packaged-chat-filters.png') })
     await page.keyboard.press('Escape')
     await expect(renamed).toHaveCount(0)
     await expect(rows).toHaveCount(1)
