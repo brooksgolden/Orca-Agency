@@ -250,6 +250,9 @@ async function startOrcadRuntime(
   })
 
   const { installOrcadSessionSearchService } = await import('./orcad-session-search')
+  agentHookServer.setLocalTerminalAgentResolver((paneKey) =>
+    runtime.getLocalTerminalAgentForPane(paneKey)
+  )
   sessionSearch = await installOrcadSessionSearchService({
     userDataPath: runtimeUserDataPath,
     getSettings: () => profileStore.getSettings()

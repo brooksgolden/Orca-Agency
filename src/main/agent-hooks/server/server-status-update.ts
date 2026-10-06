@@ -125,7 +125,8 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     const identity = resolveAgentStatusIdentity({
       existing: previous
         ? {
-            agentType: previous.payload.agentType,
+            agentType:
+              this.localTerminalAgentResolver?.(previous.paneKey) ?? previous.payload.agentType,
             state: previous.payload.state,
             updatedAt: previous.receivedAt,
             restoredUnconfirmed: previous.restoredUnconfirmed
@@ -134,6 +135,12 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       incoming: rootContextPreservingPayload.payload.agentType,
       now
     })
+    // A nested CLI cannot replace its active parent's status or resume metadata.
+    if (previous && identity.inheritedFromActivePane && (previous.connectionId ?? null) === null) {
+      this.commitStatusRowMutation(rowBefore, previous)
+      // Rejection must not schedule the child's transcript/result retries for the parent.
+      return undefined
+    }
     if (
       previous &&
       shouldSuppressInheritedTerminalStatus({

@@ -196,6 +196,7 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
     this.rollbackTransportStart()
     this.env = 'production'
     this.onAgentStatus = null
+    this.localTerminalAgentResolver = null
     this.onClaudeStatusLine = null
     this.onPaneStatusCleared = null
     this.onTransportInterference = null

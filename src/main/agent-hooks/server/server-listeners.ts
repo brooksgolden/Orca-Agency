@@ -18,6 +18,7 @@ import type {
 } from './server-types'
 import { toAgentStatusIpcPayload } from './server-status-identity'
 import { AgentHookServerState } from './server-state'
+import type { TuiAgent } from '../../../shared/tui-agent'
 import { serializeAgentStatusSubject } from '../../../shared/agent-status-subject'
 import { structuredStatusLegacyEvent } from './server-structured-status-row'
 
@@ -25,6 +26,9 @@ import { structuredStatusLegacyEvent } from './server-structured-status-row'
 const UNORDERED_STATUS_ROW = Number.MAX_SAFE_INTEGER
 
 export abstract class AgentHookServerListeners extends AgentHookServerState {
+  setLocalTerminalAgentResolver(resolver: ((paneKey: string) => TuiAgent | null) | null): void {
+    this.localTerminalAgentResolver = resolver
+  }
   protected emitEnrichedStatus(enriched: EnrichedAgentHookEventPayload): void {
     this.onAgentStatus?.(enriched)
     for (const listener of this.enrichedStatusListeners) {

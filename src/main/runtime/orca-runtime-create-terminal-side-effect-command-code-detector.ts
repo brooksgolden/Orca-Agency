@@ -95,6 +95,8 @@ export class OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector extends 
       observedTerminalHandle?: string
       confirmRestoredWorkingTitle?: true
       recoverCancelledWorkingTitle?: true
+      recoverSettledWorkingTitle?: true
+      settleNativeIdleTitle?: true
       restoredLaunchToken?: string
     }
   ): void {

@@ -140,6 +140,8 @@ export type RuntimeTerminalAgentStatusEvent = {
   observedTerminalHandle?: string
   confirmRestoredWorkingTitle?: true
   recoverCancelledWorkingTitle?: true
+  recoverSettledWorkingTitle?: true
+  settleNativeIdleTitle?: true
   restoredLaunchToken?: string
 }
 

@@ -9,10 +9,11 @@ import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-status-fold'
 import { isCancelledCodexStatus } from '../../../shared/codex-cancelled-status-recovery'
 import { setCodexMainAgentTurnState } from '../../../shared/agent-hook-listener/providers/codex-state'
+import { setClaudeMainAgentTurnState } from '../../../shared/agent-hook-listener/providers/claude-roster-state'
 import { INTERRUPTED_DONE_LATE_WORKING_SUPPRESSION_MS } from './server-constants'
-import { AgentHookServerIngestNormalization } from './server-ingest-normalization'
+import { AgentHookServerTerminalNativeIdle } from './server-terminal-native-idle'
 
-export abstract class AgentHookServerIngestTerminal extends AgentHookServerIngestNormalization {
+export abstract class AgentHookServerIngestTerminal extends AgentHookServerTerminalNativeIdle {
   ingestTerminalStatus(event: {
     ptyId?: string
     paneKey: string
@@ -32,6 +33,10 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     confirmRestoredWorkingTitle?: true
     /** Same-process native Working after an inferred cancellation, verified by the local runtime. */
     recoverCancelledWorkingTitle?: true
+    /** Fresh native Working contradicts a settled same-process Codex row with silent hooks. */
+    recoverSettledWorkingTitle?: true
+    /** Captured same-process native idle, never a replay or synthetic title. */
+    settleNativeIdleTitle?: true
     /** Current local PTY launch authority; checked against any durable commitment. */
     restoredLaunchToken?: string
   }): void {
@@ -71,6 +76,10 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     if (disposition === 'suppress') {
       return
     }
+    if (event.evidenceOnly && event.settleNativeIdleTitle) {
+      this.settleNativeIdleTitle({ ...event, paneKey, tabId })
+      return
+    }
     if (event.evidenceOnly) {
       const previous = this.state.lastStatusByPaneKey.get(paneKey) as
         | EnrichedAgentHookEventPayload
@@ -91,6 +100,17 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         (previous.connectionId ?? null) === null &&
         (event.connectionId ?? null) === null &&
         Date.now() - previous.receivedAt > INTERRUPTED_DONE_LATE_WORKING_SUPPRESSION_MS
+      const recoversSettled =
+        event.recoverSettledWorkingTitle === true &&
+        (previous?.payload.agentType === 'codex' || previous?.payload.agentType === 'claude') &&
+        previous.payload.state === 'done' &&
+        previous.payload.sessionBoundary !== true &&
+        !previous.restoredUnconfirmed &&
+        (!previous.terminalHandle || previous.terminalHandle === event.terminalHandle) &&
+        (previous.connectionId ?? null) === null &&
+        (event.connectionId ?? null) === null &&
+        Date.now() - previous.receivedAt > INTERRUPTED_DONE_LATE_WORKING_SUPPRESSION_MS
+      const recoversWorking = recoversCancelled || recoversSettled
       const savedLaunchTokenHash = previous?.restoredUnconfirmed
         ? (this.hydratedLaunchTokenHashByPaneKey.get(paneKey) ??
           this.persistedAuthorityCommitmentsByPaneKey.get(paneKey)?.launchTokenHash ??
@@ -114,8 +134,8 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         previous.providerSessionOnly ||
         previous.structuredHost ||
         event.payload.state !== 'working' ||
-        (!recoversCancelled && previous.payload.state !== 'working') ||
-        (!recoversCancelled &&
+        (!recoversWorking && previous.payload.state !== 'working') ||
+        (!recoversWorking &&
           previous.payload.mainAgent &&
           previous.payload.mainAgent.state !== 'working') ||
         !event.payload.agentType ||
@@ -127,28 +147,41 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         previous.worktreeId !== event.worktreeId ||
         (previous.connectionId ?? null) !== (event.connectionId ?? null) ||
         (!confirmsRestored &&
-          !recoversCancelled &&
+          !recoversWorking &&
           Date.now() - (previous.evidenceObservedAt ?? previous.receivedAt) <=
             AGENT_WORKING_TITLE_REFRESH_AFTER_MS)
       ) {
         return
       }
-      if (recoversCancelled) {
-        const mainAgent = setCodexMainAgentTurnState(this.state, paneKey, {
+      if (recoversWorking) {
+        const startsNewTurn =
+          previous.source !== undefined &&
+          (previous.hookEventName === 'Stop' || previous.hookEventName === 'StopFailure') &&
+          previous.payload.interrupted !== true &&
+          previous.payload.mainAgent?.outcome !== 'cancellation'
+        const turnStartedAt = startsNewTurn ? undefined : previous.turnStartedAt
+        const stateStartedAt = startsNewTurn ? Date.now() : previous.stateStartedAt
+        const setMainAgent =
+          previous.payload.agentType === 'claude'
+            ? setClaudeMainAgentTurnState
+            : setCodexMainAgentTurnState
+        const mainAgent = setMainAgent(this.state, paneKey, {
           state: 'working',
-          stateStartedAt: previous.turnStartedAt ?? previous.stateStartedAt,
+          stateStartedAt: turnStartedAt ?? stateStartedAt,
           model: previous.payload.model
         })
         // Why: correcting status is not a new prompt; preserve interaction clocks and resume identity.
         this.refreshTerminalStatusEvidence(
           {
             ...previous,
+            turnStartedAt,
+            stateStartedAt,
             source: undefined,
             hookEventName: undefined,
             payload: {
               state: 'working',
-              agentType: 'codex',
-              prompt: previous.payload.prompt,
+              agentType: previous.payload.agentType,
+              prompt: startsNewTurn ? '' : previous.payload.prompt,
               model: previous.payload.model,
               subagents: previous.payload.subagents,
               mainAgent

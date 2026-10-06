@@ -4,6 +4,7 @@ import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-term
 import { isTerminalLeafId, makePaneKey, parsePaneKey } from '../../shared/stable-pane-id'
 import { detectAgentStatusFromTitle, isClaudeManagementTitle } from '../../shared/agent-detection'
 import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
+import type { TuiAgent } from '../../shared/tui-agent'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { structuredWorkerIdentities } from './structured-worker-identity'
 import type { StructuredPointerTarget } from './orchestration/structured-mailbox-pointer-delivery'
@@ -20,6 +21,24 @@ import {
 } from './terminal-identity-probe'
 
 export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneMobileSessionTabGroupLayout {
+  getLocalTerminalAgentForPane(paneKey: string): TuiAgent | null {
+    const pty = this.getPtyRecordForPaneKey(paneKey)
+    const handle = this.getAgentStatusTerminalHandleForPaneKey(paneKey)
+    if (
+      this.graphStatus !== 'ready' ||
+      !pty?.connected ||
+      (pty.connectionId ?? null) !== null ||
+      pty.paneKey !== paneKey ||
+      !pty.incarnationId ||
+      !handle ||
+      this.getTerminalProcessIncarnation(handle) !== `${pty.ptyId}:${pty.incarnationId}`
+    ) {
+      return null
+    }
+    // A managed launch owns its process lifetime, including nested review CLIs.
+    return pty.launchAgent ?? pty.foregroundAgent
+  }
+
   protected getPtyRecordForPaneKey(paneKey: string): RuntimePtyWorktreeRecord | null {
     const parsed = parsePaneKey(paneKey)
     let leafPty: RuntimePtyWorktreeRecord | null = null

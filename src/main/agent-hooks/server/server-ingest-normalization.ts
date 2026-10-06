@@ -2,6 +2,7 @@ import { buildSpoolHookBody, type SpoolRecord } from '../../../shared/agent-hook
 import { normalizeHookPayload } from '../../../shared/agent-hook-listener'
 import { isAgentHookSource, type AgentHookSource } from '../../../shared/agent-hook-relay'
 import { isOpenCodeSharedServerPost } from '../../../shared/agent-hook-listener/opencode-session-registry'
+import { resolveAgentStatusIdentity } from '../../../shared/agent-status-identity'
 import type { NormalizedLocalHook } from './server-types'
 import { AgentHookServerOpenCodeBinder } from './server-opencode-binder'
 
@@ -24,6 +25,36 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
   }
 
   protected normalizeLocalHookPayload(source: AgentHookSource, body: unknown): NormalizedLocalHook {
+    if ((source === 'claude' || source === 'codex') && typeof body === 'object' && body !== null) {
+      const rawPaneKey = Reflect.get(body, 'paneKey')
+      const paneKey = typeof rawPaneKey === 'string' ? rawPaneKey.trim() : ''
+      const canonicalPaneKey = this.resolvePaneKeyAlias(paneKey)
+      const localAgent = paneKey ? this.localTerminalAgentResolver?.(canonicalPaneKey) : null
+      const previous = paneKey
+        ? this.getStatusSnapshotForPane(canonicalPaneKey).find(
+            (entry) => !entry.providerSessionOnly && !entry.structuredHost
+          )
+        : undefined
+      if (
+        (localAgent && localAgent !== source) ||
+        (!localAgent &&
+          previous &&
+          (previous.connectionId ?? null) === null &&
+          resolveAgentStatusIdentity({
+            existing: {
+              agentType: previous.agentType,
+              state: previous.state,
+              updatedAt: previous.receivedAt,
+              restoredUnconfirmed: previous.restoredUnconfirmed
+            },
+            incoming: source,
+            now: Date.now()
+          }).inheritedFromActivePane)
+      ) {
+        // Reject before normalization can overwrite the parent's shared prompt/tool caches.
+        return { event: null }
+      }
+    }
     if (source !== 'claude' || typeof body !== 'object' || body === null) {
       const event = normalizeHookPayload(this.state, source, body, this.env)
       if (

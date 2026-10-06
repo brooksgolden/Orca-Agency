@@ -24,6 +24,7 @@ import { RuntimeAgentOrchestrationProjection } from './runtime-agent-orchestrati
 import { RuntimeTerminalList } from './runtime-terminal-list'
 import { RuntimeManagedWorktreeQueries } from './runtime-managed-worktree-queries'
 import { RuntimePtyForegroundAgent } from './runtime-pty-foreground-agent'
+import { observeLocalPtyAgentOwner } from './local-pty-agent-owner-observation'
 import { OpenCodeRunLifetimeStatus } from './opencode-run-lifetime-status'
 import { readLocalPtyForegroundCommandLine } from './local-pty-foreground-command-line'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
@@ -154,6 +155,8 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
   protected readonly ptyForegroundAgent = new RuntimePtyForegroundAgent({
     getController: () => this.ptyController,
     getPty: (ptyId) => this.ptysById.get(ptyId) ?? null,
+    retireLaunchOwner: (ptyId) => this.retirePtyAgentLaunchAuthority(ptyId),
+    observeLocalOwner: (pty) => this.observePtyLocalOwner(pty),
     touchSnapshot: (ptyId) => this.touchMobileSessionSnapshotsForPty(ptyId),
     finishDelayedSnapshot: (ptyId, changed) => {
       if (this.mobileSessionTabListeners.size > 0) {
@@ -164,6 +167,10 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
       }
     }
   })
+
+  protected observePtyLocalOwner(pty) {
+    return observeLocalPtyAgentOwner(pty, this.getLocalProvider())
+  }
 
   protected readonly openCodeRunLifetime = new OpenCodeRunLifetimeStatus({
     isObservablePty: (ptyId) => {

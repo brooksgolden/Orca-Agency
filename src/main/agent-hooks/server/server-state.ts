@@ -19,6 +19,7 @@ import {
 } from '../../../shared/agent-status-observation'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
 import type { AgentHookSource } from '../../../shared/agent-hook-relay'
+import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentStatusClearIpcPayload } from '../../../shared/agent-status-types'
 import type { LegacyPaneKeyAliasEntry } from '../../../shared/persisted-state-types'
 import type { SpoolRecord } from '../../../shared/agent-hook-spool'
@@ -87,6 +88,7 @@ export abstract class AgentHookServerState {
   // Why: identifies this Orca instance so the server can detect dev vs. prod cross-talk; set at start() from packaged-build knowledge.
   protected env = 'production'
   protected onAgentStatus: ServerAgentStatusListener = null
+  protected localTerminalAgentResolver: ((paneKey: string) => TuiAgent | null) | null = null
   protected onClaudeStatusLine: ServerStatusLineListener = null
   protected onPaneStatusCleared: PaneStatusClearListener | null = null
   protected paneStatusClearListeners = new Set<PaneStatusClearListener>()

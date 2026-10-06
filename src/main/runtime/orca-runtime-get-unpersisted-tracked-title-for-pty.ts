@@ -1,80 +1,23 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import { OrcaRuntimeWithEmitDaemonPtyTransientFact } from './orca-runtime-emit-daemon-pty-transient-fact'
+import { OrcaRuntimeWithReconcileRestoredWorkingTitleMonitor } from './orca-runtime-reconcile-restored-working-title-monitor'
 import { getDecorativeAgentTitleSignature } from '../../shared/agent-decorative-title-signature'
 import { shouldEmitTitleFactForFrame } from './decorative-title-fact-emission'
 import type { RuntimePtyTitleTrackerEntry } from './runtime-terminal-state-records'
 import { createTerminalTitleTracker } from '../../shared/terminal-output-side-effects'
-import { detectAgentStatusFromTitle } from '../../shared/agent-detection'
+import {
+  detectAgentStatusFromTitle,
+  isQuarterCircleSpinnerOnlyAgentTitle
+} from '../../shared/agent-detection'
+import { CLAUDE_IDLE } from '../../shared/agent-title-core'
+import { resolveExplicitTerminalTitleAgentType } from '../../shared/terminal-title-agent-type'
 import { AGENT_WORKING_TITLE_REFRESH_AFTER_MS } from '../../shared/agent-working-title-freshness'
 import { isCancelledCodexStatus } from '../../shared/codex-cancelled-status-recovery'
 import { resolveAgentStatusBinding } from '../ipc/agent-status-ipc-boundary'
-import { pruneOldestMapEntry } from './prune-oldest-map-entry'
 import type { TerminalGitHubPRLink } from '../../shared/terminal-github-pr-link-detector'
+import { scheduleNativeIdleTitleSettlement } from './native-idle-title-settlement'
+import { INTERRUPTED_DONE_LATE_WORKING_SUPPRESSION_MS } from '../agent-hooks/server/server-constants'
 
-export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntimeWithEmitDaemonPtyTransientFact {
-  private readonly restoredWorkingTitleMonitors = new Map<string, string>()
-
-  protected reconcileRetainedProviderAttach(ptyId: string): void {
-    this.reconcileSubscriberDrivenProviderAttach(ptyId)
-    this.reconcileRestoredWorkingTitleMonitor(ptyId)
-  }
-
-  protected reconcileRestoredWorkingTitleMonitor(ptyId: string, attempt = 0): void {
-    const pty = this.ptysById.get(ptyId)
-    if (!pty?.connected || pty.connectionId !== null || !pty.paneKey || !pty.incarnationId) {
-      return
-    }
-    const row = (this.getAgentProviderSessionRowsForPaneFn?.(pty.paneKey) ?? []).find(
-      (candidate) =>
-        candidate.agentType === 'codex' &&
-        candidate.state === 'working' &&
-        candidate.restoredUnconfirmed === true &&
-        (candidate.connectionId ?? null) === null
-    )
-    const receipt = this.restoredOrchestrationAuthorityByPtyId.get(ptyId)
-    const binding = resolveAgentStatusBinding(pty.paneKey, this)
-    if (
-      !row ||
-      this.graphStatus !== 'ready' ||
-      binding.kind !== 'pane' ||
-      receipt?.paneKey !== pty.paneKey ||
-      receipt?.terminalHandle !== binding.terminalHandle ||
-      receipt?.processIncarnation !== binding.processIncarnation ||
-      !this.isKnownUnattachedLocalDaemonPty(ptyId) ||
-      this.terminalViewSubscribers.hasPendingProviderAttach(ptyId) ||
-      (row.terminalHandle && row.terminalHandle !== binding.terminalHandle) ||
-      this.restoredWorkingTitleMonitors.get(ptyId) === binding.processIncarnation
-    ) {
-      return
-    }
-    const attach = this.ptyController?.attach
-    if (!attach) {
-      return
-    }
-    const incarnation = binding.processIncarnation
-    this.restoredWorkingTitleMonitors.set(ptyId, incarnation)
-    pruneOldestMapEntry(this.restoredWorkingTitleMonitors, 512)
-    // Reattach only the inventory-proven local PTY; fresh native bytes confirm status.
-    void attach(ptyId)
-      .catch(() => false)
-      .then((attached) => {
-        if (!attached && this.restoredWorkingTitleMonitors.get(ptyId) === incarnation) {
-          this.restoredWorkingTitleMonitors.delete(ptyId)
-          if (attempt < 2) {
-            const retry = setTimeout(
-              () => {
-                if (this.getTerminalProcessIncarnation(binding.terminalHandle) === incarnation) {
-                  this.reconcileRestoredWorkingTitleMonitor(ptyId, attempt + 1)
-                }
-              },
-              500 * (attempt + 1)
-            )
-            retry.unref()
-          }
-        }
-      })
-  }
-
+export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntimeWithReconcileRestoredWorkingTitleMonitor {
   protected getUnpersistedTrackedTitleForPty(ptyId: string | null): string | null {
     if (!ptyId || this.getTrackedRawTitleForPty(ptyId) !== null) {
       return null
@@ -159,17 +102,23 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
               rawTitle,
               ...(meta?.staleWorkingTitleClear ? { staleWorkingTitleClear: true } : {})
             })
-            // Only captured native Codex working frames can confirm silent hooks.
+            // Captured native state can repair silent hooks on the same observed process.
             const pty = this.ptysById.get(ptyId)
-            const owner = pty?.foregroundAgent ?? pty?.launchAgent
+            const owner = pty?.launchAgent ?? pty?.foregroundAgent
+            const nativeStatus = detectAgentStatusFromTitle(rawTitle)
+            const explicitOwner = resolveExplicitTerminalTitleAgentType(rawTitle)
+            const claudeFrame =
+              rawTitle.startsWith(CLAUDE_IDLE) || isQuarterCircleSpinnerOnlyAgentTitle(rawTitle)
             if (
               live?.applyingChunk &&
               !meta?.syntheticTitle &&
               !meta?.staleWorkingTitleClear &&
-              owner === 'codex' &&
-              detectAgentStatusFromTitle(rawTitle) === 'working'
+              (owner === 'codex' || owner === 'claude') &&
+              (explicitOwner === null || explicitOwner === owner) &&
+              (owner === 'claude' ? claudeFrame || explicitOwner === owner : !claudeFrame) &&
+              (nativeStatus === 'working' || (owner === 'claude' && nativeStatus === 'idle'))
             ) {
-              this.runAfterPendingTerminalSideEffectFacts(ptyId, () => {
+              const reconcile = () => {
                 const paneKey = this.resolveTerminalSideEffectAttribution(ptyId).paneKey
                 if (!paneKey) {
                   return
@@ -178,23 +127,39 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
                 const current = resolveAgentStatusBinding(paneKey, this)
                 const row = (this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []).find(
                   (row) =>
-                    row.agentType === 'codex' &&
-                    (row.state === 'working' || isCancelledCodexStatus(row))
+                    row.agentType === owner && (row.state === 'working' || row.state === 'done')
                 )
                 // Why: an inferred Escape cancellation can outlive a recovered compact. Only
                 // fresh provider bytes from the already observed process can contradict it.
-                const recoversCancelled =
+                const recoversSettled =
                   row &&
-                  isCancelledCodexStatus(row) &&
+                  row.state === 'done' &&
+                  row.sessionBoundary !== true &&
                   !row.restoredUnconfirmed &&
                   this.graphStatus === 'ready' &&
                   observed.kind === 'observed' &&
                   current.kind === 'pane' &&
+                  this.getLocalTerminalAgentForPane(paneKey) === owner &&
                   this.ptysById.get(ptyId)?.connected === true &&
                   (row.connectionId ?? null) === null &&
                   (this.ptysById.get(ptyId)?.connectionId ?? null) === null &&
                   this.ptysById.get(ptyId)?.lastAgentStatus === 'working' &&
                   this.ptysById.get(ptyId)?.lastAgentStatusObservedLive === true
+                const recoversCancelled = recoversSettled && isCancelledCodexStatus(row)
+                const settlesIdle =
+                  owner === 'claude' &&
+                  nativeStatus === 'idle' &&
+                  row?.state === 'working' &&
+                  !row.restoredUnconfirmed &&
+                  this.graphStatus === 'ready' &&
+                  observed.kind === 'observed' &&
+                  current.kind === 'pane' &&
+                  this.getLocalTerminalAgentForPane(paneKey) === owner &&
+                  this.ptysById.get(ptyId)?.connected === true &&
+                  this.ptysById.get(ptyId)?.lastAgentStatus === 'idle' &&
+                  this.ptysById.get(ptyId)?.lastAgentStatusObservedLive === true &&
+                  (row.connectionId ?? null) === null &&
+                  (this.ptysById.get(ptyId)?.connectionId ?? null) === null
                 const confirmsRestored =
                   row?.restoredUnconfirmed === true &&
                   this.graphStatus === 'ready' &&
@@ -217,18 +182,52 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
                   (row.restoredUnconfirmed && !confirmsRestored) ||
                   (!confirmsRestored &&
                     !recoversCancelled &&
+                    !recoversSettled &&
+                    !settlesIdle &&
                     nowMs - (row.evidenceObservedAt ?? row.receivedAt) <=
                       AGENT_WORKING_TITLE_REFRESH_AFTER_MS)
                 ) {
                   return
                 }
+                const idleDelayMs =
+                  INTERRUPTED_DONE_LATE_WORKING_SUPPRESSION_MS + 1 - (Date.now() - row.receivedAt)
+                if (settlesIdle && idleDelayMs > 0 && current.kind === 'pane') {
+                  const expectedRowAt = row.receivedAt
+                  const expectedIncarnation = current.processIncarnation
+                  // Let a new turn's native spinner supersede a late idle frame before settling it.
+                  scheduleNativeIdleTitleSettlement(this, ptyId, idleDelayMs, () => {
+                    const latest = (
+                      this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []
+                    ).find((entry) => entry.agentType === owner && entry.state === 'working')
+                    const binding = resolveAgentStatusBinding(paneKey, this)
+                    if (
+                      latest?.receivedAt === expectedRowAt &&
+                      binding.kind === 'pane' &&
+                      binding.processIncarnation === expectedIncarnation &&
+                      this.ptysById.get(ptyId)?.lastAgentStatus === 'idle'
+                    ) {
+                      reconcile()
+                    }
+                  })
+                  return
+                }
                 this.emitTerminalAgentStatusEvents(
                   ptyId,
-                  { payloads: [{ state: 'working', prompt: '', agentType: 'codex' }] },
+                  {
+                    payloads: [
+                      {
+                        state: nativeStatus === 'idle' ? 'done' : 'working',
+                        prompt: '',
+                        agentType: owner
+                      }
+                    ]
+                  },
                   {
                     evidenceOnly: true,
                     observedTerminalHandle: current.terminalHandle,
+                    ...(settlesIdle ? { settleNativeIdleTitle: true } : {}),
                     ...(recoversCancelled ? { recoverCancelledWorkingTitle: true } : {}),
+                    ...(recoversSettled ? { recoverSettledWorkingTitle: true } : {}),
                     ...(confirmsRestored
                       ? {
                           confirmRestoredWorkingTitle: true,
@@ -237,7 +236,8 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
                       : {})
                   }
                 )
-              })
+              }
+              this.runAfterPendingTerminalSideEffectFacts(ptyId, reconcile)
             }
           }
           const changed = this.applyTrackedPtyTitle(ptyId, rawTitle, normalizedTitle, meta)
