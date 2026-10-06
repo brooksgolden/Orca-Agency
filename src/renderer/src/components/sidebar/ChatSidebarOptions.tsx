@@ -27,6 +27,12 @@ export function ChatSidebarOptions() {
   const showOnlyInProgress = useAppStore(
     (state) => state.settings?.chatSidebar?.showOnlyInProgress ?? false
   )
+  const showOnlyOpenChats = useAppStore(
+    (state) => state.settings?.chatSidebar?.showOnlyOpenChats ?? false
+  )
+  const collapseDoneFolders = useAppStore(
+    (state) => state.settings?.chatSidebar?.collapseDoneFolders ?? false
+  )
   const savedHiddenFolders = useAppStore((state) => state.settings?.chatSidebar?.hiddenFolders)
   const state = useAppStore(
     useShallow((s) => ({
@@ -90,7 +96,28 @@ export function ChatSidebarOptions() {
             void updateChatSidebar({ showOnlyInProgress: checked === true })
           }
         >
-          Show only in-progress chats
+          Hide Done chats
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={showOnlyOpenChats}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(checked) =>
+            void updateChatSidebar({ showOnlyOpenChats: checked === true })
+          }
+        >
+          Show only open chats
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={collapseDoneFolders}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(checked) =>
+            void updateChatSidebar({
+              collapseDoneFolders: checked === true,
+              expandedDoneFolders: []
+            })
+          }
+        >
+          Collapse Done folders
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuSub>

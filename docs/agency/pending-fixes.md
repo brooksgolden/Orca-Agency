@@ -1,4 +1,4 @@
-# Pending Orca Agency release notes
+﻿# Pending Orca Agency release notes
 
 Read this file during each weekly update. Include pending fixes in the release notes only after the source, Claude review, package, installed functionality and visual checks pass. Then record the published release next to each included item.
 
@@ -8,7 +8,7 @@ Read this file during each weekly update. Include pending fixes in the release n
 - **Working status after restart:** Reconnect the output of an inventory-confirmed retained local Codex terminal even before its tab mounts. Fresh native working output restores the working indicator. Preserve saved resume identity and activity timestamps; without a recovered launch token, discard old hook authority and task details. Cached titles and closed, stopped, remote or worker sessions cannot confirm a restored row through this path. The separate orange dashed stale-evidence recovery remains covered.
 - **Headless Claude history:** Keep `claude -p` transcripts in session history, but exclude transcripts used only through `sdk-cli` from resumable Chats. A later interactive turn restores the chat. Classify old sidebar snapshots through the scan or an exact transcript lookup when they fall outside its bounded window.
 
-Brooks requests local installation after review and checks, with publication held until Saturday October 10 at 08:00 America/New_York. The filter and background output reconnection in 1.4.1010 passed installed checks. Candidate 1.4.1011 adds headless Claude history classification and requires its own installed verification. Do not publish these additions through an earlier GitHub email repair.
+Brooks requests local installation after review and checks, with publication held until Saturday October 10 at 05:00 America/New_York. The filter and background output reconnection in 1.4.1010 passed installed checks. Candidate 1.4.1011 adds headless Claude history classification and requires its own installed verification. Do not publish these additions through an earlier GitHub email repair.
 
 ## October 3, 2026 update
 
@@ -32,7 +32,7 @@ Installed check: resume a previously closed chat, send a prompt, and place it wi
 - **Focused runs:** The focused running window group sorts first, preserving its entire bracket and conversation activity times. Idle viewing does not stamp Now.
 - **Move persistence:** Preserve PTY and pane identities, execution folder, completion status and saved resume ownership across moves and restarts. Protect moved processes from deletion of the original workspace.
 - **Moved terminal replay:** Restore scrollback for the exact moved tab even while its original workspace remains open. Preserve the same live process and accept new output after moving.
-- **Publication:** Use the real `brooksgolden/Orca-Agency` fork, preserve public edits, and export the verified tree with only public and proven upstream ancestry. The weekly automation remains Saturday at 8 am in America/New_York.
+- **Publication:** Use the real `brooksgolden/Orca-Agency` fork, preserve public edits, and export the verified tree with only public and proven upstream ancestry. The weekly automation starts Saturday at 5 am in America/New_York.
 
 - **Startup profile:** Keep the existing Orca profile and encryption identity when displaying Orca Agency. Candidate 1.4.1006 supersedes 1.4.1005, whose rollout was reverted after it selected an empty profile.
 - **Terminal recovery:** Reconnect surviving terminals to their exact pane, retain their process handle across temporary layout loss, and refuse to overwrite a different terminal occupying that pane.
@@ -40,7 +40,16 @@ Installed check: resume a previously closed chat, send a prompt, and place it wi
 - **Email-triggered repairs:** Refresh active review leases from real progress, reject stale completions safely, and repair launch failures immediately rather than deferring them to Saturday.
 - **Installer verification:** Bound debugging timeouts, tolerate the new desktop's startup delay, and verify the expected version and original profile before accepting a restart.
 
-Release gate: actual Claude Opus 5.5 extra high review, Codex regressions, packaged checks and rendered sidebar verification. The failed 1.4.1005 package must not be installed or published. The October 4 instruction authorizes publication before local installation, but requires Brooks's approval before installing this update. Keep the scheduled weekly update at Saturday 8 am America/New_York.
+Release gate: current Claude Opus extra high review, Codex regressions, packaged checks and rendered sidebar verification. The failed 1.4.1005 package must not be installed or published. The latest installation policy controls rollout. The weekly update starts Saturday 5 am America/New_York.
+
+## October 6 additions, held for Saturday
+
+- **A cleaner chat pod:** Hide Done chats, show only open chats, and automatically collapse folders whose chats are all explicitly marked Done. Idle chats stay visible. In Progress uses consistent capitalization.
+- **Names stay together:** Renaming a sidebar chat also updates its own window tab, including after reopening the saved conversation. Chats sharing a terminal tab keep separate names.
+- **Return to the same conversation:** Pass the saved Codex transcript location through sidebar reopening and cold restoration so the existing trusted history-home resolver can open the exact session after a folder move. Keep account, launch and transcript identity checks.
+- **Working means working:** A verified native Codex Working title from the same local process can clear a stale cancellation after the late-output grace period. Cached, synthetic, remote, replaced and stopped process output cannot use this recovery path. Canonical host status drives the sidebar and tab indicators together.
+- Weekly notes follow the benefit-focused marine voice in the updater's release-note style guide. Clearly separate Agency changes from Updates integrated from stable, preserve upstream scope and attribution, and describe small polish proportionately.
+- Local candidate 1.4.1012 is being prepared. Pause before installation or restart until Brooks gives a new go-ahead. This hold also applies to later candidates containing these changes; a version bump cannot bypass it.
 
 ## Immediate CI hotfix, October 4, 2026
 

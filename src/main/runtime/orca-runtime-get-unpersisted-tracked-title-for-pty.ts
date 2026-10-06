@@ -6,6 +6,7 @@ import type { RuntimePtyTitleTrackerEntry } from './runtime-terminal-state-recor
 import { createTerminalTitleTracker } from '../../shared/terminal-output-side-effects'
 import { detectAgentStatusFromTitle } from '../../shared/agent-detection'
 import { AGENT_WORKING_TITLE_REFRESH_AFTER_MS } from '../../shared/agent-working-title-freshness'
+import { isCancelledCodexStatus } from '../../shared/codex-cancelled-status-recovery'
 import { resolveAgentStatusBinding } from '../ipc/agent-status-ipc-boundary'
 import { pruneOldestMapEntry } from './prune-oldest-map-entry'
 import type { TerminalGitHubPRLink } from '../../shared/terminal-github-pr-link-detector'
@@ -176,8 +177,24 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
                 const observed = this.readObservedAgentStatusPaneIdentityFn(paneKey)
                 const current = resolveAgentStatusBinding(paneKey, this)
                 const row = (this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []).find(
-                  (row) => row.state === 'working' && row.agentType === 'codex'
+                  (row) =>
+                    row.agentType === 'codex' &&
+                    (row.state === 'working' || isCancelledCodexStatus(row))
                 )
+                // Why: an inferred Escape cancellation can outlive a recovered compact. Only
+                // fresh provider bytes from the already observed process can contradict it.
+                const recoversCancelled =
+                  row &&
+                  isCancelledCodexStatus(row) &&
+                  !row.restoredUnconfirmed &&
+                  this.graphStatus === 'ready' &&
+                  observed.kind === 'observed' &&
+                  current.kind === 'pane' &&
+                  this.ptysById.get(ptyId)?.connected === true &&
+                  (row.connectionId ?? null) === null &&
+                  (this.ptysById.get(ptyId)?.connectionId ?? null) === null &&
+                  this.ptysById.get(ptyId)?.lastAgentStatus === 'working' &&
+                  this.ptysById.get(ptyId)?.lastAgentStatusObservedLive === true
                 const confirmsRestored =
                   row?.restoredUnconfirmed === true &&
                   this.graphStatus === 'ready' &&
@@ -199,6 +216,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
                   !row ||
                   (row.restoredUnconfirmed && !confirmsRestored) ||
                   (!confirmsRestored &&
+                    !recoversCancelled &&
                     nowMs - (row.evidenceObservedAt ?? row.receivedAt) <=
                       AGENT_WORKING_TITLE_REFRESH_AFTER_MS)
                 ) {
@@ -210,6 +228,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
                   {
                     evidenceOnly: true,
                     observedTerminalHandle: current.terminalHandle,
+                    ...(recoversCancelled ? { recoverCancelledWorkingTitle: true } : {}),
                     ...(confirmsRestored
                       ? {
                           confirmRestoredWorkingTitle: true,

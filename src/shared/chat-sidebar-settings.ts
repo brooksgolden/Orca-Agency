@@ -56,6 +56,10 @@ export type ChatSidebarSettings = {
   view?: 'chats' | 'workspaces'
   groupBy?: 'recent' | 'status' | 'folder'
   showOnlyInProgress?: boolean
+  showOnlyOpenChats?: boolean
+  collapseDoneFolders?: boolean
+  /** Folder headings manually expanded while automatic Done-folder collapse is enabled. */
+  expandedDoneFolders?: string[]
   /** Unchecked folder labels; new folders remain visible by default. */
   hiddenFolders?: string[]
   /** Automation-owned tab/pane and provider identities; retained after run cleanup. */

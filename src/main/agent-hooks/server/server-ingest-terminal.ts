@@ -7,6 +7,9 @@ import type { ParsedAgentStatusPayload } from '../../../shared/agent-status-type
 import { AGENT_WORKING_TITLE_REFRESH_AFTER_MS } from '../../../shared/agent-working-title-freshness'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-status-fold'
+import { isCancelledCodexStatus } from '../../../shared/codex-cancelled-status-recovery'
+import { setCodexMainAgentTurnState } from '../../../shared/agent-hook-listener/providers/codex-state'
+import { INTERRUPTED_DONE_LATE_WORKING_SUPPRESSION_MS } from './server-constants'
 import { AgentHookServerIngestNormalization } from './server-ingest-normalization'
 
 export abstract class AgentHookServerIngestTerminal extends AgentHookServerIngestNormalization {
@@ -27,6 +30,8 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     observedTerminalHandle?: string
     /** Fresh native Codex output from the same retained local terminal. */
     confirmRestoredWorkingTitle?: true
+    /** Same-process native Working after an inferred cancellation, verified by the local runtime. */
+    recoverCancelledWorkingTitle?: true
     /** Current local PTY launch authority; checked against any durable commitment. */
     restoredLaunchToken?: string
   }): void {
@@ -77,6 +82,15 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         previous.payload.agentType === 'codex' &&
         (previous.connectionId ?? null) === null &&
         (event.connectionId ?? null) === null
+      const recoversCancelled =
+        event.recoverCancelledWorkingTitle === true &&
+        previous &&
+        isCancelledCodexStatus(previous.payload) &&
+        !previous.restoredUnconfirmed &&
+        (!previous.terminalHandle || previous.terminalHandle === event.terminalHandle) &&
+        (previous.connectionId ?? null) === null &&
+        (event.connectionId ?? null) === null &&
+        Date.now() - previous.receivedAt > INTERRUPTED_DONE_LATE_WORKING_SUPPRESSION_MS
       const savedLaunchTokenHash = previous?.restoredUnconfirmed
         ? (this.hydratedLaunchTokenHashByPaneKey.get(paneKey) ??
           this.persistedAuthorityCommitmentsByPaneKey.get(paneKey)?.launchTokenHash ??
@@ -100,8 +114,10 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         previous.providerSessionOnly ||
         previous.structuredHost ||
         event.payload.state !== 'working' ||
-        previous.payload.state !== 'working' ||
-        (previous.payload.mainAgent && previous.payload.mainAgent.state !== 'working') ||
+        (!recoversCancelled && previous.payload.state !== 'working') ||
+        (!recoversCancelled &&
+          previous.payload.mainAgent &&
+          previous.payload.mainAgent.state !== 'working') ||
         !event.payload.agentType ||
         event.payload.agentType === 'unknown' ||
         previous.payload.agentType !== event.payload.agentType ||
@@ -111,9 +127,39 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
         previous.worktreeId !== event.worktreeId ||
         (previous.connectionId ?? null) !== (event.connectionId ?? null) ||
         (!confirmsRestored &&
+          !recoversCancelled &&
           Date.now() - (previous.evidenceObservedAt ?? previous.receivedAt) <=
             AGENT_WORKING_TITLE_REFRESH_AFTER_MS)
       ) {
+        return
+      }
+      if (recoversCancelled) {
+        const mainAgent = setCodexMainAgentTurnState(this.state, paneKey, {
+          state: 'working',
+          stateStartedAt: previous.turnStartedAt ?? previous.stateStartedAt,
+          model: previous.payload.model
+        })
+        // Why: correcting status is not a new prompt; preserve interaction clocks and resume identity.
+        this.refreshTerminalStatusEvidence(
+          {
+            ...previous,
+            source: undefined,
+            hookEventName: undefined,
+            payload: {
+              state: 'working',
+              agentType: 'codex',
+              prompt: previous.payload.prompt,
+              model: previous.payload.model,
+              subagents: previous.payload.subagents,
+              mainAgent
+            }
+          },
+          previous,
+          true,
+          'osc',
+          event.terminalHandle
+        )
+        this.notifyStatusChangeListeners()
         return
       }
       this.refreshTerminalStatusEvidence(

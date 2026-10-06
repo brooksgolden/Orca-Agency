@@ -24,6 +24,7 @@ import { activateResidentSidebarChat, openSavedSidebarChat } from './chat-sideba
 import { startSavedChatDrag } from './chat-sidebar-saved-drag'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
 import { chatSidebarListItems, chatSidebarItemHeight } from './chat-sidebar-groups'
+import { useChatSidebarSectionToggle } from './use-chat-sidebar-section-toggle'
 import {
   chatFolderDestinations,
   changeChatFolder,
@@ -36,7 +37,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const { rows, state, history } = useChatSidebarData()
   const splits = useAppStore((s) => s.workspaceSplitGroups)
   const collapsedGroups = useAppStore((s) => s.collapsedGroups)
-  const toggleCollapsedGroup = useAppStore((s) => s.toggleCollapsedGroup)
+  const toggleSection = useChatSidebarSectionToggle()
   const panes = useAppStore(
     useShallow((s) => ({
       groupsByWorktree: s.groupsByWorktree,
@@ -210,7 +211,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
                     aria-expanded={!entry.collapsed}
                     data-chat-section={entry.id}
                     className="flex h-7 w-full items-center justify-between rounded-sm px-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
-                    onClick={() => toggleCollapsedGroup(entry.id)}
+                    onClick={() => toggleSection(entry)}
                   >
                     <span>{entry.label}</span>
                     {entry.collapsed ? (

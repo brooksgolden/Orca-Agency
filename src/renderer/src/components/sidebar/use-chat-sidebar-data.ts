@@ -6,7 +6,7 @@ import { useAiVaultSessionWorktreeMap } from '../right-sidebar/ai-vault-session-
 import { DEFAULT_AI_VAULT_SESSION_LIMIT } from '../right-sidebar/ai-vault-session-limit'
 import { ALL_EXECUTION_HOSTS_SCOPE } from '../../../../shared/execution-host'
 import { buildChatSidebarRows, chatSidebarWorktrees } from './chat-sidebar-rows'
-import { updateChatSidebar } from './chat-sidebar-preferences'
+import { updateChatSidebar, syncChatSidebarTabTitles } from './chat-sidebar-preferences'
 import { chatSidebarPreferencePatch } from './chat-sidebar-identity'
 import { classifyUnscannedClaudeHistory } from './chat-sidebar-headless-history'
 import type { ChatSidebarState } from './chat-sidebar-types'
@@ -62,6 +62,7 @@ export function useChatSidebarData() {
     [state, history.sessions, now, sessionWorktrees]
   )
   useEffect(() => {
+    syncChatSidebarTabTitles(rows)
     void updateChatSidebar((current) =>
       chatSidebarPreferencePatch(rows, current, Date.now(), { scannedSessions: history.sessions })
     )

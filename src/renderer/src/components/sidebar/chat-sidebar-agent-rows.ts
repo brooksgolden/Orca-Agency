@@ -197,7 +197,7 @@ export function buildAgentChatRows(args: {
     const sessionAt = session ? chatSessionTime(session) : agent.tab.createdAt
     const title =
       rowConversationName(
-        nameSource,
+        soleChat ? nameSource : { ...nameSource, tab: { ...nameSource.tab, customTitle: null } },
         state.settings?.tabAutoGenerateTitle === true,
         state.terminalLayoutsByTabId[agent.tab.id],
         state.runtimePaneTitlesByTabId[agent.tab.id]
@@ -210,7 +210,7 @@ export function buildAgentChatRows(args: {
       sessionKey,
       agentType: sessionAgent ?? agent.agentType,
       title,
-      manualTitle: agent.tab.customTitle?.trim() || null,
+      manualTitle: soleChat ? agent.tab.customTitle?.trim() || null : null,
       folder: args.folder,
       worktree,
       hostId,

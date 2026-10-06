@@ -16,7 +16,7 @@ describe('workspace chat groups', () => {
     ]
     const items = chatSidebarListItems(rows, source, '', [], new Set(['chat:status:In progress']))
     expect(items.filter((item) => item.kind === 'heading')).toEqual([
-      { kind: 'heading', id: 'chat:status:In progress', label: 'In progress (2)', collapsed: true },
+      { kind: 'heading', id: 'chat:status:In progress', label: 'In Progress (2)', collapsed: true },
       { kind: 'heading', id: 'chat:status:Done', label: 'Done (1)', collapsed: false }
     ])
     expect(items.filter((item) => item.kind === 'chat').map((item) => item.id)).toEqual(['closed'])
@@ -142,7 +142,7 @@ describe('workspace chat groups', () => {
       ['child', true, true],
       ['other', false, true]
     ])
-    expect(items[0]).toMatchObject({ kind: 'heading', label: 'In progress (3)' })
+    expect(items[0]).toMatchObject({ kind: 'heading', label: 'In Progress (3)' })
     expect(
       chatSidebarListItems([main, { ...child, completed: true, state: 'idle' }], state, '')[0]
     ).toMatchObject({ label: 'Done (2)' })

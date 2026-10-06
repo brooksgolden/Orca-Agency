@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
 import { prepareAiVaultSessionForResume } from './ai-vault-session-resume-preparation'
+import { getAiVaultAgentProviderSession } from './ai-vault-resume-command'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -43,6 +44,12 @@ describe('prepareAiVaultSessionForResume', () => {
     const prepared = await prepareAiVaultSessionForResume(legacy)
 
     expect(prepared.codexHome).toBeNull()
+    expect(
+      getAiVaultAgentProviderSession({
+        ...prepared,
+        filePath: `${legacy.codexHome}/sessions/2026/07/20/rollout-session-1.jsonl`
+      })
+    ).toEqual({ key: 'session_id', id: legacy.sessionId })
     expect(prepareSessionResume).toHaveBeenCalledWith({
       agent: 'codex',
       sessionId: legacy.sessionId,
@@ -92,6 +99,12 @@ describe('prepareAiVaultSessionForResume', () => {
     const prepared = await prepareAiVaultSessionForResume(current)
 
     expect(prepared.codexHome).toBe('/tmp/orca/codex-accounts/account-2/home')
+    expect(
+      getAiVaultAgentProviderSession({
+        ...prepared,
+        filePath: `${current.codexHome}/sessions/2026/07/20/rollout-session-1.jsonl`
+      })
+    ).toEqual({ key: 'session_id', id: current.sessionId })
     expect(prepareSessionResume).toHaveBeenCalledWith({
       agent: 'codex',
       sessionId: current.sessionId,

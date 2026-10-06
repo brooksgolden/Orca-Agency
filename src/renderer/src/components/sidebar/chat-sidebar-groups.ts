@@ -5,7 +5,7 @@ import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
 import { chatSidebarPaneGroups, type ChatPaneLayout } from './chat-sidebar-pane-groups'
 
 export type ChatSidebarListItem =
-  | { kind: 'heading'; label: string; id: string; collapsed: boolean }
+  | { kind: 'heading'; label: string; id: string; collapsed: boolean; doneFolder?: string }
   | {
       kind: 'chat'
       row: ChatSidebarRow
@@ -38,11 +38,18 @@ export function chatSidebarListItems(
   const matches = (row: ChatSidebarRow) =>
     `${row.title}\n${row.folder}`.toLocaleLowerCase().includes(text)
   const byWorkspace = new Map<string, ChatSidebarRow[]>()
+  const folderCompletion = new Map<string, boolean>()
+  for (const row of rows) {
+    if (!row.automated) {
+      folderCompletion.set(row.folder, (folderCompletion.get(row.folder) ?? true) && row.completed)
+    }
+  }
   for (const row of rows) {
     if (
       row.automated ||
       hiddenFolders.includes(row.folder) ||
-      (settings?.showOnlyInProgress && row.completed)
+      (settings?.showOnlyInProgress && row.completed) ||
+      (settings?.showOnlyOpenChats && !row.tabId)
     ) {
       continue
     }
@@ -110,14 +117,22 @@ export function chatSidebarListItems(
       return []
     }
     const headingId = `chat:${groupBy}:${key}`
-    const collapsed = collapsedGroups?.has(headingId) ?? false
+    const doneFolder =
+      groupBy === 'folder' && settings?.collapseDoneFolders && folderCompletion.get(key)
+        ? key
+        : undefined
+    const collapsed =
+      (collapsedGroups?.has(headingId) ?? false) ||
+      (doneFolder !== undefined && !settings?.expandedDoneFolders?.includes(doneFolder))
+    const label = groupBy === 'status' && key === 'In progress' ? 'In Progress' : key
     const items: ChatSidebarListItem[] = key
       ? [
           {
             kind: 'heading',
             id: headingId,
             collapsed,
-            label: `${key} (${section.reduce((sum, set) => sum + set.groups.reduce((count, group) => count + group.members.length, 0), 0)})`
+            doneFolder,
+            label: `${label} (${section.reduce((sum, set) => sum + set.groups.reduce((count, group) => count + group.members.length, 0), 0)})`
           }
         ]
       : []

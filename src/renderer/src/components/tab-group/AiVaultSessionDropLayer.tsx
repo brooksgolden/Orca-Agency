@@ -266,7 +266,10 @@ export default function AiVaultSessionDropLayer({
           const providerSession = getAiVaultAgentProviderSession({
             agent: payload.agent,
             sessionId: payload.sessionId,
-            filePath: payload.sessionFilePath
+            filePath: payload.sessionFilePath,
+            codexHome: result.useRealCodexHome
+              ? null
+              : (result.substituteCodexHome ?? payload.codexHome)
           })
           const launchResult = launchAiVaultSessionInNewTab({
             agent: payload.agent,

@@ -98,6 +98,7 @@ const terminalTabSchema = z.object({
     .catch(undefined),
   quickCommandLabel: z.string().nullable().optional(),
   customTitle: z.string().nullable(),
+  sidebarTitleId: z.string().optional(),
   color: z.string().nullable(),
   isPinned: z.boolean().optional(),
   // Why: recovery asks the terminal row who owns the surface, so a row that

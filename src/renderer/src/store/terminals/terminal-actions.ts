@@ -134,6 +134,8 @@ export type TerminalActions = {
     title: string | null,
     opts?: {
       recordInteraction?: boolean
+      sidebarTitleId?: string
+      syncSidebarTitle?: boolean
     }
   ) => void
   setTabColor: (tabId: string, color: string | null) => void

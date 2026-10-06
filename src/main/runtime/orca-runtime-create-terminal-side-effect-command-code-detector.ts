@@ -94,6 +94,7 @@ export class OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector extends 
       evidenceOnly?: true
       observedTerminalHandle?: string
       confirmRestoredWorkingTitle?: true
+      recoverCancelledWorkingTitle?: true
       restoredLaunchToken?: string
     }
   ): void {

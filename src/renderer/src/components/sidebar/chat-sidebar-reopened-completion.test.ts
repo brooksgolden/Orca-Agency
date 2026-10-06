@@ -100,7 +100,7 @@ describe('resuming a chat previously completed by tab close', () => {
     const splits = placeWorkspaceAtEdge([], other.worktree.id, chatWorktree.id, 'right', 'split')
     const items = chatSidebarListItems([reopened, other], state, '', splits)
     expect(items.filter((item) => item.kind === 'heading').map((item) => item.label)).toEqual([
-      'In progress (2)'
+      'In Progress (2)'
     ])
     expect(items.filter((item) => item.kind === 'chat').map((item) => item.splitId)).toEqual([
       'split',
@@ -153,7 +153,7 @@ describe('resuming a chat previously completed by tab close', () => {
     const threePanes = placeWorkspaceAtEdge(split, 'third', 'coding', 'bottom', 'visible')
     const items = chatSidebarListItems([restored, ...siblings], state, '', threePanes)
     expect(items.filter((item) => item.kind === 'heading').map((item) => item.label)).toEqual([
-      'In progress (3)'
+      'In Progress (3)'
     ])
     expect(items.filter((item) => item.kind === 'chat').map((item) => item.splitId)).toEqual([
       'visible',

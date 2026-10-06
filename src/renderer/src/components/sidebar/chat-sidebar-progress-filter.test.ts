@@ -35,7 +35,7 @@ describe('chat sidebar in-progress filter', () => {
         true
       ])
       expect(items.filter((item) => item.kind === 'heading').map((item) => item.label)).toEqual(
-        groupBy === 'recent' ? [] : [groupBy === 'folder' ? 'Acme (2)' : 'In progress (2)']
+        groupBy === 'recent' ? [] : [groupBy === 'folder' ? 'Acme (2)' : 'In Progress (2)']
       )
     }
   )

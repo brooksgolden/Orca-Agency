@@ -10,6 +10,11 @@ import {
   type SleepingAgentLaunchConfig
 } from '../../../shared/agent-session-resume'
 import { normalizeAiVaultResumeFilePath } from '../../../shared/ai-vault-resume-path'
+import { relativePathInsideRoot } from '../../../shared/cross-platform-path'
+import {
+  isLegacySharedCodexHome,
+  isPerAccountManagedCodexHome
+} from '../../../shared/ai-vault-resume-preparation'
 import {
   resolveTuiAgentLaunchArgs,
   resolveTuiAgentLaunchEnv
@@ -251,7 +256,10 @@ function resolveAiVaultResumeShell(args: AiVaultResumeWorktreeArgs): AgentStartu
 }
 
 export function getAiVaultAgentProviderSession(
-  session: Pick<AiVaultSession, 'agent' | 'sessionId'> & { filePath?: string }
+  session: Pick<AiVaultSession, 'agent' | 'sessionId'> & {
+    filePath?: string
+    codexHome?: string | null
+  }
 ): AgentProviderSessionMetadata | null {
   if (!isResumableTuiAgent(session.agent)) {
     return null
@@ -264,7 +272,29 @@ export function getAiVaultAgentProviderSession(
       ? { key: 'session_id', id: session.sessionId, transcriptPath: session.filePath }
       : null
   }
+  if (session.agent === 'codex' && session.filePath && codexTranscriptMatchesResumeHome(session)) {
+    // Why: the transcript identifies the history home even after moving the workspace.
+    return { key: 'session_id', id: session.sessionId, transcriptPath: session.filePath }
+  }
   return { key: 'session_id', id: session.sessionId }
+}
+
+function codexTranscriptMatchesResumeHome(session: {
+  filePath?: string
+  codexHome?: string | null
+}): boolean {
+  if (session.codexHome === undefined) {
+    return true
+  }
+  if (session.codexHome) {
+    // Why: host preparation may repin a bridged rollout to the selected account.
+    // An alias in the old account must not override that choice at spawn.
+    return relativePathInsideRoot(`${session.codexHome}/sessions`, session.filePath ?? '') !== null
+  }
+  const transcriptHome = session.filePath?.replace(/[\\/]sessions[\\/].*$/, '') ?? null
+  // Why: after real-home migration the old managed alias names the wrong auth home;
+  // retain the exact conversation ID and let the host resolve its migrated copy.
+  return !isLegacySharedCodexHome(transcriptHome) && !isPerAccountManagedCodexHome(transcriptHome)
 }
 
 function getAiVaultResumeCodexHome(

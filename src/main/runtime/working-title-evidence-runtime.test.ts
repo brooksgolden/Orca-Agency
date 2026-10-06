@@ -140,6 +140,91 @@ function restoreWorkingRow(context: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe('main runtime working-title evidence', () => {
+  async function cancelledContext() {
+    const context = await setup()
+    context.runtime.onPtyData('pty-1', fixture.frames[1], Date.now())
+    const baseline = context.wiring.statusStore.getStatusSnapshot()[0]
+    expect(context.identities.read(paneKey)).toMatchObject({ kind: 'observed' })
+    vi.setSystemTime(Date.now() + 1)
+    expect(
+      context.wiring.statusStore.inferInterrupt({
+        paneKey,
+        intent: 'ctrl-c',
+        baselineAgentType: 'codex',
+        baselinePrompt: baseline.prompt,
+        baselineUpdatedAt: baseline.receivedAt,
+        baselineStateStartedAt: baseline.stateStartedAt
+      })
+    ).toBe(true)
+    context.listener.mockClear()
+    return context
+  }
+
+  it('clears a cancellation when the same native Codex process resumes after compact recovery', async () => {
+    const context = await cancelledContext()
+    const cancelled = context.wiring.statusStore.getStatusSnapshot()[0]
+    expect(cancelled).toMatchObject({ state: 'done', interrupted: true })
+    vi.setSystemTime(Date.now() + 16_000)
+    context.runtime.onPtyData('pty-1', fixture.frames[1], Date.now())
+    const recovered = context.wiring.statusStore.getStatusSnapshot()[0]
+    expect(recovered).toMatchObject({
+      state: 'working',
+      stateStartedAt: cancelled.stateStartedAt,
+      turnStartedAt: cancelled.turnStartedAt,
+      mainAgent: { state: 'working' },
+      observation: { origin: 'osc' },
+      providerSession: cancelled.providerSession,
+      terminalHandle: context.runtime.getAgentStatusTerminalHandleForPaneKey(paneKey)
+    })
+    expect(recovered.interrupted).toBeUndefined()
+    expect(recovered.mainAgent?.outcome).toBeUndefined()
+    expect(context.listener).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['late-frame', 'synthetic', 'replacement', 'closed', 'settled'])(
+    'does not revive cancellation from %s output',
+    async (kind) => {
+      const context = await cancelledContext()
+      if (kind === 'replacement') {
+        const owner = context.identities.read(paneKey)
+        if (owner.kind !== 'observed') {
+          throw new Error('Missing observed owner')
+        }
+        context.identities.record(paneKey, { ...owner, processIncarnation: 'old-process' })
+      }
+      if (kind === 'closed') {
+        context.runtime.markGraphUnavailable(1)
+      }
+      if (kind === 'settled') {
+        await postHookEvent(
+          context.wiring.statusStore,
+          buildBody(
+            {
+              hook_event_name: 'Stop',
+              session_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+            },
+            { paneKey, worktreeId: TEST_WORKTREE_ID }
+          ),
+          '/hook/codex'
+        )
+      }
+      const previous = context.wiring.statusStore.getStatusSnapshot()[0]
+      context.listener.mockClear()
+      vi.setSystemTime(Date.now() + (kind === 'late-frame' ? 1_000 : 16_000))
+      if (kind === 'synthetic') {
+        context.runtime.ingestSyntheticTitleFrame('pty-1', fixture.frames[1])
+      } else {
+        context.runtime.onPtyData(
+          'pty-1',
+          `${fixture.frames[1]}${kind === 'settled' ? '\x1b]0;Codex idle\x07' : ''}`,
+          Date.now()
+        )
+      }
+      expect(context.wiring.statusStore.getStatusSnapshot()[0]).toEqual(previous)
+      expect(context.listener).not.toHaveBeenCalled()
+    }
+  )
+
   it.each(['retained-launch', null, 'replacement-launch'])(
     'checks the saved launch commitment against %s after real persistence',
     async (launchToken) => {

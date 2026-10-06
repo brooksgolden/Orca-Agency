@@ -151,7 +151,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       .getByRole('button', { name: 'Chat grouping and folder filters', exact: true })
       .click()
     const progressFilter = page.getByRole('menuitemcheckbox', {
-      name: 'Show only in-progress chats',
+      name: 'Hide Done chats',
       exact: true
     })
     await progressFilter.click()

@@ -70,6 +70,8 @@ export type TerminalTab = {
   /** Stable label from the tab-bar Quick Command that created this terminal. */
   quickCommandLabel?: string | null
   customTitle: string | null
+  /** Conversation that supplied a sidebar rename; cleared on a manual tab rename. */
+  sidebarTitleId?: string
   color: string | null
   /** Pinned tabs survive "close others"; host-persisted for remote servers. */
   isPinned?: boolean

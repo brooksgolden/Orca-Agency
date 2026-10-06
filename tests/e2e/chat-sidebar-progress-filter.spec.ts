@@ -79,7 +79,7 @@ test('folder grouping filters Done chats through the menu and persists across re
     .getByRole('button', { name: 'Chat grouping and folder filters', exact: true })
     .click()
   const filter = orcaPage.getByRole('menuitemcheckbox', {
-    name: 'Show only in-progress chats',
+    name: 'Hide Done chats',
     exact: true
   })
   await expect(filter).toHaveAttribute('aria-checked', 'false')
