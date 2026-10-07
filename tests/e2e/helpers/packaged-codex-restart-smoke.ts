@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, type Page } from '@stablyai/playwright-test'
+import { normalizeRuntimePathForComparison } from '../../../src/shared/cross-platform-path'
 
 /** Exercise the packaged main-process replacement guard without an AI request. */
 export async function assertPackagedDefaultHomeCodexRestart(
@@ -51,6 +52,8 @@ export async function assertPackagedDefaultHomeCodexRestart(
       return []
     }
   }
+  const homeKey = (home: string): string =>
+    normalizeRuntimePathForComparison(realpathSync.native(home))
   try {
     const original = await page.evaluate(
       ({ command, folder, worktreeId }) =>
@@ -71,6 +74,12 @@ export async function assertPackagedDefaultHomeCodexRestart(
     await expect
       .poll(() => captureLines().join('\n'), { timeout: 30_000 })
       .toContain('before-restart')
+    const freshLine = captureLines().find((line) => line.includes('before-restart'))!
+    const selectedFreshHome = freshLine.split('|')[2].trim()
+    expect(homeKey(selectedFreshHome)).toBe(
+      homeKey(path.join(path.dirname(isolatedHome), 'codex-runtime-home', 'home'))
+    )
+    expect(homeKey(selectedFreshHome)).not.toBe(homeKey(otherHome))
     const replacement = await page.evaluate(
       ({ command, folder, worktreeId, oldPtyId, sessionId, transcriptPath }) =>
         window.api.pty.spawn({
@@ -99,8 +108,10 @@ export async function assertPackagedDefaultHomeCodexRestart(
       .toContain(`resume ${sessionId}`)
     const defaultLine = captureLines().find((line) => line.startsWith('default-home '))!
     const [, actualUserHome, actualCodexHome] = defaultLine.split('|').map((value) => value.trim())
-    expect(actualUserHome).toBe(isolatedHome)
-    expect(['', codexHome]).toContain(actualCodexHome)
+    expect(homeKey(actualUserHome)).toBe(homeKey(isolatedHome))
+    if (actualCodexHome) {
+      expect(homeKey(actualCodexHome)).toBe(homeKey(codexHome))
+    }
 
     // The ordinary saved-chat path accepts this exact transcript/env and pins its origin.
     const control = await page.evaluate(
@@ -132,10 +143,10 @@ export async function assertPackagedDefaultHomeCodexRestart(
       })
       .toContain(`resume ${secondSessionId}`)
     const controlLine = captureLines().find((line) => line.startsWith('ordinary-resume '))!
-    expect(controlLine.split('|')[2].trim()).toBe(codexHome)
+    expect(homeKey(controlLine.split('|')[2].trim())).toBe(homeKey(codexHome))
     await page.evaluate((id) => window.api.pty.kill(id), control.id)
 
-    // A trusted transcript must still be rejected when today's selected home differs.
+    // This proves custom-home refusal, not the fresh launch's credential identity.
     const rejected = await page.evaluate(
       ({ command, folder, worktreeId, oldPtyId, secondSessionId, secondTranscript, otherHome }) =>
         window.api.pty.spawn({
@@ -172,10 +183,12 @@ export async function assertPackagedDefaultHomeCodexRestart(
       .poll(() => captureLines().find((line) => line.startsWith('changed-home ')) ?? '', {
         timeout: 30_000
       })
-      .toContain(otherHome)
+      .not.toBe('')
     const rejectedLine = captureLines().find((line) => line.startsWith('changed-home '))!
     expect(rejectedLine).not.toContain(`resume ${secondSessionId}`)
-    expect(rejectedLine.split('|')[2].trim()).toBe(otherHome)
+    expect(rejectedLine.split('|')[3].trim()).not.toMatch(/\bresume\b/)
+    // Windows' selected runtime home overrides a spawn-only env path on fresh launches.
+    expect(homeKey(rejectedLine.split('|')[2].trim())).toBe(homeKey(selectedFreshHome))
   } finally {
     for (const id of ownedPtyIds.toReversed()) {
       await page.evaluate((ownedId) => window.api.pty.kill(ownedId), id).catch(() => {})

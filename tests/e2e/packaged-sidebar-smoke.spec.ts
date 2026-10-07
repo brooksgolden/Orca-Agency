@@ -1,40 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { _electron as electron, test, expect, type Page } from '@stablyai/playwright-test'
+import { _electron as electron, test, expect } from '@stablyai/playwright-test'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-retry'
 import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
+import { waitForPackagedNativeShellInput } from './helpers/packaged-native-shell-readiness'
 
 function readShellOutput(file: string): string {
   const bytes = readFileSync(file)
   return bytes.toString(bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf16le' : 'utf8')
-}
-
-async function waitForNativeShellInput(page: Page, worktreeId: string): Promise<void> {
-  if (process.platform !== 'win32') {
-    return
-  }
-  // Wait for the live PTY's focus mode; this alone does not prove PSReadLine readiness.
-  await expect
-    .poll(
-      () =>
-        page.evaluate(async (id) => {
-          const session = (await window.api.pty.listSessions()).find(
-            (session) => session.worktreeId === id
-          )
-          if (!session) {
-            return false
-          }
-          const snapshot = await window.api.pty.getMainBufferSnapshot(session.id, {
-            scrollbackRows: 10
-          })
-          return snapshot?.data.includes('\x1b[?1004h') ?? false
-        }, worktreeId),
-      { timeout: 30_000 }
-    )
-    .toBe(true)
 }
 
 // Run against the production executable, without the test-only renderer store.
@@ -143,7 +119,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
         timeout: 30_000
       })
       .toBe(1)
-    await waitForNativeShellInput(page, `folder:${ids[0]}`)
+    await waitForPackagedNativeShellInput(page, `folder:${ids[0]}`)
     await page.keyboard.type('echo FIRST_WORKSPACE_SMOKE > smoke-output.txt')
     await page.keyboard.press('Enter')
     await expect
@@ -170,7 +146,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
         timeout: 30_000
       })
       .toBe(2)
-    await waitForNativeShellInput(page, `folder:${ids[1]}`)
+    await waitForPackagedNativeShellInput(page, `folder:${ids[1]}`)
     await page.keyboard.type('echo SECOND_WORKSPACE_SMOKE > smoke-output.txt')
     await page.keyboard.press('Enter')
     await expect
