@@ -98,6 +98,8 @@ export const HIGH_PRIORITY_MAX_WRITES_PER_DRAIN = 8
 const BULK_QUEUE_THRESHOLD = 16
 const BULK_QUEUE_RELEASE_THRESHOLD = 8
 export const DRAIN_TIME_BUDGET_MS = 8
+// Why: shorter bulk turns leave room for keyboard events while many panes redraw.
+export const BULK_DRAIN_TIME_BUDGET_MS = 4
 export const LARGE_BACKLOG_CHARS = 512 * 1024
 // Why mutable: the cap scales with the user's scrollback setting (terminalOutputBacklogCapChars), configured when settings apply; the chunk-count cap stays fixed.
 let maxQueueChars = TERMINAL_OUTPUT_BACKLOG_MIN_CAP_CHARS
@@ -182,6 +184,10 @@ export function isMessageChannelDrainEnabled(): boolean {
 export function markTerminalOutputDrainStarted(): void {
   drainTimer = null
   drainTimerDelayMs = null
+}
+
+export function terminalOutputDrainTimeBudgetMs(): number {
+  return bulkDrainPacing ? BULK_DRAIN_TIME_BUDGET_MS : DRAIN_TIME_BUDGET_MS
 }
 
 export function scheduleDrain(delayMs: number): void {
