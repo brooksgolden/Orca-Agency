@@ -107,6 +107,7 @@ export async function resolveCodexReplacementResumeLaunch(args: {
   prepared: PreparedCodexResumeHome
   resolveLaunch: typeof resolveCodexResumeLaunch
   resolveCurrentHome: () => Promise<string | null>
+  isEquivalentDefaultHome?: (verifiedHome: string, currentHome: string | null) => boolean
 }): Promise<CodexResumeLaunch> {
   const prepared = await args.prepared.preparation.catch(() => ({
     outcome: 'fresh' as const,
@@ -116,9 +117,13 @@ export async function resolveCodexReplacementResumeLaunch(args: {
     ...args.prepared,
     preparation: Promise.resolve(prepared)
   })
+  if (!launch.codexResumeHome) {
+    return launch
+  }
+  const currentHome = await args.resolveCurrentHome()
   if (
-    !launch.codexResumeHome ||
-    codexHomePathsEqual(await args.resolveCurrentHome(), launch.codexResumeHome.codexHomePath)
+    codexHomePathsEqual(currentHome, launch.codexResumeHome.codexHomePath) ||
+    args.isEquivalentDefaultHome?.(launch.codexResumeHome.codexHomePath, currentHome)
   ) {
     return launch
   }

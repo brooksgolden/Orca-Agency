@@ -8,6 +8,7 @@ import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-ret
 import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
 import { assertPackagedDefaultHomeCodexRestart } from './helpers/packaged-codex-restart-smoke'
 import { assertPackagedMouseHistory } from './helpers/packaged-mouse-history-smoke'
+import { assertPackagedChatFilterHighlight } from './helpers/packaged-chat-filter-highlight'
 
 test('packaged chat sidebar restores closed chats and resumes one exact session', async (// oxlint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture argument.
 {}, testInfo) => {
@@ -31,7 +32,13 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
   const app = await electron.launch({
     executablePath,
     args: [],
-    env: { ...isolation.env, ORCA_BACKGROUND_LAUNCH: '1', ORCA_E2E_HEADLESS: '1' }
+    env: {
+      ...isolation.env,
+      ORCA_BACKGROUND_LAUNCH: '1',
+      ORCA_E2E_HEADLESS: '1',
+      // Why: use Playwright's established compositor capture path for this hidden fixture.
+      PLAYWRIGHT_LEGACY_SCREENSHOT: '1'
+    }
   })
   try {
     await assertPackagedExecutableIdentity(app, executablePath)
@@ -41,6 +48,16 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     expect(await retryTransientMainEvaluate(() => app.evaluate(({ app }) => app.isPackaged))).toBe(
       true
     )
+    expect(
+      await retryTransientMainEvaluate(() =>
+        app.evaluate(({ app }) =>
+          app.commandLine
+            .getSwitchValue('enable-features')
+            .split(',')
+            .includes('CDPScreenshotNewSurface')
+        )
+      )
+    ).toBe(false)
     const page = await app.firstWindow()
     await app.evaluate(({ BrowserWindow }) => {
       for (const window of BrowserWindow.getAllWindows()) {
@@ -48,7 +65,9 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       }
     })
     await page.waitForFunction(() => Boolean(window.api))
-    const nativeArchitecture = await app.evaluate(() => process.arch)
+    const nativeArchitecture = await retryTransientMainEvaluate(() =>
+      app.evaluate(() => process.arch)
+    )
     if (process.platform === 'win32' && nativeArchitecture === 'arm64') {
       const speechPolicy = await page.evaluate(async () => {
         const catalog = await window.api.speech.getCatalog()
@@ -205,18 +224,17 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     })
     await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
     const inactiveBox = await filterButton.boundingBox()
+    expect(inactiveBox).not.toBeNull()
+    if (!inactiveBox) {
+      throw new Error('Filter button has no visible bounds')
+    }
     for (const option of ['Hide Done chats', 'Show only open chats', 'Collapse Done folders']) {
+      await expect(page.getByRole('menu')).toHaveCount(0)
       await filterButton.click()
       await page.getByRole('menuitemcheckbox', { name: option, exact: true }).click()
       await page.keyboard.press('Escape')
       await expect(filterButton).toHaveAttribute('data-filters-active', 'true')
-      expect(await filterButton.evaluate((node) => getComputedStyle(node).borderTopWidth)).toBe(
-        '1px'
-      )
-      expect((await filterButton.boundingBox())?.width).toBe(inactiveBox?.width)
-      await page.screenshot({
-        path: testInfo.outputPath(`filter-active-${option.replaceAll(' ', '-')}.png`)
-      })
+      await assertPackagedChatFilterHighlight(filterButton, inactiveBox.width)
       await filterButton.click()
       await page.getByRole('menuitemcheckbox', { name: option, exact: true }).click()
       await page.keyboard.press('Escape')
@@ -305,18 +323,28 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       )
     ).toBe(true)
   } catch (error) {
-    const page = await app.firstWindow()
-    await page.screenshot({ path: testInfo.outputPath('packaged-chat-failure.png') })
-    const terminals = await page.evaluate(async () => {
-      const sessions = await window.api.pty.listSessions()
-      return Promise.all(
-        sessions.map(async (session) => ({
-          id: session.id,
-          buffer: await window.api.pty.getMainBufferSnapshot(session.id, { scrollbackRows: 50 })
-        }))
+    try {
+      const page = await app.firstWindow()
+      await page.screenshot({
+        path: testInfo.outputPath('packaged-chat-failure.png'),
+        timeout: 5000
+      })
+      const terminals = await page.evaluate(async () => {
+        const sessions = await window.api.pty.listSessions()
+        return Promise.all(
+          sessions.map(async (session) => ({
+            id: session.id,
+            buffer: await window.api.pty.getMainBufferSnapshot(session.id, { scrollbackRows: 50 })
+          }))
+        )
+      })
+      writeFileSync(
+        testInfo.outputPath('resume-terminals.json'),
+        JSON.stringify(terminals, null, 2)
       )
-    })
-    writeFileSync(testInfo.outputPath('resume-terminals.json'), JSON.stringify(terminals, null, 2))
+    } catch (diagnosticError) {
+      console.warn('Packaged failure diagnostics unavailable:', diagnosticError)
+    }
     throw error
   } finally {
     await closeElectronAppForE2E(app)

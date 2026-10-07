@@ -92,3 +92,10 @@ Candidate 1.4.1007 failed its packaging guard and was not installed or published
 - Upstream [issue 11363](https://github.com/stablyai/orca/issues/11363#issuecomment-6011711000) records progressive paste/output, system-wide CPU symptoms and network timeouts, with the comparison to four Cursor terminals on one monitor and one or two on another. The network cause and severe-stall cause remain unconfirmed.
 - Retain the October 10 05:00 America/New_York publication deferral and Brooks's current installation/restart hold. Saturday must reconcile these backports with the new stable before packaging, repeat Claude and Codex checks, and verify the exact package without dropping features or claiming unmeasured gains.
 - Use open [Windows ARM64 PR 9026](https://github.com/stablyai/orca/pull/9026) as a reference for architecture-specific packaging, unsupported local speech and independent helper binaries. It has no completed release pipeline; preserve Agency's terminal ownership fixes and do not copy its branch wholesale.
+
+## Windows Codex restart verification, October 7, 2026
+
+- Recognize the default Windows launch mirror and the verified system history home as the same default account when no managed account or custom home is selected. Retain the verified transcript's origin and exact conversation ID. Unknown settings, managed accounts, custom homes and other hosts retain the existing rejection path.
+- The rebuilt 1.4.1014 package must pass both exact-conversation replacement and changed-home rejection before local installation. The earlier candidate failed the default Windows restart check and must not ship.
+- Retain bundled ConPTY 1.23 for this candidate. The official ARM64 1.25 comparison was mixed and included a four-second outlier. Findings and the user-marked hardware window are in [the performance investigation](conpty-performance-investigation-2026-10-07.md). Progressive paste and system-wide stalls remain unresolved.
+- Brooks authorized automatic verified local installation and restart. Public changes remain held for the October 10 update at 05:00 America/New_York.

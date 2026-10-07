@@ -9,7 +9,11 @@ import { ensureCodexStateDbBackfillRecoveryStarted } from '../../../codex/codex-
 import { buildPtyHostEnv } from '../host-env/assembly'
 import { resolveCodexReplacementResumeLaunch } from '../host-env/codex-resume'
 import { getCustomCodexHomeOverrideForLaunch } from '../../../codex/codex-real-home-path'
-import { getSystemCodexHomePath } from '../../../codex/codex-home-paths'
+import {
+  getSystemCodexHomePath,
+  resolveOrcaManagedCodexHomePath
+} from '../../../codex/codex-home-paths'
+import { isSystemDefaultCodexHomeEquivalent } from '../../../codex-accounts/system-default-home-equivalence'
 import {
   getCompatibleSelectedCodexHomePath,
   getCodexSelectionTargetForPty,
@@ -52,6 +56,16 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
           command: args.command,
           prepared: codexResumePreparation,
           resolveLaunch: ctx.deps.resolveCodexResumeLaunch,
+          isEquivalentDefaultHome: (verifiedHome, currentHome) =>
+            isSystemDefaultCodexHomeEquivalent({
+              target: ctx.codexSelectionTarget,
+              settings: ctx.deps.getSettings?.(),
+              hasCustomHome: getCustomCodexHomeOverrideForLaunch(ctx.baseEnv) !== null,
+              verifiedHome,
+              currentHome,
+              systemHome: getSystemCodexHomePath(),
+              sharedHome: resolveOrcaManagedCodexHomePath()
+            }),
           resolveCurrentHome: async () => {
             const selected = getCompatibleSelectedCodexHomePath(
               ctx.codexSelectionTarget,
