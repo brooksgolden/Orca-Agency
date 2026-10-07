@@ -6,6 +6,7 @@
  * CI runs the default xdotool injector under X11, checking exact Hangul-plus-digit PTY bytes.
  * That path passed even before the Wayland fix; it does not prove #15299 is fixed.
  * Reproducing #15299 still requires the nested Wayland session below.
+ * Nested injection holds keys 80 ms; instant presses can vanish in IBus before Chromium.
  *
  * To run the Wayland reproduction on a machine with gnome-shell and ibus-hangul:
  *
@@ -64,6 +65,7 @@ import {
 } from './terminal-ime-byte-reader'
 
 const NATIVE_COMMAND_TIMEOUT_MS = 10_000
+// Why: instant xdotool presses race IBus replies; 80 ms matches a physical key hold.
 const NESTED_KEY_HOLD_MS = 80
 const keyHoldWait = new Int32Array(new SharedArrayBuffer(4))
 const REPETITIONS = Number(process.env.ORCA_E2E_DIGIT_REPETITIONS ?? 3)
