@@ -49,15 +49,20 @@ export function ChatSidebarOptions() {
     [state]
   )
   const hiddenCount = folders.filter((folder) => hiddenFolders?.includes(folder)).length
-  const label = hiddenCount
-    ? `Chat grouping and folder filters (${hiddenCount} hidden)`
-    : 'Chat grouping and folder filters'
+  const hasActiveFilters = showOnlyInProgress || showOnlyOpenChats || collapseDoneFolders
+  const label = `Chat grouping and folder filters${hasActiveFilters ? ', filters active' : ''}${hiddenCount ? ` (${hiddenCount} hidden)` : ''}`
   return (
     <DropdownMenu modal={false}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-xs" aria-label={label} className="relative">
+            <Button
+              variant={hasActiveFilters ? 'outline' : 'ghost'}
+              size="icon-xs"
+              aria-label={label}
+              data-filters-active={hasActiveFilters}
+              className="relative"
+            >
               <SlidersHorizontal className="size-3.5" />
               {hiddenCount > 0 ? (
                 <span

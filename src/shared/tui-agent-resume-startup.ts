@@ -7,7 +7,11 @@ import type { SessionOptionValue } from './native-chat-session-options'
 import { buildSleepingAgentLaunchConfig } from './sleeping-agent-launch-config'
 import { resolveAgentLaunchCommand } from './tui-agent-launch-command'
 import type { AgentStartupPlan } from './tui-agent-startup'
-import { resolveStartupShell, type AgentStartupShell } from './tui-agent-startup-shell'
+import {
+  resolveStartupShell,
+  tokenizeStartupCommand,
+  type AgentStartupShell
+} from './tui-agent-startup-shell'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import type { TuiAgent } from './tui-agent'
 import { buildAgentResumeLaunchCommand } from './agent-resume-launch-command'
@@ -56,7 +60,23 @@ export function buildAgentResumeStartupPlan(args: {
     ...args,
     agentCommand: baseCommand.commandWithoutSessionOptions
   })
-  const launchCommand = buildAgentResumeLaunchCommand(args.agent, baseCommand.command, argv, shell)
+  // Orca already chose the workspace; do not ask again when the rollout records an older folder.
+  const tokens = tokenizeStartupCommand(baseCommand.command, shell)
+  const hasDirectoryOverride =
+    tokens.ok &&
+    tokens.tokens.some(
+      (token) => token === '--cd' || token.startsWith('--cd=') || token.startsWith('-C')
+    )
+  const resumeArgv =
+    args.agent === 'codex' && tokens.ok && !hasDirectoryOverride
+      ? [argv[0], '--cd', '.', ...argv.slice(1)]
+      : argv
+  const launchCommand = buildAgentResumeLaunchCommand(
+    args.agent,
+    baseCommand.command,
+    resumeArgv,
+    shell
+  )
   const applied = baseCommand.appliedSessionOptions
   return {
     agent: args.agent,

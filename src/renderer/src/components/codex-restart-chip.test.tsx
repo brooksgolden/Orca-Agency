@@ -67,7 +67,7 @@ describe('CodexRestartChip pane ownership', () => {
     expect(container.textContent).not.toContain('old-one@example.com')
   })
 
-  it('uses configuration wording for a home-route restart', async () => {
+  it('keeps same-account restored conversations clear of the configuration popup', async () => {
     useAppStore.setState({
       codexRestartNoticeByPtyId: {
         [PTY_ONE]: {
@@ -84,11 +84,8 @@ describe('CodexRestartChip pane ownership', () => {
       root.render(<CodexRestartChip ptyId={PTY_ONE} />)
     })
 
-    expect(container.textContent).toContain('Codex setup changed')
-    expect(container.textContent).toContain('This Codex session is using an outdated configuration')
-    expect(container.textContent).toContain(
-      'Restart this session to load your current Codex configuration.'
-    )
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(container.textContent).toBe('')
   })
 
   it('restarts only the pane whose action was clicked', async () => {

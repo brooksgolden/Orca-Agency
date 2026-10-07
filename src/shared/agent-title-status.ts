@@ -1,4 +1,5 @@
 import { qoderTitleStatus } from './qoder-terminal-title'
+import { isCodexActionRequiredTitle } from './codex-action-required-title'
 import {
   AGY_AGENT_NAME_RE,
   BRAILLE_SPINNER_RE,
@@ -130,6 +131,10 @@ export function createAgentStatusTracker(
  * Normalize high-churn agent titles into stable display labels before storage.
  */
 export function normalizeTerminalTitle(title: string): string {
+  if (isCodexActionRequiredTitle(title)) {
+    // Keep the task label while deduplicating Codex's two permission blink frames.
+    return `[ ! ]${title.slice(5)}`
+  }
   const qoderStatus = qoderTitleStatus(title)
   if (qoderStatus) {
     return `${qoderStatus === 'working' ? '✦' : qoderStatus === 'permission' ? '▲' : '◇'} Qoder CLI`
@@ -186,6 +191,9 @@ function canonicalizeBrailleSpinnerFrame(title: string): string {
 }
 
 function computeAgentStatusFromTitle(title: string): AgentStatus | null {
+  if (isCodexActionRequiredTitle(title)) {
+    return 'permission'
+  }
   const qoderStatus = qoderTitleStatus(title)
   if (qoderStatus) {
     return qoderStatus

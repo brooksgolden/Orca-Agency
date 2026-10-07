@@ -1,4 +1,5 @@
 import { isQoderTerminalTitle } from './qoder-terminal-title'
+import { isCodexActionRequiredTitle } from './codex-action-required-title'
 import {
   AGY_AGENT_NAME_RE,
   DROID_AGENT_NAME_RE,
@@ -152,6 +153,9 @@ export function isClaudeManagementTitle(title: string): boolean {
 }
 
 function computeAgentLabel(title: string): string | null {
+  if (isCodexActionRequiredTitle(title)) {
+    return 'Codex'
+  }
   if (isClaudeManagementTitle(title)) {
     return null
   }

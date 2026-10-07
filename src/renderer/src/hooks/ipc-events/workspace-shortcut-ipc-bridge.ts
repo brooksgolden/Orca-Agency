@@ -10,8 +10,23 @@ import { isGitRepoKind } from '../../../../shared/repo-kind'
 import { useAppStore } from '../../store'
 import { toggleAgentDashboardFromShortcut } from './agent-dashboard-command'
 import { openNewWorkspaceFromShortcut } from './new-workspace-command'
+import { shouldShowWorktreeHistoryControls } from '@/lib/titlebar-worktree-history-controls'
+import { registerMacMouseHistory } from './mac-mouse-history'
 
 export function registerWorkspaceShortcutIpcBridge(unsubs: (() => void)[]): void {
+  const navigateHistory = (direction: 'back' | 'forward'): boolean => {
+    const store = useAppStore.getState()
+    if (!shouldShowWorktreeHistoryControls(store.activeView) || store.activeModal !== 'none') {
+      return false
+    }
+    if (direction === 'back') {
+      store.goBackWorktree()
+    } else {
+      store.goForwardWorktree()
+    }
+    return true
+  }
+  unsubs.push(registerMacMouseHistory(window, navigateHistory))
   unsubs.push(
     window.api.ui.onOpenQuickOpen(() => {
       const store = useAppStore.getState()
@@ -111,20 +126,7 @@ export function registerWorkspaceShortcutIpcBridge(unsubs: (() => void)[]): void
     })
   )
 
-  unsubs.push(
-    window.api.ui.onWorktreeHistoryNavigate((direction) => {
-      const store = useAppStore.getState()
-      // Why: mirror button visibility — worktree history nav is only meaningful in the terminal view, so no-op elsewhere.
-      if (store.activeView !== 'terminal') {
-        return
-      }
-      if (direction === 'back') {
-        store.goBackWorktree()
-      } else {
-        store.goForwardWorktree()
-      }
-    })
-  )
+  unsubs.push(window.api.ui.onWorktreeHistoryNavigate(navigateHistory))
 
   unsubs.push(
     window.api.ui.onToggleStatusBar(() => {

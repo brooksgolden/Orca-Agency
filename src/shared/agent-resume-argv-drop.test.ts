@@ -32,7 +32,7 @@ describe('dropAgentResumeArgvFromCommand', () => {
           agent: 'codex',
           providerSession: CODEX_SESSION
         })
-      ).toEqual({ status: 'dropped', command: 'codex' })
+      ).toEqual({ status: 'dropped', command: "codex '--cd' '.'" })
     }
   })
 
@@ -43,7 +43,7 @@ describe('dropAgentResumeArgvFromCommand', () => {
         agent: 'codex',
         providerSession: CODEX_SESSION
       })
-    ).toEqual({ status: 'dropped', command: "codex '--search'" })
+    ).toEqual({ status: 'dropped', command: "codex '--search' '--cd' '.'" })
   })
 
   it('drops an unquoted resume argv from a legacy persisted command', () => {

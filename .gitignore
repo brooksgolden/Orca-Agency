@@ -112,6 +112,10 @@ docs/**
 !docs/agency/
 !docs/agency/weekly-updates.md
 !docs/agency/pending-fixes.md
+!docs/agency/media/
+!docs/agency/media/mouse-workspace-history.png
+!docs/agency/media/mouse-workspace-history.svg
+!docs/agency/media/mouse-photo-attribution.md
 !docs/bug-reproductions/
 !docs/bug-reproductions/**
 !docs/STYLEGUIDE.md

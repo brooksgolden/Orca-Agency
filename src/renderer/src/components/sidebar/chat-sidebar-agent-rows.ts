@@ -7,6 +7,7 @@ import { rowConversationName } from '../dashboard/dashboard-card-labels'
 import { lastEnteredDoneAt } from '../dashboard/agent-finished-timestamp'
 import type { DashboardAgentRow } from '../dashboard/useDashboardData'
 import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
+import { agentRowDisplayDotState } from '@/lib/agent-row-dot-state'
 import { agentStatusEvidenceObservedAt } from '../../../../shared/agent-status-freshness'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
@@ -226,6 +227,7 @@ export function buildAgentChatRows(args: {
           ),
       activityFromState: !resumed && agent.startedAt === 0,
       state: agent.state,
+      displayState: agentRowDisplayDotState(agent),
       completed: false,
       ownsWorkspaceName: false,
       liveSession: chatLiveSession(agent.agentType, providerSession, title),

@@ -6,12 +6,14 @@ import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-retry'
 import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
+import { assertPackagedDefaultHomeCodexRestart } from './helpers/packaged-codex-restart-smoke'
+import { assertPackagedMouseHistory } from './helpers/packaged-mouse-history-smoke'
 
 test('packaged chat sidebar restores closed chats and resumes one exact session', async (// oxlint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture argument.
 {}, testInfo) => {
   const executablePath = process.env.ORCA_SMOKE_EXECUTABLE
   test.skip(!executablePath, 'Set ORCA_SMOKE_EXECUTABLE to the reviewed executable')
-  test.setTimeout(180_000)
+  test.setTimeout(240_000)
   const userDataDir = testInfo.outputPath('profile')
   mkdirSync(userDataDir, { recursive: true })
   writeFileSync(
@@ -178,9 +180,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await page.reload()
     await expect(renamed).toBeVisible()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
-    await page
-      .getByRole('button', { name: 'Chat grouping and folder filters', exact: true })
-      .click()
+    await page.getByRole('button', { name: /^Chat grouping and folder filters/ }).click()
     const progressFilter = page.getByRole('menuitemcheckbox', {
       name: 'Hide Done chats',
       exact: true
@@ -194,14 +194,34 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await page.reload()
     await expect(renamed).toHaveCount(0)
     await expect(rows).toHaveCount(1)
-    await page
-      .getByRole('button', { name: 'Chat grouping and folder filters', exact: true })
-      .click()
+    await page.getByRole('button', { name: /^Chat grouping and folder filters/ }).click()
     await expect(progressFilter).toHaveAttribute('aria-checked', 'true')
     await progressFilter.click()
     await page.keyboard.press('Escape')
     await expect(renamed).toBeVisible()
     await expect(rows).toHaveCount(2)
+    const filterButton = page.getByRole('button', {
+      name: /^Chat grouping and folder filters/
+    })
+    await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
+    const inactiveBox = await filterButton.boundingBox()
+    for (const option of ['Hide Done chats', 'Show only open chats', 'Collapse Done folders']) {
+      await filterButton.click()
+      await page.getByRole('menuitemcheckbox', { name: option, exact: true }).click()
+      await page.keyboard.press('Escape')
+      await expect(filterButton).toHaveAttribute('data-filters-active', 'true')
+      expect(await filterButton.evaluate((node) => getComputedStyle(node).borderTopWidth)).toBe(
+        '1px'
+      )
+      expect((await filterButton.boundingBox())?.width).toBe(inactiveBox?.width)
+      await page.screenshot({
+        path: testInfo.outputPath(`filter-active-${option.replaceAll(' ', '-')}.png`)
+      })
+      await filterButton.click()
+      await page.getByRole('menuitemcheckbox', { name: option, exact: true }).click()
+      await page.keyboard.press('Escape')
+      await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
+    }
     await renamed.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Change folder', exact: true }).hover()
     await page.getByRole('menuitem', { name: 'local-tools', exact: true }).click()
@@ -271,6 +291,13 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     )
     await page.screenshot({ path: testInfo.outputPath('packaged-new-chat-folder.png') })
     await page.keyboard.press('Escape')
+    await assertPackagedDefaultHomeCodexRestart(
+      page,
+      isolation.isolatedHome,
+      folder,
+      generatedWorkspace.id
+    )
+    await assertPackagedMouseHistory(app, page)
     expect(errors).toEqual([])
     expect(
       await app.evaluate(({ BrowserWindow }) =>

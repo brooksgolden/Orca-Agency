@@ -7,6 +7,9 @@ import { isNativeWindowsLocalPtySpawn } from '../../../runtime/terminal-model-qu
 import { stampWslOrchestrationCompatibilityHost } from '../../../pty/wsl-orca-env'
 import { ensureCodexStateDbBackfillRecoveryStarted } from '../../../codex/codex-state-db-backfill-recovery'
 import { buildPtyHostEnv } from '../host-env/assembly'
+import { resolveCodexReplacementResumeLaunch } from '../host-env/codex-resume'
+import { getCustomCodexHomeOverrideForLaunch } from '../../../codex/codex-real-home-path'
+import { getSystemCodexHomePath } from '../../../codex/codex-home-paths'
 import {
   getCompatibleSelectedCodexHomePath,
   getCodexSelectionTargetForPty,
@@ -41,8 +44,27 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
         target: ctx.codexSelectionTarget,
         launchEnv: ctx.baseEnv
       })
+  const selectLaunchCodexHome = async (): Promise<string | null> =>
+    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv)) ?? null
   ctx.codexResumeLaunch = codexResumePreparation
-    ? await ctx.deps.resolveCodexResumeLaunch(args.command, codexResumePreparation)
+    ? args.replacesPtyId !== undefined
+      ? await resolveCodexReplacementResumeLaunch({
+          command: args.command,
+          prepared: codexResumePreparation,
+          resolveLaunch: ctx.deps.resolveCodexResumeLaunch,
+          resolveCurrentHome: async () => {
+            const selected = getCompatibleSelectedCodexHomePath(
+              ctx.codexSelectionTarget,
+              await selectLaunchCodexHome()
+            )
+            return ctx.codexSelectionTarget.runtime === 'host'
+              ? (selected ??
+                  getCustomCodexHomeOverrideForLaunch(ctx.baseEnv)?.context.codexHome ??
+                  getSystemCodexHomePath())
+              : selected
+          }
+        })
+      : await ctx.deps.resolveCodexResumeLaunch(args.command, codexResumePreparation)
     : ctx.deps.noCodexResumeLaunch(ctx.preAdoptedStablePane ? undefined : args.command)
   // Why: these three phases have unrelated costs (session provenance + hook
   // repair, account/auth resolution, then the synchronous env build). One
@@ -54,8 +76,6 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
   // Why: declared after the strip so a local-provider spawn cannot capture the
   // pre-strip env — only the daemon branch below re-derives this from baseEnv.
   ctx.env = ctx.baseEnv
-  const selectLaunchCodexHome = async (): Promise<string | null> =>
-    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv)) ?? null
   ctx.selectedCodexHomePath =
     !ctx.preAdoptedStablePane && !args.connectionId
       ? getCompatibleSelectedCodexHomePath(

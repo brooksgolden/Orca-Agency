@@ -101,6 +101,33 @@ export function resolveCodexResumeLaunch(
   })
 }
 
+/** A replacement must honor today's account/home selection, even without a renderer notice. */
+export async function resolveCodexReplacementResumeLaunch(args: {
+  command: string | undefined
+  prepared: PreparedCodexResumeHome
+  resolveLaunch: typeof resolveCodexResumeLaunch
+  resolveCurrentHome: () => Promise<string | null>
+}): Promise<CodexResumeLaunch> {
+  const prepared = await args.prepared.preparation.catch(() => ({
+    outcome: 'fresh' as const,
+    claimedCodexProvenance: true
+  }))
+  const launch = await args.resolveLaunch(args.command, {
+    ...args.prepared,
+    preparation: Promise.resolve(prepared)
+  })
+  if (
+    !launch.codexResumeHome ||
+    codexHomePathsEqual(await args.resolveCurrentHome(), launch.codexResumeHome.codexHomePath)
+  ) {
+    return launch
+  }
+  return args.resolveLaunch(args.command, {
+    ...args.prepared,
+    preparation: Promise.resolve({ outcome: 'fresh', claimedCodexProvenance: true })
+  })
+}
+
 export async function reconcileSharedRuntimeResumeHome(
   resumeHome: Extract<CodexSessionResumePreparation, { outcome: 'resume' }>,
   resolveCurrentHome: () => string | null | Promise<string | null>

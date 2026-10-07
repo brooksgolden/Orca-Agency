@@ -8,15 +8,17 @@
  * kill-and-respawns any pane no mounted transport claims, rebinding the store
  * so a later mount reattaches to the replacement PTY like a restored session.
  */
-import { isTerminalLeafId, makePaneKey } from '../../../../shared/stable-pane-id'
+import { isTerminalLeafId } from '../../../../shared/stable-pane-id'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
+import { toast } from 'sonner'
 import type { TerminalPaneLayoutNode, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { AppState } from '@/store'
 import { useAppStore } from '@/store'
 import { getWorktreeMapFromState } from '@/store/selectors'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
 import { hasRegisteredRuntimeTerminalTab } from '@/runtime/sync-runtime-graph'
-import { CODEX_ACCOUNT_RESTART_STARTUP } from '@/lib/codex-session-restart'
+import { codexRestartResumeStartup } from './codex-restart-resume-startup'
+import { buildDetachedCodexPaneIdentityEnv } from './codex-detached-pane-identity'
 import { isForeignMachineCodexPtyId } from '@/lib/codex-pane-selection-lane'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import {
@@ -136,36 +138,21 @@ function getWorkspacePath(state: AppState, worktreeId: string): string | null {
   return getWorktreeMapFromState(state).get(worktreeId)?.path ?? null
 }
 
-function buildPaneIdentityEnv(
-  state: AppState,
-  worktreeId: string,
-  tabId: string,
-  leafId: string
-): Record<string, string> {
-  const parsed = parseWorkspaceKey(worktreeId)
-  const folderWorkspace =
-    parsed?.type === 'folder'
-      ? state.folderWorkspaces.find((workspace) => workspace.id === parsed.folderWorkspaceId)
-      : null
-  return {
-    ORCA_WORKSPACE_ID: worktreeId,
-    ...(folderWorkspace
-      ? {
-          ORCA_PROJECT_GROUP_ID: folderWorkspace.projectGroupId,
-          ORCA_WORKSPACE_ROOT: folderWorkspace.folderPath
-        }
-      : {}),
-    ORCA_PANE_KEY: makePaneKey(tabId, leafId),
-    ORCA_TAB_ID: tabId,
-    ORCA_WORKTREE_ID: worktreeId
-  }
-}
-
 async function executeDetachedCodexPaneRestart(
   located: LocatedCodexPane,
   ptyId: string
 ): Promise<void> {
   const state = useAppStore.getState()
+  const workspacePath = getWorkspacePath(state, located.worktreeId)
+  const cwd = located.tab.startupCwd ?? workspacePath ?? undefined
+  const startup = codexRestartResumeStartup(
+    state,
+    located.worktreeId,
+    located.tab.id,
+    located.leafId,
+    cwd,
+    ptyId
+  )
   if (!located.leafId) {
     // Why: without a usable layout leaf the replacement cannot be bound in
     // place, so kill now and let the tab's next mount run the Codex startup.
@@ -177,15 +164,13 @@ async function executeDetachedCodexPaneRestart(
     store.suppressPtyExit(ptyId)
     store.clearTabPtyId(located.tab.id, ptyId)
     store.consumeSuppressedPtyExit(ptyId)
-    store.queueTabStartupCommand(located.tab.id, { ...CODEX_ACCOUNT_RESTART_STARTUP })
+    store.queueTabStartupCommand(located.tab.id, startup)
     store.clearCodexRestartNotice(ptyId)
     killReplacedCodexPanePty(ptyId)
     return
   }
   const { worktreeId, tab, leafId } = located
 
-  const workspacePath = getWorkspacePath(state, worktreeId)
-  const cwd = tab.startupCwd ?? workspacePath ?? undefined
   const capabilities = hasCachedWindowsTerminalCapabilities()
     ? getCachedWindowsTerminalCapabilities()
     : null
@@ -214,10 +199,18 @@ async function executeDetachedCodexPaneRestart(
     rows: 24,
     ...(cwd ? { cwd } : {}),
     cwdFallback: 'worktree',
-    env: buildPaneIdentityEnv(state, worktreeId, tab.id, leafId),
-    command: CODEX_ACCOUNT_RESTART_STARTUP.command,
-    startupCommandDelivery: CODEX_ACCOUNT_RESTART_STARTUP.startupCommandDelivery,
-    launchAgent: CODEX_ACCOUNT_RESTART_STARTUP.launchAgent,
+    env: {
+      ...startup.env,
+      ...buildDetachedCodexPaneIdentityEnv(state, worktreeId, tab.id, leafId)
+    },
+    command: startup.command,
+    startupCommandDelivery: startup.startupCommandDelivery,
+    launchAgent: startup.launchAgent,
+    ...(startup.envToDelete ? { envToDelete: startup.envToDelete } : {}),
+    ...(startup.launchConfig ? { launchConfig: startup.launchConfig } : {}),
+    ...(startup.resumeProviderSession
+      ? { resumeProviderSession: startup.resumeProviderSession }
+      : {}),
     worktreeId,
     tabId: tab.id,
     leafId,
@@ -249,6 +242,11 @@ async function executeDetachedCodexPaneRestart(
   store.clearCodexRestartNotice(spawned.id)
   store.clearCodexRestartNotice(ptyId)
   releaseReplacedCodexPanePty(ptyId)
+  if (spawned.agentResumeUnavailable) {
+    toast.info('The previous Codex conversation could not be resumed. A new session was started.', {
+      id: `codex-resume-unavailable:${spawned.id}`
+    })
+  }
 }
 
 function isLocatedCodexPaneCurrent(

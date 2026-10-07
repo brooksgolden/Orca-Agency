@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { OrcaRuntimeService } from './orca-runtime-test-mocks.spec'
 import { store, TEST_WORKTREE_ID } from './orca-runtime-test-fixtures.spec'
@@ -10,6 +7,7 @@ import { AGENT_STATUS_STALE_AFTER_MS } from '../../shared/agent-status-types'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import fixture from './__fixtures__/codex-compact-recovery-titles.json'
 import claudeFixture from './__fixtures__/claude-native-activity-titles.json'
+import actionRequiredFixture from './__fixtures__/codex-action-required-titles.json'
 import {
   AgentStatusObservedPaneIdentities,
   recordObservedAgentStatusPaneIdentity
@@ -17,6 +15,7 @@ import {
 import { buildBody, postHookEvent } from '../agent-hooks/server.test-fixtures'
 import type { AgentHookServer } from '../agent-hooks/server'
 import type { LocalPtyAgentOwnerObservation } from './local-pty-agent-owner-observation'
+import { restoreWorkingRow } from './working-title-restored-row.test-fixture'
 
 const leafId = '11111111-1111-4111-8111-111111111111'
 const paneKey = makePaneKey('tab-1', leafId)
@@ -142,32 +141,22 @@ async function setup(launchToken?: string, agent: 'codex' | 'claude' = 'codex') 
   return { runtime, wiring, previous, listener, identities }
 }
 
-function restoreWorkingRow(context: Awaited<ReturnType<typeof setup>>) {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Exercise the server's real persistence boundary without starting another HTTP listener.
-  const internal = context.wiring.statusStore as unknown as {
-    serializeStatusFile(): string
-    hydrateLastStatusFromDisk(): void
-    lastStatusFilePath: string | null
-  }
-  const timing = context.wiring.statusStore.getStatusSnapshot()[0]
-  const directory = mkdtempSync(join(tmpdir(), 'orca-working-title-'))
-  const originalPath = internal.lastStatusFilePath
-  try {
-    internal.lastStatusFilePath = join(directory, 'last-status.json')
-    writeFileSync(internal.lastStatusFilePath, internal.serializeStatusFile())
-    internal.hydrateLastStatusFromDisk()
-  } finally {
-    internal.lastStatusFilePath = originalPath
-    rmSync(directory, { recursive: true, force: true })
-  }
-  const restored = context.wiring.statusStore.getStatusSnapshot()[0]
-  expect(restored.restoredUnconfirmed).toBe(true)
-  expect(restored.terminalHandle).toBeUndefined()
-  vi.spyOn(context.identities, 'read').mockReturnValue({ kind: 'unobserved' })
-  return timing
-}
-
 describe('main runtime working-title evidence', () => {
+  it.each(actionRequiredFixture.frames)(
+    'records captured native action-required state without inventing hook evidence',
+    async (frame) => {
+      const context = await setup()
+      const previous = restoreWorkingRow(context)
+      context.runtime.onPtyData('pty-1', frame, Date.now())
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      const handle = context.runtime.getAgentStatusTerminalHandleForPaneKey(paneKey)!
+      expect(await context.runtime.getTerminalInteractiveWait(handle)).toEqual({ source: 'title' })
+      const row = context.wiring.statusStore.getStatusSnapshot()[0]
+      expect(row.restoredUnconfirmed).toBe(true)
+      expect(row.providerSession).toEqual(previous.providerSession)
+      expect(row.turnStartedAt).toBe(previous.turnStartedAt)
+    }
+  )
   it.each(['idle', 'new-working'])(
     'waits out late idle after a new prompt and respects %s at the deadline',
     async (kind) => {

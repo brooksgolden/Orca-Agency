@@ -2,6 +2,17 @@
 
 Read this file during each weekly update. Include pending fixes in the release notes only after the source, Claude review, package, installed functionality and visual checks pass. Then record the published release next to each included item.
 
+## October 7 candidate, held for Saturday
+
+- **Pick up the same conversation:** Restart for an outdated local Codex configuration captures that pane's session before replacing its terminal, then uses current launch settings to resume it. Main verifies the transcript against the current account/home. Account changes launch fresh; unknown pane identities and remote runtimes without the replacement guard use the resume picker.
+- **Reopen without the detour:** Codex resumes use the selected workspace directory unless an explicit launch override chooses another one. Same-account configuration changes leave existing conversations usable without a blocking popup; actual account changes retain their confirmation.
+- **Navigate with your mouse:** Back and Forward side buttons use the same workspace and page history as the toolbar arrows. Embedded browser pages retain their own navigation when focused. macOS has a DOM fallback; Windows and Linux use native app commands.
+- **Know when filters are active:** The grouping and folder button gains an outline and lighter background while Hide Done chats, Show only open chats, or Collapse Done folders is selected. Keep the chat pod tidy without forgetting a hidden view.
+- **Working indicators:** Native Codex Action Required titles represent a waiting prompt. A completed foreground turn with background work displays Monitoring. The presentation does not change saved Done choices, filter membership, or activity timestamps.
+- **ARM64 evidence:** The native Windows package omits local speech, as requested. Keep its verified architecture and exact package checks separate from any performance claim. Redacted desktop clips now accompany the upstream slowdown report; severe stalls remain under investigation.
+
+Local candidate 1.4.1014 requires the final source gates, Claude review, exact-package smoke checks and installed verification. Brooks's latest authorization restores automatic local installation and restart after those checks, superseding the older holds recorded below. Public application changes remain held until Saturday October 10 at 05:00 America/New_York. The weekly update must reconcile the latest stable, preserve Agency features, and repeat verification before publication.
+
 ## October 10, 2026 local additions
 
 - **In-progress filter:** Show only in-progress chats in the grouping and folder menu hides Done while retaining idle In Progress chats. Folder collapse choices, counts, nested tabs and pane brackets remain intact.

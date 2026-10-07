@@ -1,4 +1,5 @@
 import { isQoderTerminalTitle } from './qoder-terminal-title'
+import { isCodexActionRequiredTitle } from './codex-action-required-title'
 import { getPiStateTitleBrand } from './pi-state-title-marker'
 import {
   AGY_AGENT_NAME_RE,
@@ -21,7 +22,12 @@ import { memoizeTitleClassification } from './terminal-title-classification-memo
  * Used to scope prompt-cache-timer behavior to Claude sessions only.
  */
 function computeIsClaudeAgent(title: string): boolean {
-  if (!title || isClaudeManagementTitle(title) || isOpenCodeNativeTitle(title)) {
+  if (
+    !title ||
+    isClaudeManagementTitle(title) ||
+    isOpenCodeNativeTitle(title) ||
+    isCodexActionRequiredTitle(title)
+  ) {
     return false
   }
   const lower = title.toLowerCase()
@@ -51,6 +57,9 @@ export const isClaudeAgent: (title: string) => boolean =
   memoizeTitleClassification(computeIsClaudeAgent)
 
 function computeAgentLabel(title: string): string | null {
+  if (isCodexActionRequiredTitle(title)) {
+    return 'Codex'
+  }
   if (isClaudeManagementTitle(title)) {
     return null
   }

@@ -27,6 +27,8 @@ export type ChatSidebarRow = {
   /** No turn clock exists (title-derived); only a later working state proves a new turn. */
   activityFromState: boolean
   state: AgentDotState
+  /** Presentation only; completion and activity keep using the canonical state. */
+  displayState?: AgentDotState
   completed: boolean
   /** Shows its workspace's manual name; persisted so the name stays put when siblings appear. */
   ownsWorkspaceName: boolean
