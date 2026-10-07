@@ -26,7 +26,7 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
 
   protected normalizeLocalHookPayload(source: AgentHookSource, body: unknown): NormalizedLocalHook {
     if ((source === 'claude' || source === 'codex') && typeof body === 'object' && body !== null) {
-      const rawPaneKey = Reflect.get(body, 'paneKey')
+      const rawPaneKey = 'paneKey' in body ? body.paneKey : undefined
       const paneKey = typeof rawPaneKey === 'string' ? rawPaneKey.trim() : ''
       const canonicalPaneKey = this.resolvePaneKeyAlias(paneKey)
       const localAgent = paneKey ? this.localTerminalAgentResolver?.(canonicalPaneKey) : null
@@ -67,7 +67,7 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
       }
       return { event }
     }
-    const rawPaneKey = (body as Record<string, unknown>).paneKey
+    const rawPaneKey = 'paneKey' in body ? body.paneKey : undefined
     const paneKey = typeof rawPaneKey === 'string' ? rawPaneKey.trim() : ''
     if (!paneKey) {
       return { event: normalizeHookPayload(this.state, source, body, this.env) }

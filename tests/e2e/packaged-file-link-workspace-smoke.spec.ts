@@ -163,7 +163,11 @@ test('packaged file links and folder workspace splits retain their workspace', a
     // Hidden Windows renderers can stop the pointer-stability animation frames.
     await copyPath.click({ force: true })
     await expect
-      .poll(() => app.evaluate(() => Reflect.get(globalThis, 'copiedFilePathSmoke')))
+      .poll(() =>
+        app.evaluate(() =>
+          'copiedFilePathSmoke' in globalThis ? globalThis.copiedFilePathSmoke : undefined
+        )
+      )
       .toBe(path.join(folders[0], 'linked.md'))
 
     await page

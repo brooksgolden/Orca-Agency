@@ -172,6 +172,32 @@ describe('pane terminal output scheduler', () => {
     expect(next.write).toHaveBeenCalledWith('next redraw', expect.any(Function))
   })
 
+  it('keeps each bulk drain below the shorter renderer time budget', async () => {
+    vi.useFakeTimers()
+    const { writeTerminalOutput } = await loadScheduler()
+    const terminals = Array.from({ length: 16 }, () => createTerminal())
+    let now = 0
+    const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => now)
+    terminals.forEach((terminal) => {
+      terminal.write.mockImplementation((_data: string, callback?: () => void) => {
+        now += 2.5
+        callback?.()
+      })
+    })
+
+    try {
+      terminals.forEach((terminal) => {
+        writeTerminalOutput(terminal, 'redraw', { foreground: true, latencySensitive: false })
+      })
+      vi.advanceTimersByTime(4)
+      expect(terminals.filter((terminal) => terminal.write.mock.calls.length > 0)).toHaveLength(2)
+      vi.advanceTimersByTime(4)
+      expect(terminals.filter((terminal) => terminal.write.mock.calls.length > 0)).toHaveLength(4)
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
+
   it('cancels a pending MessageChannel drain when the bulk queue starts pacing', async () => {
     vi.useFakeTimers()
     const posted: (() => void)[] = []

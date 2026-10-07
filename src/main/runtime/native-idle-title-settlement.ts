@@ -1,7 +1,9 @@
+import type { OrcaRuntimeWithReconcileRestoredWorkingTitleMonitor } from './orca-runtime-reconcile-restored-working-title-monitor'
+
 const pendingByOwner = new WeakMap<object, Map<string, ReturnType<typeof setTimeout>>>()
 
 export function scheduleNativeIdleTitleSettlement(
-  owner: object,
+  owner: OrcaRuntimeWithReconcileRestoredWorkingTitleMonitor,
   ptyId: string,
   delayMs: number,
   settle: () => void
