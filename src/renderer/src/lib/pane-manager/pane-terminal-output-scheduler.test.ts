@@ -158,7 +158,9 @@ describe('pane terminal output scheduler', () => {
     expect(active.write).toHaveBeenCalledWith('typed echo', expect.any(Function))
 
     vi.advanceTimersByTime(4)
-    expect(terminals.filter((terminal) => terminal.write.mock.calls.length > 0).length).toBeGreaterThanOrEqual(8)
+    expect(
+      terminals.filter((terminal) => terminal.write.mock.calls.length > 0).length
+    ).toBeGreaterThanOrEqual(8)
     expect(onAck.mock.calls.length).toBeGreaterThanOrEqual(8)
     vi.advanceTimersByTime(40)
     expect(terminals.every((terminal) => terminal.write.mock.calls.length === 1)).toBe(true)
@@ -195,7 +197,9 @@ describe('pane terminal output scheduler', () => {
     posted[0]?.()
     expect(terminals.every((terminal) => terminal.write.mock.calls.length === 0)).toBe(true)
     vi.advanceTimersByTime(4)
-    expect(terminals.filter((terminal) => terminal.write.mock.calls.length > 0).length).toBeGreaterThanOrEqual(8)
+    expect(
+      terminals.filter((terminal) => terminal.write.mock.calls.length > 0).length
+    ).toBeGreaterThanOrEqual(8)
   })
 
   it('defers background write preparation until coalesced output drains', async () => {
