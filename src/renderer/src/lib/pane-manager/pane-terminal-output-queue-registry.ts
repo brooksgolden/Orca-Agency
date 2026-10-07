@@ -94,12 +94,12 @@ export const BACKGROUND_CHUNK_CHARS = 16 * 1024
 export const MAX_WRITES_PER_DRAIN = 2
 // Why 8: per-tick volume (8 x 16KB = 128KB ≈ 1.3ms parse) sets the sustained ceiling (~30MB/s) within DRAIN_TIME_BUDGET_MS; at 2 it was only 8MB/s against a ~100MB/s parser (see throughput bench).
 export const HIGH_PRIORITY_MAX_WRITES_PER_DRAIN = 8
-// Why: pressure begins before 25 mounted panes; pace once 16 queues fill so input and paint get turns.
-const BULK_QUEUE_THRESHOLD = 16
-const BULK_QUEUE_RELEASE_THRESHOLD = 8
+// Why: pressure begins before 10 mounted panes; pace once eight queues fill so input and paint get turns.
+const BULK_QUEUE_THRESHOLD = 8
+const BULK_QUEUE_RELEASE_THRESHOLD = 4
 export const DRAIN_TIME_BUDGET_MS = 8
 // Why: shorter bulk turns leave room for keyboard events while many panes redraw.
-export const BULK_DRAIN_TIME_BUDGET_MS = 4
+export const BULK_DRAIN_TIME_BUDGET_MS = 3
 export const LARGE_BACKLOG_CHARS = 512 * 1024
 // Why mutable: the cap scales with the user's scrollback setting (terminalOutputBacklogCapChars), configured when settings apply; the chunk-count cap stays fixed.
 let maxQueueChars = TERMINAL_OUTPUT_BACKLOG_MIN_CAP_CHARS
