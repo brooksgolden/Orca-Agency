@@ -98,6 +98,7 @@ jobs:
       - name: Run native Wayland Hangul terminating digit
         env:
           SKIP_BUILD: '1'
+          ORCA_E2E_DIGIT_REPETITIONS: '50'
         run: node config/scripts/run-terminal-ibus-hangul-e2e.mjs --nested-wayland
       - name: Upload Wayland terminal IME evidence
         if: always()

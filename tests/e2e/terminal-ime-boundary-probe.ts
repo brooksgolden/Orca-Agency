@@ -18,6 +18,17 @@ export type TerminalImeDomEvent = {
 export type TerminalImeBoundaryTrace = {
   dom: TerminalImeDomEvent[]
   onData: string[]
+  windowKeys: {
+    type: string
+    key: string
+    code: string
+    targetTag: string | null
+    targetIsTerminalTextarea: boolean
+    textareaFocused: boolean
+    documentFocused: boolean
+    isTrusted: boolean
+    timeStamp: number
+  }[]
 }
 
 type TerminalImeProbeWindow = Window & {
@@ -46,6 +57,7 @@ export async function installTerminalImeBoundaryProbe(page: Page): Promise<void>
 
     const dom: TerminalImeDomEvent[] = []
     const onData: string[] = []
+    const windowKeys: TerminalImeBoundaryTrace['windowKeys'] = []
     const record = (event: Event): void => {
       const input = event instanceof InputEvent ? event : null
       const composition = event instanceof CompositionEvent ? event : null
@@ -76,13 +88,37 @@ export async function installTerminalImeBoundaryProbe(page: Page): Promise<void>
     for (const eventType of eventTypes) {
       textarea.addEventListener(eventType, record, true)
     }
+    const keyEventTypes = ['keydown', 'keypress', 'keyup']
+    const recordWindowKey = (event: Event): void => {
+      if (!(event instanceof KeyboardEvent)) {
+        return
+      }
+      windowKeys.push({
+        type: event.type,
+        key: event.key,
+        code: event.code,
+        targetTag: event.target instanceof Element ? event.target.tagName : null,
+        targetIsTerminalTextarea: event.target === textarea,
+        textareaFocused: document.activeElement === textarea,
+        documentFocused: document.hasFocus(),
+        isTrusted: event.isTrusted,
+        timeStamp: event.timeStamp
+      })
+    }
+    for (const eventType of keyEventTypes) {
+      window.addEventListener(eventType, recordWindowKey, true)
+    }
     const onDataDisposable = pane.terminal.onData((data) => onData.push(data))
     targetWindow.__terminalImeBoundaryProbe = {
       dom,
       onData,
+      windowKeys,
       dispose: () => {
         for (const eventType of eventTypes) {
           textarea.removeEventListener(eventType, record, true)
+        }
+        for (const eventType of keyEventTypes) {
+          window.removeEventListener(eventType, recordWindowKey, true)
         }
         onDataDisposable.dispose()
       }
@@ -93,7 +129,9 @@ export async function installTerminalImeBoundaryProbe(page: Page): Promise<void>
 export async function readTerminalImeBoundaryTrace(page: Page): Promise<TerminalImeBoundaryTrace> {
   return page.evaluate(() => {
     const probe = (window as TerminalImeProbeWindow).__terminalImeBoundaryProbe
-    return probe ? { dom: [...probe.dom], onData: [...probe.onData] } : { dom: [], onData: [] }
+    return probe
+      ? { dom: [...probe.dom], onData: [...probe.onData], windowKeys: [...probe.windowKeys] }
+      : { dom: [], onData: [], windowKeys: [] }
   })
 }
 
