@@ -11,7 +11,16 @@ const file = {
   mtimeMs: Date.parse(reopened),
   modifiedAt: reopened
 }
-const record = (type: string, payload: object, timestamp: string) =>
+type CodexTestPayload = {
+  id?: string
+  cwd?: string
+  type?: string
+  role?: string
+  content?: { type: string; text: string }[]
+  pad?: string
+}
+
+const record = (type: string, payload: CodexTestPayload, timestamp: string) =>
   JSON.stringify({ timestamp, type, payload })
 const history = [
   record('session_meta', { id: 'session', cwd: '/workspace' }, '2026-09-20T05:40:00.000Z'),

@@ -174,8 +174,8 @@ function parseNode(value: unknown, seen: Set<string>, depth = 0): WorkspaceLayou
   if (!value || typeof value !== 'object' || depth > MAX_WORKSPACE_PANES * 2) {
     return null
   }
-  const type: unknown = Reflect.get(value, 'type')
-  const workspaceId: unknown = Reflect.get(value, 'workspaceId')
+  const type = 'type' in value ? value.type : undefined
+  const workspaceId = 'workspaceId' in value ? value.workspaceId : undefined
   if (type === 'leaf' && typeof workspaceId === 'string' && workspaceId.length > 0) {
     if (seen.has(workspaceId) || seen.size >= MAX_WORKSPACE_PANES) {
       return null
@@ -186,16 +186,16 @@ function parseNode(value: unknown, seen: Set<string>, depth = 0): WorkspaceLayou
   if (type !== 'split') {
     return null
   }
-  const first = parseNode(Reflect.get(value, 'first'), seen, depth + 1)
-  const second = parseNode(Reflect.get(value, 'second'), seen, depth + 1)
+  const first = parseNode('first' in value ? value.first : undefined, seen, depth + 1)
+  const second = parseNode('second' in value ? value.second : undefined, seen, depth + 1)
   if (!first) {
     return second
   }
   if (!second) {
     return first
   }
-  const direction: unknown = Reflect.get(value, 'direction')
-  const ratio: unknown = Reflect.get(value, 'ratio')
+  const direction = 'direction' in value ? value.direction : undefined
+  const ratio = 'ratio' in value ? value.ratio : undefined
   return {
     type: 'split',
     direction: direction === 'vertical' ? 'vertical' : 'horizontal',
@@ -219,8 +219,8 @@ export function readWorkspaceSplitGroups(): WorkspaceSplitGroup[] {
       if (!candidate || typeof candidate !== 'object') {
         return []
       }
-      const id: unknown = Reflect.get(candidate, 'id')
-      const layout = parseNode(Reflect.get(candidate, 'layout'), new Set())
+      const id = 'id' in candidate ? candidate.id : undefined
+      const layout = parseNode('layout' in candidate ? candidate.layout : undefined, new Set())
       if (typeof id !== 'string' || !layout) {
         return []
       }
