@@ -140,10 +140,7 @@ function claimsOrphanCandidateDigit(
 ): boolean {
   return (
     options.linuxOrphanCandidateDigitGuardActive === true &&
-    isTerminalImeCandidateDigitKeyEvent(event) &&
-    // Why: the orphan window arms off a bare keyup and cannot see which engine
-    // produced it, so a Hangul syllable's terminating digit must opt out.
-    options.hangulPreedit !== true
+    isTerminalImeCandidateDigitKeyEvent(event)
   )
 }
 
