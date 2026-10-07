@@ -137,6 +137,67 @@ describe('pane terminal output scheduler', () => {
     )
   })
 
+  it('paces a large visible-pane redraw while keeping direct input echo immediate', async () => {
+    vi.useFakeTimers()
+    const { writeTerminalOutput } = await loadScheduler()
+    const terminals = Array.from({ length: 64 }, () => createTerminal())
+    const onAck = vi.fn()
+
+    terminals.forEach((terminal) => {
+      writeTerminalOutput(terminal, 'redraw', {
+        foreground: true,
+        latencySensitive: false,
+        ackCredit: onAck
+      })
+    })
+    vi.advanceTimersByTime(0)
+    expect(terminals.every((terminal) => terminal.write.mock.calls.length === 0)).toBe(true)
+
+    const active = createTerminal()
+    writeTerminalOutput(active, 'typed echo', { foreground: true, latencySensitive: true })
+    expect(active.write).toHaveBeenCalledWith('typed echo', expect.any(Function))
+
+    vi.advanceTimersByTime(4)
+    expect(terminals.filter((terminal) => terminal.write.mock.calls.length > 0)).toHaveLength(8)
+    expect(onAck).toHaveBeenCalledTimes(8)
+    vi.advanceTimersByTime(40)
+    expect(terminals.every((terminal) => terminal.write.mock.calls.length === 1)).toBe(true)
+    expect(onAck).toHaveBeenCalledTimes(64)
+
+    const next = createTerminal()
+    writeTerminalOutput(next, 'next redraw', { foreground: true, latencySensitive: false })
+    vi.advanceTimersByTime(0)
+    expect(next.write).toHaveBeenCalledWith('next redraw', expect.any(Function))
+  })
+
+  it('cancels a pending MessageChannel drain when the bulk queue starts pacing', async () => {
+    vi.useFakeTimers()
+    const posted: (() => void)[] = []
+    vi.stubGlobal(
+      'MessageChannel',
+      class {
+        port1: { onmessage: ((event: { data: number }) => void) | null } = { onmessage: null }
+        port2 = {
+          postMessage: (generation: number): void => {
+            posted.push(() => this.port1.onmessage?.({ data: generation }))
+          }
+        }
+      }
+    )
+    const { setUseMessageChannelDrainForTesting, writeTerminalOutput } = await loadScheduler()
+    setUseMessageChannelDrainForTesting(true)
+    const terminals = Array.from({ length: 64 }, () => createTerminal())
+    terminals.forEach((terminal) => {
+      writeTerminalOutput(terminal, 'redraw', { foreground: true, latencySensitive: false })
+    })
+
+    expect(posted).toHaveLength(1)
+    posted[0]?.()
+    expect(terminals.every((terminal) => terminal.write.mock.calls.length === 0)).toBe(true)
+    vi.advanceTimersByTime(4)
+    expect(terminals.filter((terminal) => terminal.write.mock.calls.length > 0)).toHaveLength(8)
+  })
+
   it('defers background write preparation until coalesced output drains', async () => {
     vi.useFakeTimers()
     const { writeTerminalOutput } = await loadScheduler()
