@@ -140,7 +140,7 @@ describe('pane terminal output scheduler', () => {
   it('paces a large visible-pane redraw while keeping direct input echo immediate', async () => {
     vi.useFakeTimers()
     const { writeTerminalOutput } = await loadScheduler()
-    const terminals = Array.from({ length: 64 }, () => createTerminal())
+    const terminals = Array.from({ length: 32 }, () => createTerminal())
     const onAck = vi.fn()
 
     terminals.forEach((terminal) => {
@@ -162,7 +162,7 @@ describe('pane terminal output scheduler', () => {
     expect(onAck).toHaveBeenCalledTimes(8)
     vi.advanceTimersByTime(40)
     expect(terminals.every((terminal) => terminal.write.mock.calls.length === 1)).toBe(true)
-    expect(onAck).toHaveBeenCalledTimes(64)
+    expect(onAck).toHaveBeenCalledTimes(32)
 
     const next = createTerminal()
     writeTerminalOutput(next, 'next redraw', { foreground: true, latencySensitive: false })
@@ -186,7 +186,7 @@ describe('pane terminal output scheduler', () => {
     )
     const { setUseMessageChannelDrainForTesting, writeTerminalOutput } = await loadScheduler()
     setUseMessageChannelDrainForTesting(true)
-    const terminals = Array.from({ length: 64 }, () => createTerminal())
+    const terminals = Array.from({ length: 32 }, () => createTerminal())
     terminals.forEach((terminal) => {
       writeTerminalOutput(terminal, 'redraw', { foreground: true, latencySensitive: false })
     })

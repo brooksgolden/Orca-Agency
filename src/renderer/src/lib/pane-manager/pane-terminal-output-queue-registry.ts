@@ -94,8 +94,8 @@ export const BACKGROUND_CHUNK_CHARS = 16 * 1024
 export const MAX_WRITES_PER_DRAIN = 2
 // Why 8: per-tick volume (8 x 16KB = 128KB ≈ 1.3ms parse) sets the sustained ceiling (~30MB/s) within DRAIN_TIME_BUDGET_MS; at 2 it was only 8MB/s against a ~100MB/s parser (see throughput bench).
 export const HIGH_PRIORITY_MAX_WRITES_PER_DRAIN = 8
-// Why: 64 queued panes need at least eight drain turns; pacing bulk parse batches leaves time for input and paint.
-const BULK_QUEUE_THRESHOLD = 64
+// Why: 50 mounted panes can monopolize input too; start pacing once a redraw fills 32 queues.
+const BULK_QUEUE_THRESHOLD = 32
 const BULK_QUEUE_RELEASE_THRESHOLD = 16
 export const DRAIN_TIME_BUDGET_MS = 8
 export const LARGE_BACKLOG_CHARS = 512 * 1024
