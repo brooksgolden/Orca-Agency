@@ -846,6 +846,14 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
+      - name: Fetch pinned stable comparison tags
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          git -c credential.interactive=false fetch --no-tags https://github.com/stablyai/orca.git \
+            refs/tags/v1.4.211:refs/tags/v1.4.211 \
+            refs/tags/v1.4.212:refs/tags/v1.4.212
+
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
