@@ -16,9 +16,9 @@ describe('terminal output priority fairness', () => {
     vi.unstubAllGlobals()
   })
 
-  it('serves queued echo first after a 64-pane bulk drain is paced', async () => {
+  it('serves queued echo first after a 32-pane bulk drain is paced', async () => {
     const { writeTerminalOutput } = await loadScheduler()
-    const terminals = Array.from({ length: 64 }, () => createTerminal())
+    const terminals = Array.from({ length: 32 }, () => createTerminal())
     const order: number[] = []
     terminals.forEach((terminal, index) => {
       terminal.write.mockImplementation((_data, callback) => {
@@ -27,12 +27,12 @@ describe('terminal output priority fairness', () => {
       })
       writeTerminalOutput(terminal, 'redraw', { foreground: true, latencySensitive: false })
     })
-    writeTerminalOutput(terminals[63], 'echo', { foreground: true, latencySensitive: true })
+    writeTerminalOutput(terminals[31], 'echo', { foreground: true, latencySensitive: true })
 
     vi.advanceTimersByTime(0)
     expect(order).toEqual([])
     vi.advanceTimersByTime(4)
-    expect(order[0]).toBe(63)
+    expect(order[0]).toBe(31)
     expect(order).toHaveLength(8)
   })
 
