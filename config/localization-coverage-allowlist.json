@@ -404,5 +404,649 @@
     "text": "rcfile",
     "dynamic": false,
     "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/NewWorkspaceComposerModal.tsx",
+    "kind": "jsx-expression",
+    "text": "New chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/NewWorkspaceComposerModal.tsx",
+    "kind": "jsx-expression",
+    "text": "Choose a folder and agent for your new chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/NewWorkspaceComposerModal.tsx",
+    "kind": "jsx-text",
+    "text": "Folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/right-sidebar/ai-vault-session-launch-actions.ts",
+    "kind": "user-visible-call",
+    "text": "This chat is already reopening. Drop it again once it opens.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/DefaultChatFolderSetting.tsx",
+    "kind": "jsx-attribute:title",
+    "text": "Default chat folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/DefaultChatFolderSetting.tsx",
+    "kind": "jsx-attribute:description",
+    "text": "Folder selected when you start a new chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/DefaultChatFolderSetting.tsx",
+    "kind": "jsx-attribute:label",
+    "text": "Default chat folder",
+    "dynamic": false,
+    "count": 2
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/DefaultChatFolderSetting.tsx",
+    "kind": "jsx-attribute:description",
+    "text": "New chats start here unless you choose another folder.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/general-search.ts",
+    "kind": "object-property:title",
+    "text": "Default chat folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/general-search.ts",
+    "kind": "object-property:description",
+    "text": "Folder selected when you start a new chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/general-search.ts",
+    "kind": "object-property:keywords",
+    "text": "chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/general-search.ts",
+    "kind": "object-property:keywords",
+    "text": "folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/general-search.ts",
+    "kind": "object-property:keywords",
+    "text": "default",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/general-search.ts",
+    "kind": "object-property:keywords",
+    "text": "uncategorized",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:title",
+    "text": "Show Command button in pane headers",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:description",
+    "text": "Show or hide the saved-command launcher in the focused project pane.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:keywords",
+    "text": "command",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:keywords",
+    "text": "button",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:keywords",
+    "text": "header",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:keywords",
+    "text": "pane",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:keywords",
+    "text": "toolbar",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:keywords",
+    "text": "hide",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/quick-commands-search.ts",
+    "kind": "object-property:keywords",
+    "text": "show",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-detach.ts",
+    "kind": "user-visible-call",
+    "text": "Chat moved, but its folder could not be saved.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-detach.ts",
+    "kind": "user-visible-call",
+    "text": "This terminal has no saved chat to move.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-detach.ts",
+    "kind": "user-visible-call",
+    "text": "Could not move chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-open.ts",
+    "kind": "user-visible-call",
+    "text": "Could not reopen chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-saved-drag.ts",
+    "kind": "user-visible-call",
+    "text": "Could not move chat.",
+    "dynamic": false,
+    "count": 2
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-saved-drag.ts",
+    "kind": "user-visible-call",
+    "text": "Could not drag this saved chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-saved-drag.ts",
+    "kind": "user-visible-call",
+    "text": "The destination pane was closed. Drop the chat onto an open pane.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-saved-drag.ts",
+    "kind": "user-visible-call",
+    "text": "A split can contain up to",
+    "dynamic": true,
+    "count": 2
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-saved-drag.ts",
+    "kind": "user-visible-call",
+    "text": "workspaces",
+    "dynamic": true,
+    "count": 2
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/chat-sidebar-saved-drag.ts",
+    "kind": "user-visible-call",
+    "text": "Could not reopen this chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatFolderPicker.tsx",
+    "kind": "jsx-attribute:placeholder",
+    "text": "Choose folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatFolderPicker.tsx",
+    "kind": "jsx-expression",
+    "text": "(default)",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatFolderPicker.tsx",
+    "kind": "jsx-text",
+    "text": "Choose an available folder to continue.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarOptions.tsx",
+    "kind": "jsx-text",
+    "text": "Group chats",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarOptions.tsx",
+    "kind": "jsx-text",
+    "text": "All chats, newest first",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarOptions.tsx",
+    "kind": "jsx-text",
+    "text": "Status",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarOptions.tsx",
+    "kind": "jsx-text",
+    "text": "Folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarOptions.tsx",
+    "kind": "jsx-text",
+    "text": "Folders",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarOptions.tsx",
+    "kind": "jsx-text",
+    "text": "Show all folders",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarOptions.tsx",
+    "kind": "jsx-text",
+    "text": "Manage workspaces and folders",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Reopen",
+    "dynamic": true,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Mark",
+    "dynamic": true,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "done",
+    "dynamic": true,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-expression",
+    "text": "Now",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-text",
+    "text": "Open chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-text",
+    "text": "Rename chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-text",
+    "text": "Move to separate chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-expression",
+    "text": "Move to In progress",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-expression",
+    "text": "Mark done",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-text",
+    "text": "Change folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/ChatSidebarRow.tsx",
+    "kind": "jsx-text",
+    "text": "New folder...",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-text",
+    "text": "New folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-text",
+    "text": "Create a folder for this chat. Running work will continue; the new location applies when you reopen the chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-text",
+    "text": "Folder name",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-text",
+    "text": "Create inside",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-text",
+    "text": "Browse",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-text",
+    "text": "Cancel",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-expression",
+    "text": "Creating...",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/NewChatFolderDialog.tsx",
+    "kind": "jsx-expression",
+    "text": "Create folder",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "user-visible-call",
+    "text": "filed under",
+    "dynamic": true,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "user-visible-call",
+    "text": "Workspace",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "user-visible-call",
+    "text": "Chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "user-visible-call",
+    "text": "Running work continues. The new working folder applies when you reopen the chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "user-visible-call",
+    "text": "Could not change folder.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Find chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-attribute:placeholder",
+    "text": "Find chat...",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-text",
+    "text": "Earlier chats could not load.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-text",
+    "text": "Retry",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-text",
+    "text": "Loading chats...",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Chats",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-expression",
+    "text": "No chats yet.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-expression",
+    "text": "No chats match this view.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-text",
+    "text": "Rename chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Chat name",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/SidebarChatList.tsx",
+    "kind": "jsx-text",
+    "text": "Save",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/workspace-options-menu-items.tsx",
+    "kind": "jsx-text",
+    "text": "Show every chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/WorktreeCardStatusSlot.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Mark workspace Done",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/sidebar/WorktreeCardStatusSlot.tsx",
+    "kind": "jsx-text",
+    "text": "Mark workspace Done",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/tab-bar/SortableTabContextMenu.tsx",
+    "kind": "jsx-text",
+    "text": "Move to separate chat",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/tab-group/AiVaultSessionDropLayer.tsx",
+    "kind": "user-visible-call",
+    "text": "This chat drag expired. Drag the chat again from the sidebar.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/tab-group/TabGroupPanel.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Remove pane from split",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/tab-group/TabGroupPanel.tsx",
+    "kind": "jsx-text",
+    "text": "Remove pane from split",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/TerminalWorktreeSplitSurface.tsx",
+    "kind": "jsx-text",
+    "text": "New terminal",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/workspace-split/remove-chat-pane-from-split.ts",
+    "kind": "user-visible-call",
+    "text": "Could not remove pane from split.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/workspace-split/useWorkspaceDropTargets.ts",
+    "kind": "user-visible-call",
+    "text": "A split can contain up to",
+    "dynamic": true,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/workspace-split/useWorkspaceDropTargets.ts",
+    "kind": "user-visible-call",
+    "text": "workspaces",
+    "dynamic": true,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/workspace-split/useWorkspaceDropTargets.ts",
+    "kind": "user-visible-call",
+    "text": "Could not move chat.",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/workspace-split/WorkspacePaneCloseButton.tsx",
+    "kind": "jsx-text",
+    "text": "Remove workspace from split",
+    "dynamic": false,
+    "count": 2
+  },
+  {
+    "filePath": "src/renderer/src/components/workspace-split/WorkspacePaneCloseButton.tsx",
+    "kind": "jsx-attribute:aria-label",
+    "text": "Remove workspace from split",
+    "dynamic": false,
+    "count": 1
   }
 ]
