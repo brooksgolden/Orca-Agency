@@ -137,6 +137,34 @@ describe('pane terminal output scheduler', () => {
     )
   })
 
+  it('paces a large visible-pane redraw while keeping direct input echo immediate', async () => {
+    vi.useFakeTimers()
+    const { writeTerminalOutput } = await loadScheduler()
+    const terminals = Array.from({ length: 64 }, () => createTerminal())
+    const onAck = vi.fn()
+
+    terminals.forEach((terminal) => {
+      writeTerminalOutput(terminal, 'redraw', {
+        foreground: true,
+        latencySensitive: false,
+        ackCredit: onAck
+      })
+    })
+    vi.advanceTimersByTime(0)
+    expect(terminals.every((terminal) => terminal.write.mock.calls.length === 0)).toBe(true)
+
+    const active = createTerminal()
+    writeTerminalOutput(active, 'typed echo', { foreground: true, latencySensitive: true })
+    expect(active.write).toHaveBeenCalledWith('typed echo', expect.any(Function))
+
+    vi.advanceTimersByTime(4)
+    expect(terminals.filter((terminal) => terminal.write.mock.calls.length > 0)).toHaveLength(8)
+    expect(onAck).toHaveBeenCalledTimes(8)
+    vi.advanceTimersByTime(40)
+    expect(terminals.every((terminal) => terminal.write.mock.calls.length === 1)).toBe(true)
+    expect(onAck).toHaveBeenCalledTimes(64)
+  })
+
   it('defers background write preparation until coalesced output drains', async () => {
     vi.useFakeTimers()
     const { writeTerminalOutput } = await loadScheduler()

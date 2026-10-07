@@ -94,6 +94,9 @@ export const BACKGROUND_CHUNK_CHARS = 16 * 1024
 export const MAX_WRITES_PER_DRAIN = 2
 // Why 8: per-tick volume (8 x 16KB = 128KB ≈ 1.3ms parse) sets the sustained ceiling (~30MB/s) within DRAIN_TIME_BUDGET_MS; at 2 it was only 8MB/s against a ~100MB/s parser (see throughput bench).
 export const HIGH_PRIORITY_MAX_WRITES_PER_DRAIN = 8
+// Why: 64 visible queues need at least eight drain turns; pacing those turns leaves input and paint time between bulk parse batches.
+const BULK_VISIBLE_QUEUE_THRESHOLD = 64
+const BULK_VISIBLE_QUEUE_RELEASE_THRESHOLD = 16
 export const DRAIN_TIME_BUDGET_MS = 8
 export const LARGE_BACKLOG_CHARS = 512 * 1024
 // Why mutable: the cap scales with the user's scrollback setting (terminalOutputBacklogCapChars), configured when settings apply; the chunk-count cap stays fixed.
@@ -129,6 +132,7 @@ let drainTimerDelayMs: number | null = null
 // Why a MessageChannel for zero-delay drains: Chromium clamps nested setTimeout(0) to ~4ms; a posted macrotask isn't clamped yet still yields to input/paint. Cancellation is by generation.
 let drainImmediatePending = false
 let drainImmediateGeneration = 0
+let bulkVisibleDrainPacing = false
 let useMessageChannelDrain = typeof MessageChannel !== 'undefined' && !isVitestEnv()
 let drainChannel: MessageChannel | null = null
 // Why indirect: the drain loop lives downstream of this module, so it registers itself here rather than being imported back into the queue state it operates on.
@@ -181,12 +185,25 @@ export function markTerminalOutputDrainStarted(): void {
 }
 
 export function scheduleDrain(delayMs: number): void {
+  bulkVisibleDrainPacing =
+    queuedByTerminal.size >= BULK_VISIBLE_QUEUE_THRESHOLD ||
+    (bulkVisibleDrainPacing && queuedByTerminal.size > BULK_VISIBLE_QUEUE_RELEASE_THRESHOLD)
+  const paceBulk = delayMs === 0 && bulkVisibleDrainPacing
+  if (paceBulk) {
+    delayMs = HIGH_PRIORITY_DRAIN_INTERVAL_MS
+  }
   if (drainImmediatePending) {
-    // An immediate drain is already armed — nothing can beat zero delay.
-    return
+    if (!paceBulk) {
+      return
+    }
+    cancelImmediateDrain()
   }
   if (drainTimer !== null) {
-    if (drainTimerDelayMs !== null && drainTimerDelayMs <= delayMs) {
+    if (
+      drainTimerDelayMs !== null &&
+      drainTimerDelayMs <= delayMs &&
+      !(paceBulk && drainTimerDelayMs === 0)
+    ) {
       return
     }
     clearTimeout(drainTimer)
