@@ -94,7 +94,12 @@ export const BACKGROUND_CHUNK_CHARS = 16 * 1024
 export const MAX_WRITES_PER_DRAIN = 2
 // Why 8: per-tick volume (8 x 16KB = 128KB ≈ 1.3ms parse) sets the sustained ceiling (~30MB/s) within DRAIN_TIME_BUDGET_MS; at 2 it was only 8MB/s against a ~100MB/s parser (see throughput bench).
 export const HIGH_PRIORITY_MAX_WRITES_PER_DRAIN = 8
+// Why: pressure begins before 10 mounted panes; pace once eight queues fill so input and paint get turns.
+const BULK_QUEUE_THRESHOLD = 8
+const BULK_QUEUE_RELEASE_THRESHOLD = 4
 export const DRAIN_TIME_BUDGET_MS = 8
+// Why: shorter bulk turns leave room for keyboard events while many panes redraw.
+export const BULK_DRAIN_TIME_BUDGET_MS = 3
 export const LARGE_BACKLOG_CHARS = 512 * 1024
 // Why mutable: the cap scales with the user's scrollback setting (terminalOutputBacklogCapChars), configured when settings apply; the chunk-count cap stays fixed.
 let maxQueueChars = TERMINAL_OUTPUT_BACKLOG_MIN_CAP_CHARS
@@ -129,6 +134,7 @@ let drainTimerDelayMs: number | null = null
 // Why a MessageChannel for zero-delay drains: Chromium clamps nested setTimeout(0) to ~4ms; a posted macrotask isn't clamped yet still yields to input/paint. Cancellation is by generation.
 let drainImmediatePending = false
 let drainImmediateGeneration = 0
+let bulkDrainPacing = false
 let useMessageChannelDrain = typeof MessageChannel !== 'undefined' && !isVitestEnv()
 let drainChannel: MessageChannel | null = null
 // Why indirect: the drain loop lives downstream of this module, so it registers itself here rather than being imported back into the queue state it operates on.
@@ -180,13 +186,30 @@ export function markTerminalOutputDrainStarted(): void {
   drainTimerDelayMs = null
 }
 
+export function terminalOutputDrainTimeBudgetMs(): number {
+  return bulkDrainPacing ? BULK_DRAIN_TIME_BUDGET_MS : DRAIN_TIME_BUDGET_MS
+}
+
 export function scheduleDrain(delayMs: number): void {
+  bulkDrainPacing =
+    queuedByTerminal.size >= BULK_QUEUE_THRESHOLD ||
+    (bulkDrainPacing && queuedByTerminal.size > BULK_QUEUE_RELEASE_THRESHOLD)
+  const paceBulk = delayMs === 0 && bulkDrainPacing
+  if (paceBulk) {
+    delayMs = HIGH_PRIORITY_DRAIN_INTERVAL_MS
+  }
   if (drainImmediatePending) {
-    // An immediate drain is already armed — nothing can beat zero delay.
-    return
+    if (!paceBulk) {
+      return
+    }
+    cancelImmediateDrain()
   }
   if (drainTimer !== null) {
-    if (drainTimerDelayMs !== null && drainTimerDelayMs <= delayMs) {
+    if (
+      drainTimerDelayMs !== null &&
+      drainTimerDelayMs <= delayMs &&
+      !(paceBulk && drainTimerDelayMs === 0)
+    ) {
       return
     }
     clearTimeout(drainTimer)

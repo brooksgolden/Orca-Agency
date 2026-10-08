@@ -846,6 +846,14 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
+      - name: Fetch pinned stable comparison tags
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          git -c credential.interactive=false fetch --no-tags https://github.com/stablyai/orca.git \
+            refs/tags/v1.4.211:refs/tags/v1.4.211 \
+            refs/tags/v1.4.212:refs/tags/v1.4.212
+
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
@@ -1012,8 +1020,9 @@ jobs:
           rpm="dist/orca-ide-${version}.x86_64.rpm"
           test -s "$deb"
           test -s "$rpm"
-          deb_marker="$(dpkg-deb --fsys-tarfile "$deb" | tar -xOf - ./opt/Orca/resources/package-type)"
-          rpm_marker="$(rpm2cpio "$rpm" | cpio --quiet --extract --to-stdout ./opt/Orca/resources/package-type)"
+          # The Agency product name changes the /opt directory in each package.
+          deb_marker="$(dpkg-deb --fsys-tarfile "$deb" | tar --wildcards -xOf - './opt/*/resources/package-type')"
+          rpm_marker="$(rpm2cpio "$rpm" | cpio --quiet --extract --to-stdout './opt/*/resources/package-type')"
           [[ "$deb_marker" == deb ]] || { echo "Expected deb marker, got: $deb_marker"; exit 1; }
           [[ "$rpm_marker" == rpm ]] || { echo "Expected rpm marker, got: $rpm_marker"; exit 1; }
 

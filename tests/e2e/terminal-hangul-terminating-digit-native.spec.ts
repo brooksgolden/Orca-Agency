@@ -6,6 +6,7 @@
  * CI runs the default xdotool injector under X11, checking exact Hangul-plus-digit PTY bytes.
  * That path passed even before the Wayland fix; it does not prove #15299 is fixed.
  * Reproducing #15299 still requires the nested Wayland session below.
+ * Nested injection holds keys 80 ms; instant presses can vanish in IBus before Chromium.
  *
  * To run the Wayland reproduction on a machine with gnome-shell and ibus-hangul:
  *
@@ -64,6 +65,9 @@ import {
 } from './terminal-ime-byte-reader'
 
 const NATIVE_COMMAND_TIMEOUT_MS = 10_000
+// Why: instant xdotool presses race IBus replies; 80 ms matches a physical key hold.
+const NESTED_KEY_HOLD_MS = 80
+const keyHoldWait = new Int32Array(new SharedArrayBuffer(4))
 const REPETITIONS = Number(process.env.ORCA_E2E_DIGIT_REPETITIONS ?? 3)
 const INJECTOR = process.env.ORCA_E2E_IME_INJECTOR ?? 'xdotool'
 const WAYLAND_INJECT = process.env.ORCA_E2E_WAYLAND_INJECT ?? '/tmp/ime15299/wayland-inject.py'
@@ -93,6 +97,20 @@ function injectKeys(tokens: string[]): void {
       stdio: 'pipe',
       timeout: NATIVE_COMMAND_TIMEOUT_MS
     })
+    return
+  }
+  if (INJECTOR === 'nested') {
+    for (const token of tokens) {
+      execFileSync('xdotool', ['keydown', '--clearmodifiers', token], {
+        stdio: 'pipe',
+        timeout: NATIVE_COMMAND_TIMEOUT_MS
+      })
+      Atomics.wait(keyHoldWait, 0, 0, NESTED_KEY_HOLD_MS)
+      execFileSync('xdotool', ['keyup', '--clearmodifiers', token], {
+        stdio: 'pipe',
+        timeout: NATIVE_COMMAND_TIMEOUT_MS
+      })
+    }
     return
   }
   for (const token of tokens) {
@@ -160,7 +178,13 @@ async function writeEvidence(
   extra: Record<string, unknown>
 ): Promise<void> {
   const trace = await readTerminalImeBoundaryTrace(page)
-  const payload = { ...extra, injector: INJECTOR, keyTokens: KEY_TOKENS, trace }
+  const payload = {
+    ...extra,
+    injector: INJECTOR,
+    keyTokens: KEY_TOKENS,
+    nestedKeyHoldMs: INJECTOR === 'nested' ? NESTED_KEY_HOLD_MS : 0,
+    trace
+  }
   const body = `${JSON.stringify(payload, null, 2)}\n`
   await testInfo.attach(`${name}.json`, { body, contentType: 'application/json' })
   const dir = path.join(process.cwd(), 'test-results', 'terminal-ime-evidence')

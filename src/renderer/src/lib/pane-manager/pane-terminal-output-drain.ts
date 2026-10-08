@@ -7,7 +7,6 @@ import { clearForegroundRelease, isEntryDrainable } from './pane-terminal-foregr
 import { hasHighPriorityBacklog, hasQueuedChunks } from './pane-terminal-output-queue-backlog'
 import {
   BACKGROUND_DRAIN_INTERVAL_MS,
-  DRAIN_TIME_BUDGET_MS,
   HIGH_PRIORITY_DRAIN_INTERVAL_MS,
   HIGH_PRIORITY_MAX_WRITES_PER_DRAIN,
   LARGE_BACKLOG_CHARS,
@@ -17,6 +16,7 @@ import {
   queuedByTerminal,
   scheduleDrain,
   setTerminalOutputDrainRunner,
+  terminalOutputDrainTimeBudgetMs,
   type QueueEntry
 } from './pane-terminal-output-queue-registry'
 
@@ -75,6 +75,7 @@ export function drainQueuedOutputImpl(): void {
   markTerminalOutputDrainStarted()
   let writes = 0
   const startedAt = getDrainNow()
+  const timeBudgetMs = terminalOutputDrainTimeBudgetMs()
   const highPriority = hasHighPriorityBacklog()
   const maxWrites = highPriority ? HIGH_PRIORITY_MAX_WRITES_PER_DRAIN : MAX_WRITES_PER_DRAIN
 
@@ -102,7 +103,7 @@ export function drainQueuedOutputImpl(): void {
       clearForegroundRelease(entry)
     }
     // Why: xterm parsing and DOM work share the renderer thread with input; keep draining cooperative so WSL/agent output can't pin the UI.
-    if (writes > 0 && getDrainNow() - startedAt >= DRAIN_TIME_BUDGET_MS) {
+    if (writes > 0 && getDrainNow() - startedAt >= timeBudgetMs) {
       break
     }
   }
