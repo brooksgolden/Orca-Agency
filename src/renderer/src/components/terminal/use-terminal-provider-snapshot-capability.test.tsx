@@ -162,9 +162,9 @@ describe('useTerminalProviderSnapshotCapability', () => {
     hook.unmount()
   })
 
-  it('does not poll again after a provider returns a definitive result', async () => {
+  it('does not poll again after a provider confirms an authoritative snapshot', async () => {
     vi.useFakeTimers()
-    resolveCapabilities.mockResolvedValue([{ id: 'ssh:target@@pty-1', authoritative: false }])
+    resolveCapabilities.mockResolvedValue([{ id: 'ssh:target@@pty-1', authoritative: true }])
     const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
     await vi.runAllTimersAsync()
 
