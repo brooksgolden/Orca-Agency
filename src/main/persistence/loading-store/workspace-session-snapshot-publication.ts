@@ -11,6 +11,7 @@ import {
   migrateWorkspaceSessionTerminalScrollbackSnapshotsAsync
 } from '../../terminal-scrollback-snapshot-async-migration'
 import { preserveRuntimeAuthoredWorkspaceSessionFields } from '../runtime-authored-workspace-session-fields'
+import { admitLocalWorkspaceTerminalMoves } from '../../runtime/workspace-session-terminal-moves'
 import { registerPersistedPaneKeyAlias } from '../restoring-sessions/pane-alias-normalization'
 import {
   normalizeWorkspaceSessionPaneIdentities,
@@ -34,7 +35,12 @@ export function setLocalWorkspaceSession(
   deferSnapshotFiles = false
 ): void {
   const context = getSessionSnapshotOperationsContext(owner)
-  const prior = context.runtime.state.workspaceSession
+  const admission = admitLocalWorkspaceTerminalMoves(
+    session,
+    context.runtime.state.workspaceSession
+  )
+  const prior = admission.prior
+  session = admission.session
   // Why here and not at the callers: the before-unload stage path writes the renderer's payload
   // straight through, so a per-caller guard leaves the quit write erasing runtime-authored rows.
   session = preserveRuntimeAuthoredWorkspaceSessionFields(session, prior)

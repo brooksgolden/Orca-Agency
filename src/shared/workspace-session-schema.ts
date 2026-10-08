@@ -112,6 +112,7 @@ const terminalTabSchema = z.object({
   generation: z.number().optional(),
   startupCwd: z.string().min(1).optional(),
   relocatedFromWorktreeIds: z.array(z.string().min(1)).optional().catch(undefined),
+  workspaceMoveRevision: z.number().int().nonnegative().safe().optional().catch(undefined),
   // Why: persist the launched agent so a restored idle agent tab keeps its
   // provider icon before any hook fires. `.catch(undefined)` keeps a stale or
   // unknown agent id from failing the whole-session parse (which would reset

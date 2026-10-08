@@ -93,6 +93,8 @@ export type TerminalTab = {
   startupCwd?: string
   /** Exact former presentation owners; live PTY IDs and execution cwd remain unchanged. */
   relocatedFromWorktreeIds?: string[]
+  /** Monotonic presentation move count; stale snapshots cannot undo a newer move. */
+  workspaceMoveRevision?: number
   /** Why: the coding-harness agent Orca launched in this tab. Lets the tab bar
    *  show the provider icon immediately, before the agent emits its first hook
    *  event (a freshly-launched, idle agent reports no live status yet). Live

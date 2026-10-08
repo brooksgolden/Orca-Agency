@@ -1,4 +1,4 @@
-import type { Tab, TabGroup } from '../../shared/tab-types'
+import type { Tab } from '../../shared/tab-types'
 import type {
   TerminalLayoutSnapshot,
   TerminalPaneLayoutNode
@@ -7,6 +7,7 @@ import type { WorkspaceSessionState } from '../../shared/workspace-session-state
 import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
 import { layoutContainsLeafId } from '../persistence/restoring-sessions/terminal-layout-normalization'
 import { pruneTabGroupLayoutAfterRetirement } from './mobile-session-terminal-retirement'
+import { rebaseTabGroups } from './workspace-session-tab-group-membership'
 
 function collectLeafIds(node: TerminalPaneLayoutNode | null, ids: Set<string>): void {
   if (!node) {
@@ -82,32 +83,6 @@ function rebaseUnifiedTabs(
     }
   }
   return result
-}
-
-function rebaseTabGroups(
-  groups: readonly TabGroup[],
-  validTabIds: ReadonlySet<string>
-): TabGroup[] {
-  return groups.flatMap((group) => {
-    const tabOrder = group.tabOrder.filter((tabId) => validTabIds.has(tabId))
-    if (tabOrder.length === 0) {
-      return []
-    }
-    const tabIds = new Set(tabOrder)
-    const activeTabId =
-      group.activeTabId && tabIds.has(group.activeTabId) ? group.activeTabId : (tabOrder[0] ?? null)
-    const recentTabIds = group.recentTabIds?.filter((tabId) => tabIds.has(tabId))
-    return [
-      {
-        ...group,
-        tabOrder,
-        activeTabId,
-        // Why assigned even when it filters to empty: omitting the key lets `...group`
-        // re-introduce the unfiltered array, persisting ids for tabs the host dropped.
-        ...(group.recentTabIds ? { recentTabIds: recentTabIds ?? [] } : {})
-      }
-    ]
-  })
 }
 
 function rebaseIncarnationBindings(
@@ -227,6 +202,9 @@ export function rebaseWorkspaceSessionTerminalMembership(
   let includeTabGroups = incoming.tabGroups !== undefined
   let includeTabGroupLayouts = incoming.tabGroupLayouts !== undefined
   let rebasedMembership = false
+  const hostTerminalTabIds = new Set(
+    Object.values(prior.tabsByWorktree).flatMap((tabs) => tabs.map((tab) => tab.id))
+  )
   const worktreeIds = new Set([
     ...Object.keys(prior.tabsByWorktree),
     ...Object.keys(incoming.tabsByWorktree)
@@ -247,10 +225,17 @@ export function rebaseWorkspaceSessionTerminalMembership(
     const terminalTabIds = new Set(currentTabs.map((tab) => tab.id))
     const tabs = currentTabs.map((current) => {
       const candidate = candidateTabsById.get(current.id)
-      return candidate ? { ...candidate, ptyId: current.ptyId } : current
+      return candidate
+        ? {
+            ...candidate,
+            ptyId: current.ptyId,
+            workspaceMoveRevision: current.workspaceMoveRevision,
+            relocatedFromWorktreeIds: current.relocatedFromWorktreeIds
+          }
+        : current
     })
     for (const candidate of incoming.tabsByWorktree[worktreeId] ?? []) {
-      if (!terminalTabIds.has(candidate.id)) {
+      if (!terminalTabIds.has(candidate.id) && !hostTerminalTabIds.has(candidate.id)) {
         delete terminalLayoutsByTabId[candidate.id]
       }
     }

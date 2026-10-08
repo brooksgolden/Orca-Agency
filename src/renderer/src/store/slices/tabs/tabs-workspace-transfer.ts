@@ -110,6 +110,7 @@ export function createTabsWorkspaceTransferActions(
                 ...terminal,
                 worktreeId: destinationId,
                 startupCwd: terminal.startupCwd ?? source.path,
+                workspaceMoveRevision: (terminal.workspaceMoveRevision ?? 0) + 1,
                 relocatedFromWorktreeIds: [
                   ...new Set([...(terminal.relocatedFromWorktreeIds ?? []), sourceId])
                 ]

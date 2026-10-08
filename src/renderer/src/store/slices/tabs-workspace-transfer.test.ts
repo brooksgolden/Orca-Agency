@@ -39,6 +39,7 @@ describe('moving a live chat out of its workspace', () => {
     expect(after.tabsByWorktree[target][0].aiVaultTitle).toEqual(
       before.tabsByWorktree[source][0].aiVaultTitle
     )
+    expect(after.tabsByWorktree[target][0].workspaceMoveRevision).toBe(1)
     expect(after.ptyIdsByTabId).toBe(before.ptyIdsByTabId)
     expect(after.terminalLayoutsByTabId).toBe(before.terminalLayoutsByTabId)
     expect(after.pendingReconnectTabByWorktree).toMatchObject({
