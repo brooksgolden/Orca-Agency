@@ -45,6 +45,23 @@ describe('terminal provider snapshot capabilities', () => {
     expect(terminalProviderHasAuthoritativeSnapshot('legacy')).toBe(false)
   })
 
+  it('rechecks a false answer after a newly spawned daemon session becomes authoritative', async () => {
+    const ids = ['new-pty']
+    const resolve = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 'new-pty', authoritative: false }])
+      .mockResolvedValueOnce([{ id: 'new-pty', authoritative: true }])
+
+    expect(await synchronizeTerminalProviderSnapshotCapabilities(ids, resolve, 1_000)).toBe(1_000)
+    expect(terminalProviderHasAuthoritativeSnapshot('new-pty')).toBe(false)
+    expect(await synchronizeTerminalProviderSnapshotCapabilities(ids, resolve, 1_500)).toBe(500)
+    expect(resolve).toHaveBeenCalledTimes(1)
+
+    expect(await synchronizeTerminalProviderSnapshotCapabilities(ids, resolve, 2_000)).toBeNull()
+    expect(resolve).toHaveBeenCalledTimes(2)
+    expect(terminalProviderHasAuthoritativeSnapshot('new-pty')).toBe(true)
+  })
+
   it('refreshes a pre-provider false after startup services become ready', async () => {
     await synchronizeTerminalProviderSnapshotCapabilities(['restored-pty'], async () => [
       { id: 'restored-pty', authoritative: false }

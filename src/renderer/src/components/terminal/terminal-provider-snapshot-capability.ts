@@ -208,13 +208,14 @@ export async function synchronizeTerminalProviderSnapshotCapabilities(
     const resolvedById = new Map(resolved.map((entry) => [entry.id, entry.authoritative]))
     for (const id of batch) {
       const authoritative = resolvedById.get(id)
-      if (typeof authoritative === 'boolean') {
-        capabilityChanged ||=
-          (authoritativeSnapshotByPtyId.get(id) === true) !== (authoritative === true)
-        authoritativeSnapshotByPtyId.set(id, authoritative)
+      if (authoritative === true) {
+        capabilityChanged ||= authoritativeSnapshotByPtyId.get(id) !== true
+        authoritativeSnapshotByPtyId.set(id, true)
         unknownCapabilityRetryAtByPtyId.delete(id)
         unknownCapabilityAttemptsByPtyId.delete(id)
       } else {
+        // A daemon can know the provider before it tracks a newly spawned session.
+        // Keep false safe-side, but re-ask in case that session becomes snapshot-backed.
         backOffUnknownCapability(id, nowMs)
       }
     }
