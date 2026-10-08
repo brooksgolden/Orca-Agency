@@ -179,7 +179,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       },
       { folder, nextFolder, ids, transcripts, stub }
     )
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded' })
     const rows = page.locator('[data-chat-sidebar-id]')
     const latest = rows.filter({ hasText: 'Latest client research' })
     await expect(latest).toBeVisible()
@@ -199,7 +199,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     const renamed = rows.filter({ hasText: 'Saved client name' })
     await renamed.getByRole('button', { name: 'Mark Saved client name done' }).click()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(renamed).toBeVisible()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
     await page.getByRole('button', { name: /^Chat grouping and folder filters/ }).click()
@@ -213,7 +213,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await page.keyboard.press('Escape')
     await expect(renamed).toHaveCount(0)
     await expect(rows).toHaveCount(1)
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(renamed).toHaveCount(0)
     await expect(rows).toHaveCount(1)
     await page.getByRole('button', { name: /^Chat grouping and folder filters/ }).click()
@@ -290,12 +290,12 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       return { id: worktree.id, mode: worktree.displayNameMode }
     }, folder)
     expect(generatedWorkspace.mode).toBe('automatic')
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toBeVisible()
     await page.evaluate(async (worktreeId) => {
       await window.api.worktrees.updateMeta({ worktreeId, updates: { displayName: 'coho' } })
     }, generatedWorkspace.id)
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(rows.filter({ hasText: 'coho' })).toBeVisible()
     await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toHaveCount(0)
     await page.screenshot({ path: testInfo.outputPath('packaged-chat-sidebar.png') })
@@ -304,7 +304,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await page.evaluate(async (parentPath) => {
       await window.api.projectGroups.create({ name: 'Old inbox label', parentPath })
     }, inbox)
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await page.getByRole('button', { name: 'New chat', exact: true }).click()
     const newChat = page.getByRole('dialog', { name: 'New chat', exact: true })
     await expect(newChat.getByRole('combobox', { name: 'Folder', exact: true })).toContainText(
