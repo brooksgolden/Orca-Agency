@@ -85,6 +85,10 @@ import {
   TERMINAL_TAB_PARK_FLIP_WINDOW_MS
 } from './terminal-park-verdict-flip-telemetry'
 import { BACKGROUND_WORKTREE_MEASURE_WINDOW_MS } from '../terminal/background-terminal-worktree-visibility'
+import {
+  clearTerminalProviderSnapshotCapabilities,
+  synchronizeTerminalProviderSnapshotCapabilities
+} from '../terminal/terminal-provider-snapshot-capability'
 import { queueTerminalPaneSplitRequest } from './terminal-pane-split-request-routing'
 import { useTerminalTabColdParking } from './use-terminal-tab-cold-parking'
 
@@ -113,9 +117,11 @@ describe('useTerminalTabColdParking measure-clock contract', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000_000)
     mocks.coldParkSelectCalls = 0
+    clearTerminalProviderSnapshotCapabilities()
   })
 
   afterEach(() => {
+    clearTerminalProviderSnapshotCapabilities()
     vi.useRealTimers()
     mocks.exemptTabIds = new Set()
     mocks.exemptSelectCalls = 0
@@ -157,6 +163,32 @@ describe('useTerminalTabColdParking measure-clock contract', () => {
       vi.advanceTimersByTime(TERMINAL_TAB_HOT_RETAIN_MS + 1)
     })
 
+    expect(result.current).toEqual(new Set(['tab-1']))
+  })
+
+  it('parks a past-deadline tab when its watcher snapshot capability becomes available', async () => {
+    mocks.watcherCoverage = false
+    const assignments = new Map([
+      ['tab-1', { groupId: 'group-1', isActiveInGroup: false }],
+      ['tab-2', { groupId: 'group-1', isActiveInGroup: true }]
+    ])
+    const args = {
+      ...hookArgs(false),
+      assignments,
+      isWorktreeActive: true,
+      activeTerminalTabId: 'tab-2'
+    }
+    const { result, rerender } = renderHook(useTerminalTabColdParking, { initialProps: args })
+    rerender({ ...args, isWorktreeActive: false })
+    act(() => vi.advanceTimersByTime(TERMINAL_TAB_HOT_RETAIN_MS + 1))
+    expect(result.current).toEqual(new Set())
+
+    mocks.watcherCoverage = true
+    await act(async () => {
+      await synchronizeTerminalProviderSnapshotCapabilities(['wt-1@@session-tab-1'], async (ids) =>
+        ids.map((id) => ({ id, authoritative: true }))
+      )
+    })
     expect(result.current).toEqual(new Set(['tab-1']))
   })
 
