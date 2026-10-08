@@ -6,6 +6,10 @@ Read this file during each weekly update. Include pending fixes in the release n
 
 Native Windows ARM64 continues to skip the upstream desktop feed and update campaigns. Manual checks, downloads and install requests now return idle without showing an update error or an upstream download link. The reviewed Saturday installer remains the update route. Cloud sign-out reminders stay enabled. The October 7 cloud session was invalidated at 19:23 EDT; its original server rejection was not recorded. Brooks signed in again, and the new encrypted session is saved. Do not claim that the sign-out cause is fixed or restore an old rotating credential from an installation backup.
 
+Local 1.4.1021 was installed and restarted on October 8 after Claude review, focused regressions and four exact-package smoke specs passed. The installed app returned idle for a manual update check without an error card. Its original signed-in account remained connected with encrypted storage. The isolated package screenshot confirms that sign-out reminders remain visible when required.
+
+All 54 tabs, 230 saved chats, 41 original terminal processes, occupied layouts, drafts and sidebar choices were retained. The first CLI binding comparison failed for six inactive renderer surfaces; independent reconciliation proved that their original recorded tab/leaf identities, process incarnations and control handles were unchanged. Those tabs were not mounted or mutated, and interactive reopening remains untested. Earlier package smoke failures remain recorded; the final run passed without skips or retries. Sign-out root cause and intermittent terminal freezes remain unresolved. Public changes stay held for Saturday October 10 at 05:00 America/New_York.
+
 ## October 7 candidate, held for Saturday
 
 - **Pick up the same conversation:** Restart for an outdated local Codex configuration captures that pane's session before replacing its terminal, then uses current launch settings to resume it. Main verifies the transcript against the current account/home. Account changes launch fresh; unknown pane identities and remote runtimes without the replacement guard use the resume picker.
