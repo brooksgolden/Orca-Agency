@@ -192,6 +192,31 @@ describe('useTerminalTabColdParking measure-clock contract', () => {
     expect(result.current).toEqual(new Set(['tab-1']))
   })
 
+  it('starts coverage for a deferred folder tab when snapshot capability becomes available', async () => {
+    mocks.watcherCoverage = false
+    const folderId = 'folder:folder-1'
+    const args = {
+      ...hookArgs(false),
+      worktreeId: folderId,
+      terminalTabs: [{ ...terminalTab('tab-1'), ptyId: `${folderId}@@session-tab-1` }],
+      assignments: new Map([['tab-1', { groupId: 'group-1', isActiveInGroup: true }]]),
+      isWorktreeActive: true,
+      activeTerminalTabId: 'tab-1',
+      activationDeferredMountTabIds: new Set(['tab-1'])
+    }
+    const { result } = renderHook(() => useTerminalTabColdParking(args))
+    expect(result.current).toEqual(new Set())
+
+    mocks.watcherCoverage = true
+    await act(async () => {
+      await synchronizeTerminalProviderSnapshotCapabilities(
+        [`${folderId}@@session-tab-1`],
+        async (ids) => ids.map((id) => ({ id, authoritative: true }))
+      )
+    })
+    expect(result.current).toEqual(new Set(['tab-1']))
+  })
+
   it('records focused split changes when the visible tab set does not change', () => {
     const assignments = new Map([
       ['tab-1', { groupId: 'group-1', isActiveInGroup: true }],
