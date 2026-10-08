@@ -84,6 +84,7 @@ declare global {
     __terminalParkingDebug?: {
       parkDelayMs: number
       parkedTabIds: () => string[]
+      authoritativeSnapshot: (ptyId: string) => boolean
       /** A tab's scrollback across both store homes, via the one resolver production reads through. */
       resolveLeafScrollback: (tabId: string) => Record<string, string> | undefined
       retentionLimit: number | null

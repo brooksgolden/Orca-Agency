@@ -310,6 +310,9 @@ test('a cold-parked host pane keeps serving its paired remote viewer', async ({
             parkingEnabled: state?.settings?.terminalHiddenViewParking !== false,
             parkDelayMs: window.__terminalParkingDebug?.parkDelayMs,
             parkedTabIds: window.__terminalParkingDebug?.parkedTabIds(),
+            cachedAuthoritativeSnapshot: ptyId
+              ? window.__terminalParkingDebug?.authoritativeSnapshot(ptyId)
+              : null,
             snapshotCapability
           }
         },
@@ -318,6 +321,21 @@ test('a cold-parked host pane keeps serving its paired remote viewer', async ({
       console.log(`[sta2854] park-failure-diagnosis=${JSON.stringify(diagnosis)}`)
       throw error
     }
+    console.log(
+      `[sta2854] host-snapshot-capability=${JSON.stringify(
+        await orcaPage.evaluate(
+          ({ worktreeId, hostTabId }) => {
+            const tab = window.__store
+              ?.getState()
+              .tabsByWorktree[worktreeId]?.find((candidate) => candidate.id === hostTabId)
+            return tab?.ptyId
+              ? window.__terminalParkingDebug?.authoritativeSnapshot(tab.ptyId)
+              : null
+          },
+          { worktreeId, hostTabId }
+        )
+      )}`
+    )
     console.log(`[sta2854] post-park client=${JSON.stringify(await readClientState())}`)
 
     // Direct probe: is the host-minted terminal handle still resolvable once
