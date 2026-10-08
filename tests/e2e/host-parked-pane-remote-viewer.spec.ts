@@ -280,9 +280,44 @@ test('a cold-parked host pane keeps serving its paired remote viewer', async ({
         }
       }, webTabId)
     console.log(`[sta2854] before-park client=${JSON.stringify(await readClientState())}`)
-    await parkHiddenTabBehindDecoy(orcaPage, worktreeId, hostTabId, {
-      parkDelayMs: PARK_DELAY_MS
-    })
+    try {
+      await parkHiddenTabBehindDecoy(orcaPage, worktreeId, hostTabId, {
+        parkDelayMs: PARK_DELAY_MS
+      })
+    } catch (error) {
+      const diagnosis = await orcaPage.evaluate(
+        async ({ worktreeId, hostTabId }) => {
+          const state = window.__store?.getState()
+          const tab = state?.tabsByWorktree[worktreeId]?.find(
+            (candidate) => candidate.id === hostTabId
+          )
+          const ptyId = tab?.ptyId ?? null
+          let snapshotCapability: unknown = null
+          if (ptyId) {
+            try {
+              snapshotCapability = await window.api.pty.getAuthoritativeBufferSnapshotCapabilities([
+                ptyId
+              ])
+            } catch (cause) {
+              snapshotCapability = String(cause)
+            }
+          }
+          return {
+            activeTabId: state?.activeTabId,
+            tab,
+            layout: state?.terminalLayoutsByTabId[hostTabId],
+            pendingStartup: state?.pendingStartupByTabId[hostTabId],
+            parkingEnabled: state?.settings?.terminalHiddenViewParking !== false,
+            parkDelayMs: window.__terminalParkingDebug?.parkDelayMs,
+            parkedTabIds: window.__terminalParkingDebug?.parkedTabIds(),
+            snapshotCapability
+          }
+        },
+        { worktreeId, hostTabId }
+      )
+      console.log(`[sta2854] park-failure-diagnosis=${JSON.stringify(diagnosis)}`)
+      throw error
+    }
     console.log(`[sta2854] post-park client=${JSON.stringify(await readClientState())}`)
 
     // Direct probe: is the host-minted terminal handle still resolvable once
