@@ -29,7 +29,10 @@ import { resumedClaudeSession, savedClaudeResume } from './chat-sidebar-claude-r
 
 /** When the latest working turn began; heartbeats and session-boundary snapshots never move it. */
 function latestTurnStart(entry: AgentStatusEntry): number {
-  let latest = entry.state === 'working' ? entry.stateStartedAt : 0
+  let latest =
+    !entry.sessionBoundary && !entry.restoredUnconfirmed
+      ? (entry.turnStartedAt ?? (entry.state === 'working' ? entry.stateStartedAt : 0))
+      : 0
   for (const item of entry.stateHistory) {
     if (item.state === 'working' && item.startedAt > latest) {
       latest = item.startedAt
@@ -218,6 +221,10 @@ export function buildAgentChatRows(args: {
       tabId: resident ? agent.tab.id : null,
       paneKey: resident ? agent.paneKey : null,
       session,
+      promptBackedWorking:
+        agent.state === 'working' &&
+        !agent.entry.sessionBoundary &&
+        !agent.entry.restoredUnconfirmed,
       timestamp: resumed ? sessionAt : rowTimestamp(agent, sessionAt),
       turnStartedAt: resumed
         ? chatSessionHumanTurnTime(resumed)

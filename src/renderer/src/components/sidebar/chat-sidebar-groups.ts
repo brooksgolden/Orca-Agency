@@ -1,4 +1,8 @@
-import type { ChatSidebarRow, ChatSidebarState } from './chat-sidebar-types'
+import {
+  chatHasWorkingTurn,
+  type ChatSidebarRow,
+  type ChatSidebarState
+} from './chat-sidebar-types'
 import { hiddenChatFolderLabels } from './chat-creation-folders'
 import { chatSidebarSplitGroups, type FocusedChatWorkspace } from './chat-sidebar-split-groups'
 import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
@@ -18,7 +22,7 @@ export type ChatSidebarListItem =
       splitEnd?: boolean
     }
 
-/** Activity orders whole workspaces; creation order keeps their main chat stable. */
+/** Activity orders workspaces; resident tab order determines each pane's parent chat. */
 export function chatSidebarListItems(
   rows: readonly ChatSidebarRow[],
   state: Pick<
@@ -39,9 +43,13 @@ export function chatSidebarListItems(
     `${row.title}\n${row.folder}`.toLocaleLowerCase().includes(text)
   const byWorkspace = new Map<string, ChatSidebarRow[]>()
   const folderCompletion = new Map<string, boolean>()
+  const workingFolders = new Set<string>()
   for (const row of rows) {
     if (!row.automated) {
       folderCompletion.set(row.folder, (folderCompletion.get(row.folder) ?? true) && row.completed)
+      if (!row.completed && chatHasWorkingTurn(row)) {
+        workingFolders.add(row.folder)
+      }
     }
   }
   for (const row of rows) {
@@ -57,6 +65,8 @@ export function chatSidebarListItems(
       row.hostId,
       row.worktree.id,
       groupBy === 'folder' ? row.folder : null,
+      // Why: opening Done beside active work must not promote it without a new prompt.
+      groupBy === 'status' ? row.completed : null,
       // Why: history belongs in the list, but only resident tabs share a visible workspace.
       row.tabId ? null : row.id
     ])
@@ -121,9 +131,12 @@ export function chatSidebarListItems(
       groupBy === 'folder' && settings?.collapseDoneFolders && folderCompletion.get(key)
         ? key
         : undefined
+    const revealWorkingFolder =
+      groupBy === 'folder' && settings?.collapseDoneFolders && workingFolders.has(key)
     const collapsed =
-      (collapsedGroups?.has(headingId) ?? false) ||
-      (doneFolder !== undefined && !settings?.expandedDoneFolders?.includes(doneFolder))
+      !revealWorkingFolder &&
+      ((collapsedGroups?.has(headingId) ?? false) ||
+        (doneFolder !== undefined && !settings?.expandedDoneFolders?.includes(doneFolder)))
     const label = groupBy === 'status' && key === 'In progress' ? 'In Progress' : key
     const items: ChatSidebarListItem[] = key
       ? [

@@ -56,6 +56,7 @@ describe('chat sidebar status follows the shared agent display policy', () => {
       timestamp: 1000,
       tabId: 'a',
       turnStartedAt: 1000,
+      promptBackedWorking: true,
       activityFromState: true,
       state: 'working' as const
     }

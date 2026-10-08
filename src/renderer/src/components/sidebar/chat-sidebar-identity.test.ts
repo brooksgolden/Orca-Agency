@@ -60,7 +60,7 @@ describe('chat sidebar preferences', () => {
     expect(moved?.sessions?.[key]).toEqual({ worktreeId: 'other' })
   })
 
-  it('reopens a title-only chat on a later working turn and keeps it done during the marked one', () => {
+  it('keeps a title-only chat Done until a new turn is proven', () => {
     const titleRow = chatRow({
       id: fallback,
       sessionKey: null,
@@ -68,10 +68,15 @@ describe('chat sidebar preferences', () => {
       turnStartedAt: 1
     })
     const markedIdle = { [fallback]: { activityAt: 1, at: 5 } }
-    expect(isChatCompleted({ ...titleRow, state: 'working' }, markedIdle[fallback])).toBe(false)
+    expect(isChatCompleted({ ...titleRow, state: 'working' }, markedIdle[fallback])).toBe(true)
     expect(
       chatSidebarPreferencePatch([{ ...titleRow, state: 'working' }], { completed: markedIdle }, 9)
-    ).toEqual({ completed: { [fallback]: { activityAt: 1, at: 9, done: false } } })
+    ).toBeNull()
+    const prompted = { ...titleRow, state: 'working' as const, turnStartedAt: 9 }
+    expect(isChatCompleted(prompted, markedIdle[fallback])).toBe(false)
+    expect(chatSidebarPreferencePatch([prompted], { completed: markedIdle }, 9)).toEqual({
+      completed: { [fallback]: { activityAt: 1, at: 5, done: false, closedTabId: undefined } }
+    })
 
     const markedWorking = { [fallback]: { activityAt: 1, at: 5, working: true } }
     expect(isChatCompleted({ ...titleRow, state: 'working' }, markedWorking[fallback])).toBe(true)

@@ -26,6 +26,8 @@ export type ChatSidebarRow = {
   turnStartedAt: number
   /** No turn clock exists (title-derived); only a later working state proves a new turn. */
   activityFromState: boolean
+  /** Presentation evidence only; restored startup snapshots do not prove a submitted prompt. */
+  promptBackedWorking: boolean
   state: AgentDotState
   /** Presentation only; completion and activity keep using the canonical state. */
   displayState?: AgentDotState
@@ -39,6 +41,12 @@ export type ChatSidebarRow = {
   /** Exact pane-bound Claude `/resume` link for close paths without a history scan. */
   resumeLauncher?: ChatSidebarResumeLauncher
   automated?: boolean
+}
+
+export function chatHasWorkingTurn(
+  row: Pick<ChatSidebarRow, 'state' | 'promptBackedWorking'>
+): boolean {
+  return row.state === 'working' && row.promptBackedWorking
 }
 
 export type ChatLiveSession = {

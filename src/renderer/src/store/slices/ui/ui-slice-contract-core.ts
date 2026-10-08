@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand'
+import type { WorkspacePanePlacement } from '@/lib/workspace-pane-placement'
 import type {
   WorkspaceLayoutPath,
   WorkspaceSplitEdge,
@@ -157,6 +158,7 @@ export type UISliceCore = {
   clearManuallyUnreadTurns: (paneKeys: string[]) => void
   activeView: TopLevelView
   workspaceSplitGroups: WorkspaceSplitGroup[]
+  placeWorkspacePane: (source: string, target: string, placement: WorkspacePanePlacement) => void
   placeWorkspaceAtEdge: (
     source: string,
     target: string,

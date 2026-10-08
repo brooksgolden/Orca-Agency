@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { chatSidebarListItems } from './chat-sidebar-groups'
 import { chatRow, chatState, chatTab, chatWorktree } from './chat-sidebar-test-fixtures'
 import type { ChatSidebarSettings } from '../../../../shared/chat-sidebar-settings'
+import { placeWorkspaceAtEdge } from '@/lib/workspace-split-layout'
 
 const rows = [
   chatRow({ id: 'open', tabId: 'a', state: 'idle' }),
@@ -24,6 +25,50 @@ function items(settings: ChatSidebarSettings, query = '', collapsed = new Set<st
 }
 
 describe('chat sidebar folder filters', () => {
+  it('does not expand a folder for an unprompted working startup snapshot', () => {
+    const state = chatState()
+    state.settings!.chatSidebar = { groupBy: 'folder', collapseDoneFolders: true }
+    const row = chatRow({ state: 'working', promptBackedWorking: false })
+    expect(
+      chatSidebarListItems([row], state, '', [], new Set(['chat:folder:Acme']))[0]
+    ).toMatchObject({ collapsed: true })
+    expect(
+      chatSidebarListItems(
+        [{ ...row, promptBackedWorking: true }],
+        state,
+        '',
+        [],
+        new Set(['chat:folder:Acme'])
+      )[0]
+    ).toMatchObject({ collapsed: false })
+  })
+  it('reveals a working folder on return from a split without changing saved collapse choices', () => {
+    const state = chatState()
+    const preferences = new Set(['chat:folder:Acme'])
+    state.settings!.chatSidebar = { groupBy: 'folder', collapseDoneFolders: true }
+    const active = chatRow({ id: 'active', tabId: 'a', state: 'working' })
+    const other = chatRow({
+      id: 'other',
+      tabId: 'b',
+      folder: 'Other',
+      worktree: { ...chatWorktree, id: 'other' }
+    })
+    const split = placeWorkspaceAtEdge([], chatWorktree.id, 'other', 'right', 'joined')
+    expect(chatSidebarListItems([active, other], state, '', split, preferences)[0]).toMatchObject({
+      label: 'Split workspaces (2)'
+    })
+    const detached = chatSidebarListItems([active, other], state, '', [], preferences)
+    expect(detached.find((item) => item.id === 'chat:folder:Acme')).toMatchObject({
+      collapsed: false
+    })
+    expect(detached.some((item) => item.kind === 'chat' && item.id === 'active')).toBe(true)
+    expect(preferences.has('chat:folder:Acme')).toBe(true)
+    state.settings!.chatSidebar.collapseDoneFolders = false
+    expect(chatSidebarListItems([active], state, '', [], preferences)[0]).toMatchObject({
+      collapsed: true
+    })
+  })
+
   it.each(['folder', 'status', 'recent'] as const)(
     'only-open filtering keeps resident idle and Done tabs under %s grouping',
     (groupBy) => {
@@ -97,12 +142,12 @@ describe('chat sidebar folder filters', () => {
     ).toEqual(['done', 'open-done'])
     expect(items({ groupBy: 'folder', collapseDoneFolders: false })).toHaveLength(6)
     expect(items({ groupBy: 'status', collapseDoneFolders: true })[0]).toMatchObject({
-      label: 'In Progress (3)',
+      label: 'In Progress (2)',
       collapsed: false
     })
     expect(items({ groupBy: 'status' }, '', new Set(['chat:status:In progress']))[0]).toMatchObject(
       {
-        label: 'In Progress (3)',
+        label: 'In Progress (2)',
         collapsed: true
       }
     )
