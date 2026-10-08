@@ -103,8 +103,8 @@ test('durable whole-tab close removes a split tab across restart', async (// oxl
     expect(split.result.split.tabId).toBe(closedTabId)
     await waitForPaneCount(firstLaunch.page, 2, 30_000)
 
-    // The renderer can replace a split's provisional handle while binding its
-    // new leaf. Resolve the exact live leaf after both panes have materialized.
+    // Renderer binding can advance the graph before close. Resolve the exact
+    // leaf, then assert that the returned split handle still names it.
     let splitHandle: string | null = null
     await expect
       .poll(

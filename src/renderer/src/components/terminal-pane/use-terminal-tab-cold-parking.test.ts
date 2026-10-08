@@ -121,7 +121,6 @@ describe('useTerminalTabColdParking measure-clock contract', () => {
   })
 
   afterEach(() => {
-    clearTerminalProviderSnapshotCapabilities()
     vi.useRealTimers()
     mocks.exemptTabIds = new Set()
     mocks.exemptSelectCalls = 0

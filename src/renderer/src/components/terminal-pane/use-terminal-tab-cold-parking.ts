@@ -160,9 +160,7 @@ export function useTerminalTabColdParking(args: {
     const overrides = getTerminalParkingPolicyOverrides()
     const currentTerminalTabIds = new Set(terminalTabs.map((tab) => tab.id))
     const portalTabIds = new Set(
-      activityTerminalPortals
-        .filter((portal) => portal.worktreeId === worktreeId)
-        .map((portal) => portal.tabId)
+      activityTerminalPortals.filter((p) => p.worktreeId === worktreeId).map((p) => p.tabId)
     )
     for (const tabId of Array.from(terminalTabHiddenSinceRef.current.keys())) {
       if (!currentTerminalTabIds.has(tabId)) {
@@ -302,10 +300,12 @@ export function useTerminalTabColdParking(args: {
   // the watcher-sync effect must share the pinned result below so watcher
   // lifecycle tracks the committed unmounts.
   const candidateParkedTerminalTabIds = useMemo(() => {
+    // Watcher eligibility reads capability state outside React.
+    void snapshotCapabilityRevision
     const parked = new Set<string>()
     for (const terminalTab of terminalTabs) {
-      const assignment = assignments.get(terminalTab.id)
-      const isVisible = Boolean(isWorktreeActive && assignment && assignment.isActiveInGroup)
+      const isVisible =
+        isWorktreeActive && assignments.get(terminalTab.id)?.isActiveInGroup === true
       const hasActivityTerminalPortal =
         findActivityTerminalPortal(activityTerminalPortals, {
           worktreeId,
@@ -346,7 +346,6 @@ export function useTerminalTabColdParking(args: {
       }
     }
     return parked
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- capability changes invalidate watcher eligibility read outside React.
   }, [
     activityTerminalPortals,
     assignments,
