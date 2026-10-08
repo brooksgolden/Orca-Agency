@@ -346,6 +346,7 @@ export function useTerminalTabColdParking(args: {
       }
     }
     return parked
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- capability changes invalidate watcher eligibility read outside React.
   }, [
     activityTerminalPortals,
     assignments,
@@ -356,6 +357,7 @@ export function useTerminalTabColdParking(args: {
     isWorktreeActive,
     shouldMeasureHiddenWorktree,
     sleepingRecordOwnedTabIds,
+    snapshotCapabilityRevision,
     terminalTabs,
     terminalPaneSplitMountLeaseTabIds,
     worktreeId

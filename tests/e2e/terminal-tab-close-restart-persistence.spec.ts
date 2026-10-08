@@ -129,6 +129,9 @@ test('durable whole-tab close removes a split tab across restart', async (// oxl
     if (!splitHandle) {
       throw new Error('Split leaf became visible without a terminal handle')
     }
+    expect(splitHandle, 'A split must retain its returned handle after pane binding').toBe(
+      split.result.split.handle
+    )
 
     const close = await client.call<{ close: RuntimeTerminalClose }>('terminal.closeTab', {
       terminal: splitHandle
