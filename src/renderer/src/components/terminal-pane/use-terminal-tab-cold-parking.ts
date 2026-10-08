@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { useShallow } from 'zustand/react/shallow'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { useAppStore } from '../../store'
+import { useTerminalProviderSnapshotCapabilityRevision } from '../terminal/use-terminal-provider-snapshot-capability-revision'
 import {
   findActivityTerminalPortal,
   type ActivityTerminalPortalTarget
@@ -114,6 +115,7 @@ export function useTerminalTabColdParking(args: {
     getTerminalPaneSplitMountLeaseTabIds,
     getTerminalPaneSplitMountLeaseTabIds
   )
+  const snapshotCapabilityRevision = useTerminalProviderSnapshotCapabilityRevision()
   const pairedRuntimeParkingEnvironmentIds = useAppStore(
     selectPairedRuntimeParkingEnvironmentIdsFromState
   )
@@ -269,6 +271,7 @@ export function useTerminalTabColdParking(args: {
     pendingStartupByTabId,
     pairedRuntimeParkingEnvironmentIds,
     shouldMeasureHiddenWorktree,
+    snapshotCapabilityRevision,
     terminalParkingEnabled,
     terminalSshParkingEnabled,
     terminalTabParkingRevision,

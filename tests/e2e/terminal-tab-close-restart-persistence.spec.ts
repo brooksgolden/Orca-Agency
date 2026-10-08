@@ -103,11 +103,38 @@ test('durable whole-tab close removes a split tab across restart', async (// oxl
     expect(split.result.split.tabId).toBe(closedTabId)
     await waitForPaneCount(firstLaunch.page, 2, 30_000)
 
+    // The renderer can replace a split's provisional handle while binding its
+    // new leaf. Resolve the exact live leaf after both panes have materialized.
+    let splitHandle: string | null = null
+    await expect
+      .poll(
+        async () => {
+          const listed = await client.call<RuntimeTerminalListResult>('terminal.list', {
+            worktree: `id:${worktreeId}`
+          })
+          const matching = listed.result.terminals.filter(
+            (terminal) =>
+              terminal.worktreeId === worktreeId &&
+              terminal.tabId === closedTabId &&
+              terminal.leafId === split.result.split.leafId &&
+              terminal.connected &&
+              !terminal.orphaned
+          )
+          splitHandle = matching.length === 1 ? (matching[0]?.handle ?? null) : null
+          return matching.length
+        },
+        { message: 'Split leaf did not become uniquely bound in the runtime graph' }
+      )
+      .toBe(1)
+    if (!splitHandle) {
+      throw new Error('Split leaf became visible without a terminal handle')
+    }
+
     const close = await client.call<{ close: RuntimeTerminalClose }>('terminal.closeTab', {
-      terminal: split.result.split.handle
+      terminal: splitHandle
     })
     expect(close.result.close).toMatchObject({
-      handle: split.result.split.handle,
+      handle: splitHandle,
       tabId: closedTabId,
       closeMode: 'tab'
     })
