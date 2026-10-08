@@ -44,6 +44,12 @@ After the smoke checks ended, the 10:30 to 10:38 UTC window still showed variabl
 
 The recorder's process ID and cadence are saved so its contribution can be separated. Five-second CPU, disk and network samples and ten-second GPU samples can miss shorter events. The next useful evidence is timing through clipboard dispatch, terminal input receipt and renderer paint during the same user-visible stall.
 
+### Paste reports, October 8
+
+Brooks confirms progressive paste with both ordinary Ctrl+V and Wispr Flow. It remains common after the two Priceless AI automations and heavy local checks stopped. He estimates that only about one in ten Codex pastes appears immediately as a teal bracketed block. The other pastes appear in letters, words or sentences, while terminal animations stutter and the Orca interface spinner remains smooth. These are user observations, not measured event timings.
+
+A bounded redacted observer on the actual `pty:writeAccepted` input handler captured no input or paste events during its 120-second window. It recorded terminal output and a maximum sampled main-loop delay of 222 ms. The observer was removed afterward. This window cannot identify the paste bottleneck or establish an improvement. The next capture needs a reproduced paste with receipt, delivery and paint timings; do not attribute it to Wispr alone or assume that the entire interface stalled.
+
 ## Next measurements
 
 1. Capture a timestamped slow paste with clipboard dispatch, PTY input receipt, output delivery and renderer paint timing.
