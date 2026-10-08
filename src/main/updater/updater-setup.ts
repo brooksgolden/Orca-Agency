@@ -61,6 +61,7 @@ export class UpdaterSetup extends UpdaterDownloadInstall {
 
   quitAndInstall(): void {
     if (this.rejectIncompatibleDesktopFeed()) {
+      this.mainWindowRef?.webContents.send('updater:quitAndInstallAborted')
       return
     }
     super.quitAndInstall()
@@ -74,10 +75,8 @@ export class UpdaterSetup extends UpdaterDownloadInstall {
     if (hasCompatibleDesktopUpdateFeed()) {
       return false
     }
-    this.sendErrorStatus(
-      'Native Windows ARM64 updates use the reviewed Orca Agency installer.',
-      true
-    )
+    // Agency's reviewed weekly installer owns this platform; a blocked check is not an error.
+    this.sendStatus({ state: 'idle' })
     return true
   }
 

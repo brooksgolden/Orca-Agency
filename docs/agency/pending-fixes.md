@@ -2,6 +2,10 @@
 
 Read this file during each weekly update. Include pending fixes in the release notes only after the source, Claude review, package, installed functionality and visual checks pass. Then record the published release next to each included item.
 
+## Quiet weekly updates
+
+Native Windows ARM64 continues to skip the upstream desktop feed and update campaigns. Manual checks, downloads and install requests now return idle without showing an update error or an upstream download link. The reviewed Saturday installer remains the update route. Cloud sign-out reminders stay enabled. The October 7 cloud session was invalidated at 19:23 EDT; its original server rejection was not recorded. Brooks signed in again, and the new encrypted session is saved. Do not claim that the sign-out cause is fixed or restore an old rotating credential from an installation backup.
+
 ## October 7 candidate, held for Saturday
 
 - **Pick up the same conversation:** Restart for an outdated local Codex configuration captures that pane's session before replacing its terminal, then uses current launch settings to resume it. Main verifies the transcript against the current account/home. Account changes launch fresh; unknown pane identities and remote runtimes without the replacement guard use the resume picker.

@@ -93,10 +93,12 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       console.log(`ORCA_ARM64_SPEECH_POLICY:${JSON.stringify(speechPolicy)}`)
       await page.evaluate(() => window.api.updater.check())
       const updateStatus = await page.evaluate(() => window.api.updater.getStatus())
-      expect(updateStatus).toMatchObject({ state: 'error' })
-      expect(JSON.stringify(updateStatus)).toContain(
-        'Native Windows ARM64 updates use the reviewed Orca Agency installer.'
-      )
+      expect(updateStatus).toEqual({ state: 'idle' })
+      await expect(page.getByRole('heading', { name: 'Update Check Failed' })).toHaveCount(0)
+      await expect(
+        page.getByRole('button', { name: 'Update failed. Click to expand.' })
+      ).toHaveCount(0)
+      await page.screenshot({ path: testInfo.outputPath('packaged-quiet-weekly-updates.png') })
     }
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []
@@ -316,6 +318,46 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       generatedWorkspace.id
     )
     await assertPackagedMouseHistory(app, page)
+    const storeAsset = await app.evaluate(({ app }) => {
+      const files = process.mainModule
+        ?.require('node:fs')
+        .readdirSync(`${app.getAppPath()}/out/renderer/assets`)
+      return files.find((file: string) => /^store-.*\.js$/.test(file))
+    })
+    expect(storeAsset).toBeTruthy()
+    await page.evaluate(async (asset) => {
+      const module = await import(new URL(`./assets/${asset}`, location.href).href)
+      const store = Object.values(module).find(
+        (value) => typeof value === 'function' && 'setState' in value
+      )
+      if (
+        typeof store !== 'function' ||
+        !('setState' in store) ||
+        typeof store.setState !== 'function'
+      ) {
+        throw new Error('Packaged store missing')
+      }
+      store.setState({
+        orcaProfileAuthStatus: {
+          activeProfileId: 'fixture',
+          configured: true,
+          state: 'reconnect-required',
+          persistence: 'none',
+          cloud: {
+            cloudProfileId: 'fixture',
+            userId: 'fixture',
+            email: 'fixture@example.com',
+            displayName: 'Fixture',
+            linkedAt: 0
+          }
+        },
+        persistedUIReady: true,
+        dismissedUnexpectedSignoutVersion: null,
+        unexpectedSignoutDismissedVersions: []
+      })
+    }, storeAsset)
+    await expect(page.getByRole('heading', { name: "You've been signed out" })).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('packaged-signout-reminder.png') })
     expect(errors).toEqual([])
     expect(
       await app.evaluate(({ BrowserWindow }) =>
