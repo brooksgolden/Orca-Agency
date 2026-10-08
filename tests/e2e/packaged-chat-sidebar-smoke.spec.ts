@@ -14,7 +14,8 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
 {}, testInfo) => {
   const executablePath = process.env.ORCA_SMOKE_EXECUTABLE
   test.skip(!executablePath, 'Set ORCA_SMOKE_EXECUTABLE to the reviewed executable')
-  test.setTimeout(240_000)
+  // The combined package checks include several cold Windows reloads and screenshots.
+  test.setTimeout(360_000)
   const userDataDir = testInfo.outputPath('profile')
   mkdirSync(userDataDir, { recursive: true })
   writeFileSync(
