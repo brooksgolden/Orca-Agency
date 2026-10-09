@@ -9,6 +9,7 @@ import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-
 import { assertPackagedDefaultHomeCodexRestart } from './helpers/packaged-codex-restart-smoke'
 import { assertPackagedMouseHistory } from './helpers/packaged-mouse-history-smoke'
 import { assertPackagedChatFilterHighlight } from './helpers/packaged-chat-filter-highlight'
+import { captureHiddenRendererScreenshot } from './helpers/hidden-renderer-screenshot'
 
 test('packaged chat sidebar restores closed chats and resumes one exact session', async (// oxlint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture argument.
 {}, testInfo) => {
@@ -99,7 +100,10 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       await expect(
         page.getByRole('button', { name: 'Update failed. Click to expand.' })
       ).toHaveCount(0)
-      await page.screenshot({ path: testInfo.outputPath('packaged-quiet-weekly-updates.png') })
+      await captureHiddenRendererScreenshot(
+        page,
+        testInfo.outputPath('packaged-quiet-weekly-updates.png')
+      )
     }
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []
@@ -209,7 +213,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     })
     await progressFilter.click()
     await expect(progressFilter).toHaveAttribute('aria-checked', 'true')
-    await page.screenshot({ path: testInfo.outputPath('packaged-chat-filters.png') })
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('packaged-chat-filters.png'))
     await page.keyboard.press('Escape')
     await expect(renamed).toHaveCount(0)
     await expect(rows).toHaveCount(1)
@@ -298,7 +302,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(rows.filter({ hasText: 'coho' })).toBeVisible()
     await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('packaged-chat-sidebar.png') })
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('packaged-chat-sidebar.png'))
     const inbox = path.join(userDataDir, 'Uncategorized')
     mkdirSync(inbox)
     await page.evaluate(async (parentPath) => {
@@ -310,7 +314,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await expect(newChat.getByRole('combobox', { name: 'Folder', exact: true })).toContainText(
       'Uncategorized (default)'
     )
-    await page.screenshot({ path: testInfo.outputPath('packaged-new-chat-folder.png') })
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('packaged-new-chat-folder.png'))
     await page.keyboard.press('Escape')
     await assertPackagedDefaultHomeCodexRestart(
       page,
@@ -358,7 +362,10 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       })
     }, storeAsset)
     await expect(page.getByRole('heading', { name: "You've been signed out" })).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('packaged-signout-reminder.png') })
+    await captureHiddenRendererScreenshot(
+      page,
+      testInfo.outputPath('packaged-signout-reminder.png')
+    )
     expect(errors).toEqual([])
     expect(
       await app.evaluate(({ BrowserWindow }) =>

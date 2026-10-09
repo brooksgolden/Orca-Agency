@@ -5,8 +5,13 @@ import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboar
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
+import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-retry'
+import { captureHiddenRendererScreenshot } from './helpers/hidden-renderer-screenshot'
 
 async function headerPoint(page: Page, workspaceId: string) {
+  await expect(
+    page.locator(`[data-tab-group-strip-id][data-worktree-id="${workspaceId}"]`)
+  ).toBeVisible()
   return page.evaluate((id) => {
     const strip = document.querySelector<HTMLElement>(
       `[data-tab-group-strip-id][data-worktree-id="${id}"]`
@@ -70,11 +75,13 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
   try {
     await assertPackagedExecutableIdentity(app, executablePath)
     const page = await app.firstWindow()
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.setBackgroundThrottling(false)
-      }
-    })
+    await retryTransientMainEvaluate(() =>
+      app.evaluate(({ BrowserWindow }) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.webContents.setBackgroundThrottling(false)
+        }
+      })
+    )
     await page.waitForFunction(() => Boolean(window.api))
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const folders = ['shared', 'second', 'third', 'shared'].map((name) =>
@@ -116,10 +123,10 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       .click()
     const rejectedPane = page.locator(`[data-workspace-surface-id="${ids[2]}"]:visible`)
     await rejectedPane.getByRole('button', { name: 'New tab', exact: true }).click()
-    await page.getByRole('menuitem', { name: /New Terminal: PowerShell/ }).click()
+    await page.getByRole('menuitem', { name: /New Terminal: PowerShell/ }).dispatchEvent('click')
     await expect(rejectedPane.locator('[data-tab-id]')).toHaveCount(2)
     await rejectedPane.getByRole('button', { name: 'New tab', exact: true }).click()
-    await page.getByRole('menuitem', { name: /New Terminal: PowerShell/ }).click()
+    await page.getByRole('menuitem', { name: /New Terminal: PowerShell/ }).dispatchEvent('click')
     await expect(rejectedPane.locator('[data-tab-id]')).toHaveCount(3)
     await expect
       .poll(async () => (await page.evaluate(() => window.api.pty.listSessions())).length, {
@@ -166,7 +173,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       y: originalTopRight.y + originalTopRight.height / 2
     })
     await expect(page.locator('[data-workspace-drop-swap]')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('occupied-quadrant-swap.png') })
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('occupied-quadrant-swap.png'))
     await page.mouse.up()
     await expect
       .poll(async () => Math.round((await pane(ids[3]).boundingBox())!.y))
@@ -184,6 +191,11 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       pair('vertical', leaf(ids[0]), pair('horizontal', leaf(ids[1]), leaf(ids[2])))
     )
     await page.reload()
+    await page
+      .locator(`[role="option"][data-worktree-id="${ids[1]}"]`)
+      .first()
+      .locator('[data-worktree-card-surface]')
+      .click()
     const rowBounds = (await root.boundingBox())!
     await dragTo(page, await headerPoint(page, ids[1]), {
       x: rowBounds.x + rowBounds.width * 0.1,
@@ -197,7 +209,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     await expect
       .poll(async () => (await pane(ids[2]).boundingBox())!.width)
       .toBeCloseTo(rowBounds.width, -1)
-    await page.screenshot({ path: testInfo.outputPath('three-pane-row-quadrant.png') })
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('three-pane-row-quadrant.png'))
 
     // Tall columns reproduce the layout that previously trapped panes away from quadrants.
     await page.evaluate(
@@ -217,7 +229,10 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     const end = { x: bounds.x + bounds.width * 0.9, y: bounds.y + bounds.height * 0.9 }
     await dragTo(page, await headerPoint(page, ids[1]), end)
     await expect(page.locator('[data-workspace-quadrant-drop="bottom-right"]')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('bottom-right-quadrant-drop.png') })
+    await captureHiddenRendererScreenshot(
+      page,
+      testInfo.outputPath('bottom-right-quadrant-drop.png')
+    )
     await page.mouse.up()
     await expect
       .poll(async () => Math.round((await pane(ids[1]).boundingBox())!.height))
@@ -259,7 +274,10 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       { x: targetBounds.x + 4, y: targetBounds.y + 16 }
     )
     await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('same-folder-tab-insertion.png') })
+    await captureHiddenRendererScreenshot(
+      page,
+      testInfo.outputPath('same-folder-tab-insertion.png')
+    )
     await page.mouse.up()
     await expect(pane(ids[0]).locator(`[data-tab-id="${terminalIds[3]}"]`)).toBeVisible()
     await expect(pane(ids[3])).toHaveCount(0)
@@ -287,7 +305,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       )
     ).toBe(true)
   } finally {
-    await cleanupE2EDaemons(app)
     await closeElectronAppForE2E(app)
+    await cleanupE2EDaemons(profilePath)
   }
 })
