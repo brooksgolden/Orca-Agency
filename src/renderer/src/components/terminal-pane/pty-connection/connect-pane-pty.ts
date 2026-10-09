@@ -46,6 +46,9 @@ export function connectPanePty(
   deps: PtyConnectionDeps
 ): PanePtyBinding {
   const session = { pane, manager, deps } as ConnectPanePtySession
+  session.firstRestoredHostSnapshotPending =
+    deps.restoredViewportBlankingPanesRef?.current.has(pane.id) === true
+  session.restoredHostHistoryProtected = false
   session.shouldRefreshForegroundSynchronously = (): boolean =>
     !session.manager.hasWebglRenderer(session.pane.id)
   // One lookup for both epochs: the remount generation and the recovery
