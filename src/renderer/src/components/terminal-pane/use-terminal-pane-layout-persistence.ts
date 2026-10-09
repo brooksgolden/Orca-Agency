@@ -3,6 +3,7 @@ import { useAppStore } from '../../store'
 import type { ManagedPane } from '@/lib/pane-manager/pane-manager'
 import { serializeTerminalLayout } from './layout-serialization'
 import { mergeCapturedLeafState } from './merge-captured-leaf-state'
+import { withoutLeafScrollbackBuffer } from './leaf-scrollback-resolution'
 import { resolveTerminalLayoutActiveLeafId } from './terminal-layout-leaf-ids'
 import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
 import { clearTerminalScrollbackAndFollowOutput } from '@/lib/pane-manager/terminal-scrollback-clear'
@@ -141,6 +142,12 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
     (pane: ManagedPane): void => {
       clearedScrollbackLeafIdsRef.current.add(pane.leafId)
       clearTerminalScrollbackAndFollowOutput(pane.terminal)
+      const state = useAppStore.getState()
+      const localOnly = state.localOnlyScrollbackByTabId[tabId]
+      const retained = withoutLeafScrollbackBuffer(localOnly, pane.leafId)
+      if (retained !== localOnly) {
+        state.setTabLocalOnlyScrollback(tabId, retained ?? null)
+      }
       const ptyId = paneTransportsRef.current.get(pane.id)?.getPtyId() ?? null
       const clearedRemoteHostBuffer = clearWebRuntimeTerminalBuffer(ptyId)
       if (!clearedRemoteHostBuffer && ptyId) {

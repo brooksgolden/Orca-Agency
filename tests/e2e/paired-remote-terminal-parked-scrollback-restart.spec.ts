@@ -291,6 +291,7 @@ async function relaunchAndReveal(
 ): Promise<{
   relaunched: PairedElectronClient
   storeAfterRelaunch: number
+  storeAfterReveal: number
   restoreState: {
     hasTab: boolean
     restoredHostId: string | null
@@ -328,7 +329,8 @@ async function relaunchAndReveal(
     parked.token,
     PAINT_BUDGET_MS
   )
-  return { relaunched, storeAfterRelaunch, restoreState, tokenAfterReveal }
+  const storeAfterReveal = await readStoreBufferLength(relaunched.page, parked.webTabId)
+  return { relaunched, storeAfterRelaunch, storeAfterReveal, restoreState, tokenAfterReveal }
 }
 
 async function closeCreatedTerminals(
@@ -376,6 +378,7 @@ test.describe('host retains nothing', () => {
           storeAtPark: parked.storeAtPark,
           onDiskAfterPark,
           storeAfterRelaunch: reveal.storeAfterRelaunch,
+          storeAfterReveal: reveal.storeAfterReveal,
           restoreState: reveal.restoreState,
           tokenAfterReveal: reveal.tokenAfterReveal
         })}`
@@ -388,6 +391,7 @@ test.describe('host retains nothing', () => {
         // own partition, and did not leave it stripped in 'local'. This is what fails on `main`.
         runtimePartitionHoldsCapture: runtimePartitionBufferLength(onDiskAfterPark) > 0,
         localPartitionDidNotKeepCapture: localPartitionBufferLength(onDiskAfterPark) <= 0,
+        retainedAfterReveal: reveal.storeAfterReveal > 0,
         // Secondary: the reveal may be served by the live host's retained tail rather than the
         // disk copy, so it is not the fix's oracle — it confirms relaunch and a visible pane.
         tokenAfterReveal: reveal.tokenAfterReveal
@@ -397,6 +401,7 @@ test.describe('host retains nothing', () => {
         profileSurvived: true,
         runtimePartitionHoldsCapture: true,
         localPartitionDidNotKeepCapture: true,
+        retainedAfterReveal: true,
         tokenAfterReveal: true
       })
     } finally {
@@ -432,6 +437,7 @@ test.describe('host retains nothing', () => {
           storeAtPark: parked.storeAtPark,
           onDiskAfterQuit,
           storeAfterRelaunch: reveal.storeAfterRelaunch,
+          storeAfterReveal: reveal.storeAfterReveal,
           restoreState: reveal.restoreState,
           tokenAfterReveal: reveal.tokenAfterReveal
         })}`
@@ -447,13 +453,15 @@ test.describe('host retains nothing', () => {
         // Distinguishes missing session partitions from an empty buffer.
         profileSurvived: onDiskAfterQuit.length > 0,
         runtimePartitionHoldsCapture: runtimePartitionBufferLength(onDiskAfterQuit) > 0,
-        localPartitionDidNotKeepCapture: localPartitionBufferLength(onDiskAfterQuit) <= 0
+        localPartitionDidNotKeepCapture: localPartitionBufferLength(onDiskAfterQuit) <= 0,
+        retainedAfterReveal: reveal.storeAfterReveal > 0
       }).toEqual({
         tokenBeforePark: true,
         capturedAtPark: true,
         profileSurvived: true,
         runtimePartitionHoldsCapture: true,
-        localPartitionDidNotKeepCapture: true
+        localPartitionDidNotKeepCapture: true,
+        retainedAfterReveal: true
       })
     } finally {
       const live = relaunched ?? first
