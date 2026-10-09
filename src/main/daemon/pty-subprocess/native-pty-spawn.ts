@@ -5,6 +5,7 @@ import {
   wrapShellSpawnForMacosTccAttribution
 } from '../../providers/macos-tcc-login-shell'
 import type { WindowsShellSpawnAttempt } from '../../providers/windows-shell-fallback-chain'
+import { windowsConptySpawnOptions } from '../../providers/windows-conpty-backend'
 import { assignHostProcessToKillOnCloseJob } from '../../windows/windows-pty-job'
 
 import { canUseBunPty, spawnBunPty } from './bun-pty-process'
@@ -87,8 +88,7 @@ export async function spawnNativeDaemonPty(
       rows: args.rows,
       cwd,
       env: args.env,
-      // Why: bundled ConPTY has the wrap-marker behavior xterm expects.
-      ...(process.platform === 'win32' ? { useConptyDll: true } : {})
+      ...windowsConptySpawnOptions()
     })
     reportsChildExitStatus = hostReportsChildExitStatus(wrapped.file)
     args.onMacosTccSpawnStrategy?.(wrapped.file === shellPath ? 'direct' : 'wrapped')
