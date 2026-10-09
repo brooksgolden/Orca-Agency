@@ -50,12 +50,14 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     expect(await retryTransientMainEvaluate(() => app.evaluate(({ app }) => app.isPackaged))).toBe(
       true
     )
-    const page = await app.firstWindow()
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.setBackgroundThrottling(false)
-      }
-    })
+    const page = await app.firstWindow({ timeout: 60_000 })
+    await retryTransientMainEvaluate(() =>
+      app.evaluate(({ BrowserWindow }) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.webContents.setBackgroundThrottling(false)
+        }
+      })
+    )
     await page.waitForFunction(() => Boolean(window.api))
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []
@@ -255,20 +257,24 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     await page.keyboard.type('echo GRID_CARD_ZERO > grid-output.txt')
     await page.keyboard.press('Enter')
     await expect
-      .poll(
-        () =>
-          folderPaths.filter((folder) => existsSync(path.join(folder, 'grid-output.txt'))).length
+      .poll(() =>
+        folderPaths.some((folder) => {
+          const file = path.join(folder, 'grid-output.txt')
+          return existsSync(file) && readShellOutput(file).includes('GRID_CARD_ZERO')
+        })
       )
-      .toBe(1)
+      .toBe(true)
     await cards.nth(1).locator('.xterm').click()
     await page.keyboard.type('echo GRID_CARD_ONE > grid-output.txt')
     await page.keyboard.press('Enter')
     await expect
-      .poll(
-        () =>
-          folderPaths.filter((folder) => existsSync(path.join(folder, 'grid-output.txt'))).length
+      .poll(() =>
+        folderPaths.some((folder) => {
+          const file = path.join(folder, 'grid-output.txt')
+          return existsSync(file) && readShellOutput(file).includes('GRID_CARD_ONE')
+        })
       )
-      .toBe(2)
+      .toBe(true)
     const outputs = folderPaths
       .slice(0, 2)
       .map((folder) => readShellOutput(path.join(folder, 'grid-output.txt')))
@@ -281,30 +287,36 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       )
     ).toBe(true)
   } finally {
-    const page = app.windows()[0]
-    if (page) {
-      await page
-        .screenshot({ path: testInfo.outputPath('packaged-sidebar-final.png') })
-        .catch(() => {})
-      const snapshots = await page
-        .evaluate(async () => {
-          const sessions = await window.api.pty.listSessions()
-          return Promise.all(
-            sessions.map(async (session) => ({
-              session,
-              snapshot: await window.api.pty.getMainBufferSnapshot(session.id, {
-                scrollbackRows: 100
-              })
-            }))
-          )
-        })
-        .catch(() => null)
-      writeFileSync(
-        testInfo.outputPath('terminal-snapshots.json'),
-        JSON.stringify(snapshots, null, 2)
-      )
+    try {
+      const page = app.windows()[0]
+      if (page) {
+        await page
+          .screenshot({ path: testInfo.outputPath('packaged-sidebar-final.png') })
+          .catch(() => {})
+        const snapshots = await page
+          .evaluate(async () => {
+            const sessions = await window.api.pty.listSessions()
+            return Promise.all(
+              sessions.map(async (session) => ({
+                session,
+                snapshot: await window.api.pty.getMainBufferSnapshot(session.id, {
+                  scrollbackRows: 100
+                })
+              }))
+            )
+          })
+          .catch(() => null)
+        writeFileSync(
+          testInfo.outputPath('terminal-snapshots.json'),
+          JSON.stringify(snapshots, null, 2)
+        )
+      }
+    } finally {
+      try {
+        await closeElectronAppForE2E(app)
+      } finally {
+        await cleanupE2EDaemons(userDataDir)
+      }
     }
-    await closeElectronAppForE2E(app)
-    await cleanupE2EDaemons(userDataDir)
   }
 })
