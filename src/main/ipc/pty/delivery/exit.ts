@@ -1,4 +1,5 @@
 import {
+  bulkInputAtByPty,
   interactiveOutputCharsByPty,
   lastInputAtByPty,
   SYNTHETIC_KILL_EXIT_DUPLICATE_WINDOW_MS
@@ -137,6 +138,7 @@ export function finalizePtyExitForRenderer(
   session.rendererDeliveryRestoreNeededPtys.delete(payload.id)
   lastInputAtByPty.delete(payload.id)
   interactiveOutputCharsByPty.delete(payload.id)
+  bulkInputAtByPty.delete(payload.id)
   const releasedRendererCredit = getRendererInFlightCharsForPty(session, payload.id)
   session.rendererInFlightTotalChars = Math.max(
     0,

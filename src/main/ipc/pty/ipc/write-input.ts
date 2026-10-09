@@ -10,7 +10,7 @@ import {
 import { ptyOwnership } from '../provider/ownership-state'
 import { tryGetProviderForPty } from '../provider/registry'
 import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
-import { interactiveOutputCharsByPty, lastInputAtByPty } from '../delivery/visibility-state'
+import { notePtyInputForDelivery } from '../delivery/interactive'
 
 export function isMainWindowPtyIpcEvent(
   event: IpcMainEvent | IpcMainInvokeEvent,
@@ -150,8 +150,7 @@ export function createPtyWriteInput(deps: {
     isMainWindowPtyIpcEvent(event, mainWindow)
 
   const noteRendererPtyInput = (args: PtyWritePayload): void => {
-    lastInputAtByPty.set(args.id, performance.now())
-    interactiveOutputCharsByPty.set(args.id, 0)
+    notePtyInputForDelivery(args.id, args.data, args.inputKind, performance.now())
     runtime?.terminalRunFacts?.recordInput(args.id, args.inputKind, args.data)
   }
 

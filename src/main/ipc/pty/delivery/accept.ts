@@ -8,14 +8,14 @@ import {
   visibleRendererPtys,
   activeRendererPtys
 } from './visibility-state'
-import { PTY_BATCH_INTERVAL_MS } from './constants'
+import { PTY_BATCH_INTERVAL_MS, PTY_BULK_INPUT_BATCH_INTERVAL_MS } from './constants'
 import {
   appendPendingPtyData,
   getDroppedMode2031RendererData,
   getDroppedSynchronizedOutputRendererData
 } from './pending'
 import { sendModelRestoreNeededMarker, sendPtyDataToRenderer } from './payload'
-import { shouldSendInteractiveOutputNow } from './interactive'
+import { isPtyBulkInputOutputWindow, shouldSendInteractiveOutputNow } from './interactive'
 import { requestDeliveryResyncForGatedPty } from './accounting'
 import { warnIfDroppingHiddenBytesForVisiblePty } from './debug-snapshot'
 import { clearFlushTimerIfIdle } from './flush'
@@ -167,6 +167,12 @@ export function acceptPtyDataForRenderer(
     requestDeliveryResyncForGatedPty(session)
   }
   if (!session.flushTimer) {
-    session.schedulePendingDataFlush(PTY_BATCH_INTERVAL_MS)
+    // The timer is session-wide; this bounded delay may also cover other panes'
+    // queued background output. Their interactive echo still bypasses it.
+    session.schedulePendingDataFlush(
+      isPtyBulkInputOutputWindow(payload.id, performance.now())
+        ? PTY_BULK_INPUT_BATCH_INTERVAL_MS
+        : PTY_BATCH_INTERVAL_MS
+    )
   }
 }

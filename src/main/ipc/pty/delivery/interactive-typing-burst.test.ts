@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { INTERACTIVE_OUTPUT_BUDGET_CHARS, INTERACTIVE_OUTPUT_WINDOW_MS } from './constants'
-import { shouldSendInteractiveOutputNow } from './interactive'
-import { interactiveOutputCharsByPty, lastInputAtByPty } from './visibility-state'
+import {
+  INTERACTIVE_OUTPUT_BUDGET_CHARS,
+  INTERACTIVE_OUTPUT_WINDOW_MS,
+  PTY_BULK_INPUT_MAX_WINDOW_MS,
+  PTY_BULK_INPUT_OUTPUT_WINDOW_MS
+} from './constants'
+import {
+  isPtyBulkInputOutputWindow,
+  notePtyInputForDelivery,
+  shouldSendInteractiveOutputNow
+} from './interactive'
+import { bulkInputAtByPty, interactiveOutputCharsByPty, lastInputAtByPty } from './visibility-state'
 
 const PTY_ID = 'pty-typing-burst'
 
@@ -28,8 +37,7 @@ function codexFrame(bytes: number): string {
  * divergence that cannot happen in production.
  */
 function noteRendererPtyInput(now: number): void {
-  lastInputAtByPty.set(PTY_ID, now)
-  interactiveOutputCharsByPty.set(PTY_ID, 0)
+  notePtyInputForDelivery(PTY_ID, 'x', 'driving', now)
 }
 
 function typeKeyAndRepaint(now: number, frame: string): boolean {
@@ -41,6 +49,7 @@ describe('interactive output fast path during a continuous typing burst', () => 
   beforeEach(() => {
     lastInputAtByPty.delete(PTY_ID)
     interactiveOutputCharsByPty.delete(PTY_ID)
+    bulkInputAtByPty.delete(PTY_ID)
   })
 
   it('keeps every repaint of a sustained burst on the fast path', () => {
@@ -88,5 +97,46 @@ describe('interactive output fast path during a continuous typing burst', () => 
     expect(
       shouldSendInteractiveOutputNow(PTY_ID, frame, now + INTERACTIVE_OUTPUT_WINDOW_MS + 1)
     ).toBe(false)
+  })
+
+  it('batches the redraw burst after a large paste but restores immediate echo on typing', () => {
+    const now = 1_000
+    const frame = codexFrame(1_400)
+    notePtyInputForDelivery(PTY_ID, 'x'.repeat(404), 'driving', now)
+    expect(isPtyBulkInputOutputWindow(PTY_ID, now + 50)).toBe(true)
+    expect(shouldSendInteractiveOutputNow(PTY_ID, frame, now + 50)).toBe(false)
+    notePtyInputForDelivery(PTY_ID, 'a', 'driving', now + 60)
+    expect(isPtyBulkInputOutputWindow(PTY_ID, now + 62)).toBe(false)
+    expect(shouldSendInteractiveOutputNow(PTY_ID, frame, now + 62)).toBe(true)
+  })
+
+  it('expires paste batching and ignores query replies', () => {
+    const now = 1_000
+    notePtyInputForDelivery(PTY_ID, 'x'.repeat(404), 'driving', now)
+    notePtyInputForDelivery(PTY_ID, '\x1b[0n', 'query-reply', now + 10)
+    expect(isPtyBulkInputOutputWindow(PTY_ID, now + 20)).toBe(true)
+    expect(isPtyBulkInputOutputWindow(PTY_ID, now + PTY_BULK_INPUT_OUTPUT_WINDOW_MS + 21)).toBe(
+      false
+    )
+    expect(bulkInputAtByPty.has(PTY_ID)).toBe(false)
+  })
+
+  it('keeps batching across a large paste tail and separate bracketed close', () => {
+    const now = 1_000
+    notePtyInputForDelivery(PTY_ID, 'x'.repeat(16 * 1024), 'driving', now)
+    notePtyInputForDelivery(PTY_ID, 'tail', 'driving', now + 10)
+    notePtyInputForDelivery(PTY_ID, '\x1b[201~', 'driving', now + 70)
+    expect(isPtyBulkInputOutputWindow(PTY_ID, now + 100)).toBe(true)
+    notePtyInputForDelivery(PTY_ID, 'a', 'driving', now + 101)
+    expect(isPtyBulkInputOutputWindow(PTY_ID, now + 102)).toBe(false)
+  })
+
+  it('batches a sustained redraw storm but stops after five seconds', () => {
+    const now = 1_000
+    notePtyInputForDelivery(PTY_ID, 'x'.repeat(404), 'driving', now)
+    for (let elapsed = 500; elapsed < PTY_BULK_INPUT_MAX_WINDOW_MS; elapsed += 500) {
+      expect(isPtyBulkInputOutputWindow(PTY_ID, now + elapsed)).toBe(true)
+    }
+    expect(isPtyBulkInputOutputWindow(PTY_ID, now + PTY_BULK_INPUT_MAX_WINDOW_MS + 1)).toBe(false)
   })
 })

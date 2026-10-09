@@ -6,6 +6,7 @@ export const ptySizes = new Map<string, { cols: number; rows: number }>()
 // Why: the "recent user input" signal is PTY-scoped and must be cleared by every teardown path, incl. SSH/daemon shutdowns that skip the local exit listener.
 export const lastInputAtByPty = new Map<string, number>()
 export const interactiveOutputCharsByPty = new Map<string, number>()
+export const bulkInputAtByPty = new Map<string, { startedAt: number; lastOutputAt: number }>()
 export const activeRendererPtys = new Set<string>()
 export const visibleRendererPtys = new Set<string>()
 export const rendererVisibilityKnownPtys = new Set<string>()
