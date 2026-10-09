@@ -284,15 +284,12 @@ export function useTerminalTabColdParking(args: {
   const evictionExemptLayoutKey = useAppStore((state) =>
     isForceParked ? selectEvictionExemptTerminalTabLayoutKey(state, terminalTabs) : ''
   )
-  // Why memoized: resolving an exemption re-reads the store and walks the
-  // layout tree per tab, so recompute only when the force-park verdict, the
-  // tabs, or their layout PTYs change — not on every assignment/park-set change
-  // below.
+  // Resolving exemptions walks the layout tree, so only relevant inputs refresh it.
   const evictionExemptTerminalTabIds = useMemo(
     () =>
       isForceParked ? selectEvictionExemptTerminalTabIds(worktreeId, terminalTabs) : EMPTY_TAB_IDS,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the layout key encodes the store fields the selector re-reads internally.
-    [evictionExemptLayoutKey, isForceParked, terminalTabs, worktreeId]
+    [evictionExemptLayoutKey, isForceParked, snapshotCapabilityRevision, terminalTabs, worktreeId]
   )
 
   // Why: the park verdict before damping — worktree-level park (prop from

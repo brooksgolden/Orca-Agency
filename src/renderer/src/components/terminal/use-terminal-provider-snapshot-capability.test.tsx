@@ -17,9 +17,9 @@ type HookStoreState = {
 
 const storeState: HookStoreState = {
   tabsByWorktree: {
-    'repo::worktree': [{ id: 'tab-1', ptyId: 'ssh:target@@pty-1' }]
+    'repo::worktree': [{ id: 'tab-1', ptyId: 'repo::worktree@@pty-1' }]
   },
-  ptyIdsByTabId: { 'tab-1': ['ssh:target@@pty-1'] }
+  ptyIdsByTabId: { 'tab-1': ['repo::worktree@@pty-1'] }
 }
 
 vi.mock('@/store', () => ({
@@ -35,9 +35,9 @@ describe('useTerminalProviderSnapshotCapability', () => {
     clearTerminalProviderSnapshotCapabilities()
     resolveCapabilities.mockReset()
     storeState.tabsByWorktree = {
-      'repo::worktree': [{ id: 'tab-1', ptyId: 'ssh:target@@pty-1' }]
+      'repo::worktree': [{ id: 'tab-1', ptyId: 'repo::worktree@@pty-1' }]
     }
-    storeState.ptyIdsByTabId = { 'tab-1': ['ssh:target@@pty-1'] }
+    storeState.ptyIdsByTabId = { 'tab-1': ['repo::worktree@@pty-1'] }
     ;(window as unknown as { api: unknown }).api = {
       pty: { getAuthoritativeBufferSnapshotCapabilities: resolveCapabilities }
     }
@@ -55,9 +55,9 @@ describe('useTerminalProviderSnapshotCapability', () => {
   // (pending-reconnect and split-leaf layout ptys) or their startup answers
   // decay back into exempt-by-default unknown.
   it('keeps startup verdicts for split-leaf and pending-reconnect ptys alive', async () => {
-    storeState.pendingReconnectPtyIdByTabId = { 'tab-2': 'ssh:target@@restored' }
+    storeState.pendingReconnectPtyIdByTabId = { 'tab-2': 'repo::worktree@@restored' }
     storeState.terminalLayoutsByTabId = {
-      'tab-1': { ptyIdsByLeafId: { leaf: 'ssh:target@@split' } }
+      'tab-1': { ptyIdsByLeafId: { leaf: 'repo::worktree@@split' } }
     }
     const startupResolver = vi.fn(async (ids: string[]) =>
       ids.map((id) => ({ id, authoritative: true }))
@@ -66,21 +66,23 @@ describe('useTerminalProviderSnapshotCapability', () => {
       collectTerminalProviderSnapshotPtyIds(storeState),
       startupResolver
     )
-    expect(terminalProviderHasAuthoritativeSnapshot('ssh:target@@split')).toBe(true)
+    expect(terminalProviderHasAuthoritativeSnapshot('repo::worktree@@split')).toBe(true)
     resolveCapabilities.mockResolvedValue([])
 
     const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
     await Promise.resolve()
 
-    for (const ptyId of ['ssh:target@@pty-1', 'ssh:target@@split', 'ssh:target@@restored']) {
+    for (const ptyId of [
+      'repo::worktree@@pty-1',
+      'repo::worktree@@split',
+      'repo::worktree@@restored'
+    ]) {
       expect(terminalProviderHasAuthoritativeSnapshot(ptyId)).toBe(true)
     }
     hook.unmount()
   })
 
-  // Why: the collect key is memoized on the four store maps; a missing memo
-  // dep would freeze the key and silently drop new split-leaf ptys from the
-  // sync — a stale-collector correctness bug, not a perf one.
+  // The selector must notice split bindings or it reuses a stale PTY list.
   it('re-collects when a split leaf pty appears in the layouts map', async () => {
     resolveCapabilities.mockImplementation(async (ids: string[]) =>
       ids.map((id) => ({ id, authoritative: true }))
@@ -89,17 +91,17 @@ describe('useTerminalProviderSnapshotCapability', () => {
     await waitFor(() => expect(resolveCapabilities).toHaveBeenCalledOnce())
 
     storeState.terminalLayoutsByTabId = {
-      'tab-1': { ptyIdsByLeafId: { leaf: 'ssh:target@@new-split' } }
+      'tab-1': { ptyIdsByLeafId: { leaf: 'repo::worktree@@new-split' } }
     }
     hook.rerender()
 
     await waitFor(() =>
-      expect(resolveCapabilities).toHaveBeenLastCalledWith(['ssh:target@@new-split'])
+      expect(resolveCapabilities).toHaveBeenLastCalledWith(['repo::worktree@@new-split'])
     )
     hook.unmount()
   })
 
-  it('preserves newline-bearing folder-workspace pty ids in the memo key', async () => {
+  it('preserves newline-bearing folder-workspace pty ids in the selector', async () => {
     const newlinePtyId = 'repo::folder\nname@@pty-1'
     storeState.tabsByWorktree = {
       'repo::folder\nname': [{ id: 'tab-1', ptyId: newlinePtyId }]
@@ -113,9 +115,7 @@ describe('useTerminalProviderSnapshotCapability', () => {
     hook.unmount()
   })
 
-  // Why per-map: every dep of the collect-key memo is individually
-  // load-bearing, and exhaustive-deps is only a warn in this repo — a dropped
-  // dep silently freezes the key for exactly that map's changes.
+  // Each collected store map must invalidate the selector's cached PTY list.
   it('re-collects when each remaining collected store map changes', async () => {
     resolveCapabilities.mockImplementation(async (ids: string[]) =>
       ids.map((id) => ({ id, authoritative: true }))
@@ -123,34 +123,36 @@ describe('useTerminalProviderSnapshotCapability', () => {
     const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
     await waitFor(() => expect(resolveCapabilities).toHaveBeenCalledOnce())
 
-    storeState.pendingReconnectPtyIdByTabId = { 'tab-9': 'ssh:target@@reconnect' }
+    storeState.pendingReconnectPtyIdByTabId = { 'tab-9': 'repo::worktree@@reconnect' }
     hook.rerender()
     await waitFor(() =>
-      expect(resolveCapabilities).toHaveBeenLastCalledWith(['ssh:target@@reconnect'])
+      expect(resolveCapabilities).toHaveBeenLastCalledWith(['repo::worktree@@reconnect'])
     )
 
     storeState.tabsByWorktree = {
       'repo::worktree': [
         ...storeState.tabsByWorktree['repo::worktree'],
-        { id: 'tab-2', ptyId: 'ssh:target@@tab-2' }
+        { id: 'tab-2', ptyId: 'repo::worktree@@tab-2' }
       ]
     }
     hook.rerender()
-    await waitFor(() => expect(resolveCapabilities).toHaveBeenLastCalledWith(['ssh:target@@tab-2']))
+    await waitFor(() =>
+      expect(resolveCapabilities).toHaveBeenLastCalledWith(['repo::worktree@@tab-2'])
+    )
 
     storeState.ptyIdsByTabId = {
       ...storeState.ptyIdsByTabId,
-      'tab-2': ['ssh:target@@tab-2-split']
+      'tab-2': ['repo::worktree@@tab-2-split']
     }
     hook.rerender()
     await waitFor(() =>
-      expect(resolveCapabilities).toHaveBeenLastCalledWith(['ssh:target@@tab-2-split'])
+      expect(resolveCapabilities).toHaveBeenLastCalledWith(['repo::worktree@@tab-2-split'])
     )
     hook.unmount()
   })
 
   it('prefetches restored PTYs after render before activation is enabled', async () => {
-    resolveCapabilities.mockResolvedValue([{ id: 'ssh:target@@pty-1', authoritative: false }])
+    resolveCapabilities.mockResolvedValue([{ id: 'repo::worktree@@pty-1', authoritative: false }])
 
     const hook = renderHook(() => {
       useTerminalProviderSnapshotCapability(false)
@@ -158,13 +160,13 @@ describe('useTerminalProviderSnapshotCapability', () => {
     })
 
     await waitFor(() => expect(resolveCapabilities).toHaveBeenCalledOnce())
-    expect(resolveCapabilities).toHaveBeenCalledWith(['ssh:target@@pty-1'])
+    expect(resolveCapabilities).toHaveBeenCalledWith(['repo::worktree@@pty-1'])
     hook.unmount()
   })
 
   it('does not poll again after a provider confirms an authoritative snapshot', async () => {
     vi.useFakeTimers()
-    resolveCapabilities.mockResolvedValue([{ id: 'ssh:target@@pty-1', authoritative: true }])
+    resolveCapabilities.mockResolvedValue([{ id: 'repo::worktree@@pty-1', authoritative: true }])
     const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
     await vi.runAllTimersAsync()
 
@@ -180,8 +182,8 @@ describe('useTerminalProviderSnapshotCapability', () => {
     async (authoritative) => {
       vi.useFakeTimers()
       resolveCapabilities
-        .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative }])
-        .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative: true }])
+        .mockResolvedValueOnce([{ id: 'repo::worktree@@pty-1', authoritative }])
+        .mockResolvedValueOnce([{ id: 'repo::worktree@@pty-1', authoritative: true }])
       const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
       const initialRevision = hook.result.current
       await vi.advanceTimersByTimeAsync(0)
@@ -191,7 +193,7 @@ describe('useTerminalProviderSnapshotCapability', () => {
       await vi.advanceTimersByTimeAsync(1_000)
 
       expect(resolveCapabilities).toHaveBeenCalledTimes(2)
-      expect(terminalProviderHasAuthoritativeSnapshot('ssh:target@@pty-1')).toBe(true)
+      expect(terminalProviderHasAuthoritativeSnapshot('repo::worktree@@pty-1')).toBe(true)
       expect(hook.result.current).toBeGreaterThan(initialRevision)
       hook.unmount()
     }
@@ -205,7 +207,7 @@ describe('useTerminalProviderSnapshotCapability', () => {
     })
     resolveCapabilities
       .mockImplementationOnce(() => firstAnswer)
-      .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative: true }])
+      .mockResolvedValueOnce([{ id: 'repo::worktree@@pty-1', authoritative: true }])
     let renders = 0
     const hook = renderHook(
       ({ enabled }) => {
@@ -219,7 +221,7 @@ describe('useTerminalProviderSnapshotCapability', () => {
     hook.rerender({ enabled: true })
     const rendersBeforeFalse = renders
     await act(async () => {
-      finishFirst([{ id: 'ssh:target@@pty-1', authoritative: false }])
+      finishFirst([{ id: 'repo::worktree@@pty-1', authoritative: false }])
       await Promise.resolve()
     })
     expect(renders).toBe(rendersBeforeFalse)
@@ -228,14 +230,14 @@ describe('useTerminalProviderSnapshotCapability', () => {
       await vi.advanceTimersByTimeAsync(1_000)
     })
     expect(resolveCapabilities).toHaveBeenCalledTimes(2)
-    expect(terminalProviderHasAuthoritativeSnapshot('ssh:target@@pty-1')).toBe(true)
+    expect(terminalProviderHasAuthoritativeSnapshot('repo::worktree@@pty-1')).toBe(true)
     expect(hook.result.current).toBeGreaterThan(0)
     hook.unmount()
   })
 
   it('cancels an unknown-capability retry when the hook unmounts', async () => {
     vi.useFakeTimers()
-    resolveCapabilities.mockResolvedValue([{ id: 'ssh:target@@pty-1', authoritative: null }])
+    resolveCapabilities.mockResolvedValue([{ id: 'repo::worktree@@pty-1', authoritative: null }])
     const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
     await vi.advanceTimersByTimeAsync(0)
     expect(resolveCapabilities).toHaveBeenCalledOnce()

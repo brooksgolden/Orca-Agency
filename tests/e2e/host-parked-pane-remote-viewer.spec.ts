@@ -295,9 +295,8 @@ test('a cold-parked host pane keeps serving its paired remote viewer', async ({
           let snapshotCapability: unknown = null
           if (ptyId) {
             try {
-              snapshotCapability = await window.api.pty.getAuthoritativeBufferSnapshotCapabilities([
-                ptyId
-              ])
+              const inspectCapability = window.api.pty.getAuthoritativeBufferSnapshotCapabilities
+              snapshotCapability = inspectCapability ? await inspectCapability([ptyId]) : null
             } catch (cause) {
               snapshotCapability = String(cause)
             }

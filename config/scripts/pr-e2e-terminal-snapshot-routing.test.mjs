@@ -5,6 +5,10 @@ describe('terminal snapshot E2E routing', () => {
   it('runs host parking and CLI split journeys for capability and parking source', () => {
     for (const source of [
       'src/main/ipc/pty/ipc/inspect.ts',
+      'src/renderer/src/app-shell/use-app-startup-hydration.ts',
+      'src/renderer/src/components/use-terminal-workspace-projection.ts',
+      'src/renderer/src/components/terminal-pane/terminal-cold-park-withheld-tabs.ts',
+      'src/renderer/src/components/terminal-pane/terminal-hidden-worktree-retention.ts',
       'src/renderer/src/components/terminal/terminal-provider-snapshot-bound-pty-ids.ts',
       'src/renderer/src/components/terminal/terminal-provider-snapshot-capability.ts',
       'src/renderer/src/components/terminal/use-terminal-provider-snapshot-capability.ts',
