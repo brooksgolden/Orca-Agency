@@ -9,7 +9,14 @@ import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
 import { chatSidebarPaneGroups, type ChatPaneLayout } from './chat-sidebar-pane-groups'
 
 export type ChatSidebarListItem =
-  | { kind: 'heading'; label: string; id: string; collapsed: boolean; doneFolder?: string }
+  | {
+      kind: 'heading'
+      label: string
+      id: string
+      collapsed: boolean
+      doneFolder?: string
+      workingFolder?: string
+    }
   | {
       kind: 'chat'
       row: ChatSidebarRow
@@ -43,13 +50,9 @@ export function chatSidebarListItems(
     `${row.title}\n${row.folder}`.toLocaleLowerCase().includes(text)
   const byWorkspace = new Map<string, ChatSidebarRow[]>()
   const folderCompletion = new Map<string, boolean>()
-  const workingFolders = new Set<string>()
   for (const row of rows) {
     if (!row.automated) {
       folderCompletion.set(row.folder, (folderCompletion.get(row.folder) ?? true) && row.completed)
-      if (!row.completed && chatHasWorkingTurn(row)) {
-        workingFolders.add(row.folder)
-      }
     }
   }
   for (const row of rows) {
@@ -131,12 +134,21 @@ export function chatSidebarListItems(
       groupBy === 'folder' && settings?.collapseDoneFolders && folderCompletion.get(key)
         ? key
         : undefined
-    const revealWorkingFolder =
-      groupBy === 'folder' && settings?.collapseDoneFolders && workingFolders.has(key)
+    const workingFolder =
+      groupBy === 'folder' &&
+      settings?.collapseDoneFolders &&
+      section.some((set) =>
+        set.groups.some((group) =>
+          group.members.some(
+            (row) => row.folder === key && !row.completed && chatHasWorkingTurn(row)
+          )
+        )
+      )
+        ? key
+        : undefined
     const collapsed =
-      !revealWorkingFolder &&
-      ((collapsedGroups?.has(headingId) ?? false) ||
-        (doneFolder !== undefined && !settings?.expandedDoneFolders?.includes(doneFolder)))
+      (collapsedGroups?.has(headingId) ?? false) ||
+      (doneFolder !== undefined && !settings?.expandedDoneFolders?.includes(doneFolder))
     const label = groupBy === 'status' && key === 'In progress' ? 'In Progress' : key
     const items: ChatSidebarListItem[] = key
       ? [
@@ -145,6 +157,7 @@ export function chatSidebarListItems(
             id: headingId,
             collapsed,
             doneFolder,
+            workingFolder,
             label: `${label} (${section.reduce((sum, set) => sum + set.groups.reduce((count, group) => count + group.members.length, 0), 0)})`
           }
         ]

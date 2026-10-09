@@ -40,9 +40,9 @@ describe('chat sidebar folder filters', () => {
         [],
         new Set(['chat:folder:Acme'])
       )[0]
-    ).toMatchObject({ collapsed: false })
+    ).toMatchObject({ collapsed: true, workingFolder: 'Acme' })
   })
-  it('reveals a working folder on return from a split without changing saved collapse choices', () => {
+  it('identifies a working folder on return from a split without overriding manual collapse', () => {
     const state = chatState()
     const preferences = new Set(['chat:folder:Acme'])
     state.settings!.chatSidebar = { groupBy: 'folder', collapseDoneFolders: true }
@@ -59,13 +59,39 @@ describe('chat sidebar folder filters', () => {
     })
     const detached = chatSidebarListItems([active, other], state, '', [], preferences)
     expect(detached.find((item) => item.id === 'chat:folder:Acme')).toMatchObject({
-      collapsed: false
+      collapsed: true,
+      workingFolder: 'Acme'
     })
-    expect(detached.some((item) => item.kind === 'chat' && item.id === 'active')).toBe(true)
+    expect(detached.some((item) => item.kind === 'chat' && item.id === 'active')).toBe(false)
     expect(preferences.has('chat:folder:Acme')).toBe(true)
     state.settings!.chatSidebar.collapseDoneFolders = false
     expect(chatSidebarListItems([active], state, '', [], preferences)[0]).toMatchObject({
       collapsed: true
+    })
+  })
+
+  it('does not reveal historical folder sections for a working chat in the split section', () => {
+    const state = chatState()
+    state.settings!.chatSidebar = { groupBy: 'folder', collapseDoneFolders: true }
+    const active = chatRow({ id: 'active', tabId: 'a', state: 'working' })
+    const other = chatRow({
+      id: 'other',
+      tabId: 'b',
+      folder: 'Other',
+      worktree: { ...chatWorktree, id: 'other' }
+    })
+    const history = chatRow({ id: 'history', tabId: null, completed: true })
+    const split = placeWorkspaceAtEdge([], chatWorktree.id, 'other', 'right', 'joined')
+    const result = chatSidebarListItems(
+      [active, other, history],
+      state,
+      '',
+      split,
+      new Set(['chat:folder:Acme'])
+    )
+    expect(result.find((item) => item.id === 'chat:folder:Acme')).toMatchObject({
+      collapsed: true,
+      workingFolder: undefined
     })
   })
 

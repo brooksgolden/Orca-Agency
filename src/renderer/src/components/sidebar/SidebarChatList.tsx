@@ -25,6 +25,7 @@ import { startSavedChatDrag } from './chat-sidebar-saved-drag'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
 import { chatSidebarListItems, chatSidebarItemHeight } from './chat-sidebar-groups'
 import { useChatSidebarSectionToggle } from './use-chat-sidebar-section-toggle'
+import { useRevealWorkingChatFolders } from './use-reveal-working-chat-folders'
 import {
   chatFolderDestinations,
   changeChatFolder,
@@ -108,6 +109,7 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
       chatSidebarListItems(rows, { ...state, ...panes }, query, splits, collapsedGroups, focused),
     [rows, state, panes, query, splits, collapsedGroups, focused]
   )
+  useRevealWorkingChatFolders(items, query)
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of rows) {
