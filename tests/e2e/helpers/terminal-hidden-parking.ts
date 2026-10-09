@@ -49,6 +49,30 @@ async function createActiveTerminalTab(page: Page, worktreeId: string): Promise<
   return tabId
 }
 
+async function waitForRestorableDecoy(
+  page: Page,
+  worktreeId: string,
+  tabId: string
+): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          ({ worktreeId, tabId }) => {
+            const tab = window.__store
+              ?.getState()
+              .tabsByWorktree[worktreeId]?.find((candidate) => candidate.id === tabId)
+            return tab?.ptyId
+              ? window.__terminalParkingDebug?.authoritativeSnapshot(tab.ptyId) === true
+              : false
+          },
+          { worktreeId, tabId }
+        ),
+      { timeout: 30_000, message: 'decoy terminal never became snapshot-restorable' }
+    )
+    .toBe(true)
+}
+
 // Why: #8262 exempts the single most-recently-hidden tab from cold-park. An
 // active target therefore needs two decoys (hide it, then move the exemption);
 // an already-hidden target needs one. Returns waitForTabParked's elapsed time.
@@ -56,12 +80,15 @@ export async function parkHiddenTabBehindDecoy(
   page: Page,
   worktreeId: string,
   targetTabId: string,
-  options?: { parkDelayMs?: number }
+  options?: { parkDelayMs?: number; requireRestorableDecoy?: boolean }
 ): Promise<number> {
   // An active target needs one decoy to become old and another to take the
   // last-active exemption; already-hidden targets need only the latter.
   if ((await getActiveTabId(page)) === targetTabId) {
-    await createActiveTerminalTab(page, worktreeId)
+    const decoyId = await createActiveTerminalTab(page, worktreeId)
+    if (options?.requireRestorableDecoy) {
+      await waitForRestorableDecoy(page, worktreeId, decoyId)
+    }
   }
   await createActiveTerminalTab(page, worktreeId)
   return waitForTabParked(page, targetTabId, options)
