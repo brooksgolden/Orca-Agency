@@ -211,6 +211,27 @@ type ParkedRemoteTerminal = {
   storeAtPark: number
 }
 
+async function observeRestorePane(page: Page, webTabId: string, token: string) {
+  return page.evaluate(
+    ({ webTabId, token }) => {
+      const state = window.__store?.getState()
+      const manager = window.__paneManagers?.get(webTabId)
+      const panes = manager?.getPanes() ?? []
+      const pane = manager?.getActivePane?.() ?? panes[0]
+      const content = pane?.serializeAddon?.serialize?.() ?? ''
+      return {
+        mountedLeafIds: panes.map((entry) => entry.leafId),
+        localOnlyLeafIds: Object.keys(state?.localOnlyScrollbackByTabId[webTabId] ?? {}),
+        sharedLeafIds: Object.keys(state?.terminalLayoutsByTabId[webTabId]?.buffersByLeafId ?? {}),
+        layoutRoot: state?.terminalLayoutsByTabId[webTabId]?.root ?? null,
+        renderedLength: content.length,
+        tokenVisible: content.includes(token)
+      }
+    },
+    { webTabId, token }
+  )
+}
+
 /** Open a remote-runtime terminal on the paired client, type a token into it, and cold-park it
  *  behind two decoy tabs. The token exists only in that pane's buffer — nothing replays stdin.
  *  Every host terminal it creates is pushed into `createdTerminals` as it is created, so the
@@ -292,6 +313,11 @@ async function relaunchAndReveal(
   relaunched: PairedElectronClient
   storeAfterRelaunch: number
   storeAfterReveal: number
+  restoreObservations: {
+    afterActivation: Awaited<ReturnType<typeof observeRestorePane>>
+    afterOpen: Awaited<ReturnType<typeof observeRestorePane>>
+    afterWait: Awaited<ReturnType<typeof observeRestorePane>>
+  }
   restoreState: {
     hasTab: boolean
     restoredHostId: string | null
@@ -306,6 +332,7 @@ async function relaunchAndReveal(
   })
   await activateWorktree(relaunched.page, parked.worktreeId)
   const storeAfterRelaunch = await readStoreBufferLength(relaunched.page, parked.webTabId)
+  const afterActivation = await observeRestorePane(relaunched.page, parked.webTabId, parked.token)
   const restoreState = await relaunched.page.evaluate(
     ({ worktreeId, webTabId }) => {
       const state = window.__store?.getState()
@@ -323,6 +350,7 @@ async function relaunchAndReveal(
     { worktreeId: parked.worktreeId, webTabId: parked.webTabId }
   )
   await openPairedClientTab(relaunched.page, parked.worktreeId, parked.webTabId)
+  const afterOpen = await observeRestorePane(relaunched.page, parked.webTabId, parked.token)
   const tokenAfterReveal = await waitForPairedPaneMarker(
     relaunched.page,
     parked.webTabId,
@@ -330,7 +358,15 @@ async function relaunchAndReveal(
     PAINT_BUDGET_MS
   )
   const storeAfterReveal = await readStoreBufferLength(relaunched.page, parked.webTabId)
-  return { relaunched, storeAfterRelaunch, storeAfterReveal, restoreState, tokenAfterReveal }
+  const afterWait = await observeRestorePane(relaunched.page, parked.webTabId, parked.token)
+  return {
+    relaunched,
+    storeAfterRelaunch,
+    storeAfterReveal,
+    restoreObservations: { afterActivation, afterOpen, afterWait },
+    restoreState,
+    tokenAfterReveal
+  }
 }
 
 async function closeCreatedTerminals(
@@ -379,6 +415,7 @@ test.describe('host retains nothing', () => {
           onDiskAfterPark,
           storeAfterRelaunch: reveal.storeAfterRelaunch,
           storeAfterReveal: reveal.storeAfterReveal,
+          restoreObservations: reveal.restoreObservations,
           restoreState: reveal.restoreState,
           tokenAfterReveal: reveal.tokenAfterReveal
         })}`
@@ -438,6 +475,7 @@ test.describe('host retains nothing', () => {
           onDiskAfterQuit,
           storeAfterRelaunch: reveal.storeAfterRelaunch,
           storeAfterReveal: reveal.storeAfterReveal,
+          restoreObservations: reveal.restoreObservations,
           restoreState: reveal.restoreState,
           tokenAfterReveal: reveal.tokenAfterReveal
         })}`
