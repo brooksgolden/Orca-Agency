@@ -4,6 +4,7 @@ import { safeFit, safeFitAndThen } from '@/lib/pane-manager/pane-tree-ops'
 import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
 
 import { resolvePositiveTerminalDimensions } from '../terminal-snapshot-replay-paint'
+import { restoredHostSnapshotClear } from '../restored-host-snapshot-clear'
 
 import {
   CURSOR_SHOW_SEQUENCE,
@@ -16,6 +17,7 @@ import {
 } from './cursor-agent-reattach-screen'
 
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
+import { isRemoteRuntimePtyId } from './paired-parked-terminal-restore'
 
 export function bindReplayDataDrain(session: ConnectPanePtySession): void {
   session.sendFocusedReattachFocusInAfterReplay = (
@@ -123,9 +125,27 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
         // frame mid-flight, so this xterm may hold an open 2026 latch — and \x1b[2J does
         // not clear it, so the pane would stay frozen on its last painted frame and the
         // whole replay would go unseen until xterm's 1s timeout.
-        await session.writeReplayDataAsync(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`)
+        const protectRestoredHistory =
+          isRemoteRuntimePtyId(expectedPtyId) &&
+          (session.firstRestoredHostSnapshotPending || session.restoredHostHistoryProtected)
+        const clear = protectRestoredHistory
+          ? restoredHostSnapshotClear(
+              session.pane.terminal,
+              data,
+              alternateScreen,
+              session.restoredHostHistoryProtected
+            )
+          : {
+              sequence: `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`,
+              retainsHistory: false
+            }
+        await session.writeReplayDataAsync(clear.sequence)
         if (!isCurrentPayload()) {
           continue
+        }
+        if (protectRestoredHistory) {
+          session.firstRestoredHostSnapshotPending = false
+          session.restoredHostHistoryProtected = clear.retainsHistory
         }
       }
       // Why before the frame: the payload's wraps and cursor moves are relative
