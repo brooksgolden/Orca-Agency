@@ -287,7 +287,10 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       )
     ).toBe(true)
   } finally {
-    await cleanupE2EDaemons(app)
-    await closeElectronAppForE2E(app)
+    try {
+      await closeElectronAppForE2E(app)
+    } finally {
+      await cleanupE2EDaemons(profilePath)
+    }
   }
 })
