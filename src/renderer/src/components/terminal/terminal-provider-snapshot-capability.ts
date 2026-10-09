@@ -23,9 +23,11 @@ const UNKNOWN_CAPABILITY_MAX_ATTEMPTS = 8
 // recovered daemon is consulted again within one slow cycle.
 const SETTLED_UNKNOWN_REASK_MS = 5 * 60_000
 const CAPABILITY_RESOLUTION_TIMEOUT_MS = 1_000
+const IN_FLIGHT_RECHECK_MS = 100
 let lastSynchronizedLivePtyIds: readonly string[] | null = null
 let earliestUnknownCapabilityRetryAtMs = Number.POSITIVE_INFINITY
 let synchronizationGeneration = 0
+let inFlightCapabilityResolutions = 0
 let capabilityRevision = 0
 const capabilityRevisionListeners = new Set<() => void>()
 
@@ -129,7 +131,7 @@ export async function synchronizeTerminalProviderSnapshotCapabilities(
     livePtyIds === lastSynchronizedLivePtyIds &&
     earliestUnknownCapabilityRetryAtMs === Number.POSITIVE_INFINITY
   ) {
-    return null
+    return inFlightCapabilityResolutions > 0 ? IN_FLIGHT_RECHECK_MS : null
   }
   const nowMs = observedAtMs ?? Date.now()
   if (livePtyIds === lastSynchronizedLivePtyIds && nowMs < earliestUnknownCapabilityRetryAtMs) {
@@ -172,7 +174,12 @@ export async function synchronizeTerminalProviderSnapshotCapabilities(
     const batch = missing.slice(offset, offset + 512)
     let resolved: SnapshotCapability[] | null
     try {
-      resolved = await resolveSnapshotCapabilityBatch(resolve, batch)
+      inFlightCapabilityResolutions += 1
+      try {
+        resolved = await resolveSnapshotCapabilityBatch(resolve, batch)
+      } finally {
+        inFlightCapabilityResolutions -= 1
+      }
     } catch {
       if (generation !== synchronizationGeneration) {
         // Why 0, not null: null ends a caller's timer chain, but the winning
