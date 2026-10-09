@@ -282,7 +282,8 @@ test('a cold-parked host pane keeps serving its paired remote viewer', async ({
     console.log(`[sta2854] before-park client=${JSON.stringify(await readClientState())}`)
     try {
       await parkHiddenTabBehindDecoy(orcaPage, worktreeId, hostTabId, {
-        parkDelayMs: PARK_DELAY_MS
+        parkDelayMs: PARK_DELAY_MS,
+        requireRestorableDecoy: true
       })
     } catch (error) {
       const diagnosis = await orcaPage.evaluate(
@@ -291,6 +292,7 @@ test('a cold-parked host pane keeps serving its paired remote viewer', async ({
           const tab = state?.tabsByWorktree[worktreeId]?.find(
             (candidate) => candidate.id === hostTabId
           )
+          const siblingTabs = state?.tabsByWorktree[worktreeId] ?? []
           const ptyId = tab?.ptyId ?? null
           let snapshotCapability: unknown = null
           if (ptyId) {
@@ -304,6 +306,15 @@ test('a cold-parked host pane keeps serving its paired remote viewer', async ({
           return {
             activeTabId: state?.activeTabId,
             tab,
+            siblingTabs: siblingTabs.map((sibling) => ({
+              id: sibling.id,
+              title: sibling.title,
+              ptyId: sibling.ptyId,
+              pendingActivationSpawn: sibling.pendingActivationSpawn,
+              cachedAuthoritativeSnapshot: sibling.ptyId
+                ? window.__terminalParkingDebug?.authoritativeSnapshot(sibling.ptyId)
+                : null
+            })),
             layout: state?.terminalLayoutsByTabId[hostTabId],
             pendingStartup: state?.pendingStartupByTabId[hostTabId],
             parkingEnabled: state?.settings?.terminalHiddenViewParking !== false,
