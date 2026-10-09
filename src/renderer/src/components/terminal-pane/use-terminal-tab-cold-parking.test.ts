@@ -504,6 +504,24 @@ describe('useTerminalTabColdParking measure-clock contract', () => {
     expect(result.current).toEqual(new Set(['tab-2']))
   })
 
+  it('re-resolves force-park exemptions when snapshot coverage becomes authoritative', async () => {
+    mocks.exemptTabIds = new Set(['tab-1'])
+    const args = { ...hookArgs(false), coldParkTerminalPanes: true, isForceParked: true }
+    const { result } = renderHook(() => useTerminalTabColdParking(args))
+    expect(result.current).toEqual(new Set(['tab-2']))
+    const before = mocks.exemptSelectCalls
+
+    mocks.exemptTabIds.clear()
+    await act(async () => {
+      await synchronizeTerminalProviderSnapshotCapabilities(['wt-1@@session-tab-1'], async (ids) =>
+        ids.map((id) => ({ id, authoritative: true }))
+      )
+    })
+
+    expect(mocks.exemptSelectCalls).toBeGreaterThan(before)
+    expect(result.current).toEqual(new Set(['tab-1', 'tab-2']))
+  })
+
   // Why: resolving an exemption re-reads the store and walks the layout tree per
   // tab, so an unrelated re-render must not repeat that work.
   it('resolves eviction exemptions once per force-park input change', () => {

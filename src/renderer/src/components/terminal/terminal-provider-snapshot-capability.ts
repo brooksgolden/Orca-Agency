@@ -1,3 +1,5 @@
+import { isRemoteExecutionHostPtyId } from '../../../../shared/remote-execution-host-pty-id'
+
 type SnapshotCapability = { id: string; authoritative: boolean | null }
 type SnapshotCapabilityResolver = (ids: string[]) => Promise<SnapshotCapability[]>
 export type SnapshotCapabilityTab = { id: string; ptyId?: string | null }
@@ -23,6 +25,7 @@ const UNKNOWN_CAPABILITY_MAX_ATTEMPTS = 8
 // recovered daemon is consulted again within one slow cycle.
 const SETTLED_UNKNOWN_REASK_MS = 5 * 60_000
 const CAPABILITY_RESOLUTION_TIMEOUT_MS = 1_000
+const MAX_CAPABILITY_PTY_ID_LENGTH = 512
 const IN_FLIGHT_RECHECK_MS = 100
 let lastSynchronizedLivePtyIds: readonly string[] | null = null
 let earliestUnknownCapabilityRetryAtMs = Number.POSITIVE_INFINITY
@@ -142,7 +145,14 @@ export async function synchronizeTerminalProviderSnapshotCapabilities(
   }
   const generation = ++synchronizationGeneration
   lastSynchronizedLivePtyIds = livePtyIds
-  const live = new Set(livePtyIds.filter((id) => id.length > 0))
+  const live = new Set(
+    livePtyIds.filter(
+      (id) =>
+        id.length > 0 &&
+        id.length <= MAX_CAPABILITY_PTY_ID_LENGTH &&
+        !isRemoteExecutionHostPtyId(id)
+    )
+  )
   let capabilityChanged = false
   for (const cachedId of authoritativeSnapshotByPtyId.keys()) {
     if (!live.has(cachedId)) {

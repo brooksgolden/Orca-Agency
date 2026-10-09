@@ -13,7 +13,7 @@ const NATIVE_IME_HARNESS =
   /^(?:config\/scripts\/focus-nested-wayland-terminal\.sh$|config\/scripts\/(?:run-terminal-ibus-hangul-e2e|terminal-ime-engagement-receipt)\.mjs$|tests\/e2e\/terminal-ime-(?:boundary-probe|byte-reader|engagement-receipt)\.ts$|tests\/e2e\/terminal-(?:ibus-hangul|hangul-terminating-digit|macos-2set-korean)-native\.spec\.ts$)/
 
 const SNAPSHOT_PARKING_SOURCES =
-  /^(?:src\/main\/ipc\/pty\/ipc\/inspect\.ts|src\/renderer\/src\/components\/terminal\/(?:terminal-provider-snapshot-(?:bound-pty-ids|capability)|use-terminal-provider-snapshot-capability(?:-revision)?)\.ts)$/
+  /^(?:src\/main\/ipc\/pty\/ipc\/inspect\.ts|src\/renderer\/src\/(?:app-shell\/use-app-startup-hydration\.ts|components\/(?:terminal\/(?:terminal-provider-snapshot-(?:bound-pty-ids|capability)|use-terminal-provider-snapshot-capability(?:-revision)?)\.ts|terminal-pane\/(?:terminal-cold-park-withheld-tabs|terminal-hidden-worktree-retention)\.ts|use-terminal-workspace-projection\.ts)))$/
 
 export const PR_E2E_SOURCE_ROUTES = [
   {

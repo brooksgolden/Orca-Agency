@@ -45,6 +45,30 @@ describe('terminal provider snapshot capabilities', () => {
     expect(terminalProviderHasAuthoritativeSnapshot('legacy')).toBe(false)
   })
 
+  it('does not ask the local provider about paired or SSH terminal ids', async () => {
+    const resolve = vi.fn(async (ids: string[]) => ids.map((id) => ({ id, authoritative: true })))
+
+    expect(
+      await synchronizeTerminalProviderSnapshotCapabilities(
+        ['remote:paired@@pty-1', 'ssh:target@@pty-2', 'worktree@@pty-3'],
+        resolve
+      )
+    ).toBeNull()
+
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(['worktree@@pty-3'])
+    expect(terminalProviderHasAuthoritativeSnapshot('worktree@@pty-3')).toBe(true)
+    expect(terminalProviderHasAuthoritativeSnapshot('remote:paired@@pty-1')).toBe(false)
+  })
+
+  it('does not retry an id beyond the main-process capability input limit', async () => {
+    const tooLong = `worktree@@${'x'.repeat(513)}`
+    const resolve = vi.fn(async () => [])
+
+    expect(await synchronizeTerminalProviderSnapshotCapabilities([tooLong], resolve)).toBeNull()
+    expect(resolve).not.toHaveBeenCalled()
+    expect(terminalProviderHasAuthoritativeSnapshot(tooLong)).toBe(false)
+  })
+
   it('rechecks a false answer after a newly spawned daemon session becomes authoritative', async () => {
     const ids = ['new-pty']
     const resolve = vi
@@ -215,6 +239,23 @@ describe('terminal provider snapshot capabilities', () => {
 
     expect(terminalProviderHasAuthoritativeSnapshot('old-pty')).toBe(false)
     expect(terminalProviderHasAuthoritativeSnapshot('current-pty')).toBe(true)
+  })
+
+  it('keeps the newer answer when startup and the hook pass equal but distinct id lists', async () => {
+    let finishStartup!: (value: { id: string; authoritative: boolean | null }[]) => void
+    const startupAnswer = new Promise<{ id: string; authoritative: boolean | null }[]>(
+      (resolve) => {
+        finishStartup = resolve
+      }
+    )
+    const startup = synchronizeTerminalProviderSnapshotCapabilities(['pty-1'], () => startupAnswer)
+    await synchronizeTerminalProviderSnapshotCapabilities(['pty-1'], async () => [
+      { id: 'pty-1', authoritative: true }
+    ])
+
+    finishStartup([{ id: 'pty-1', authoritative: false }])
+    expect(await startup).toBe(0)
+    expect(terminalProviderHasAuthoritativeSnapshot('pty-1')).toBe(true)
   })
 
   // Why 0, not null: null ends the caller's timer chain, but a superseding
