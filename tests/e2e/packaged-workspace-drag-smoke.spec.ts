@@ -176,7 +176,6 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       y: originalTopRight.y + originalTopRight.height / 2
     })
     await expect(page.locator('[data-workspace-drop-swap]')).toBeVisible()
-    await captureDragScreenshot(page, testInfo.outputPath('occupied-quadrant-swap.png'))
     await page.mouse.up()
     await expect
       .poll(async () => Math.round((await pane(ids[3]).boundingBox())!.y))
@@ -184,6 +183,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     await expect
       .poll(async () => (await pane(ids[1]).boundingBox())!.y > originalTopRight.y + 20)
       .toBe(true)
+    await captureDragScreenshot(page, testInfo.outputPath('occupied-quadrant-swap.png'))
 
     await page.evaluate(
       (layout) =>
@@ -227,11 +227,11 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     const end = { x: bounds.x + bounds.width * 0.9, y: bounds.y + bounds.height * 0.9 }
     await dragTo(page, await headerPoint(page, ids[1]), end)
     await expect(page.locator('[data-workspace-quadrant-drop="bottom-right"]')).toBeVisible()
-    await captureDragScreenshot(page, testInfo.outputPath('bottom-right-quadrant-drop.png'))
     await page.mouse.up()
     await expect
       .poll(async () => Math.round((await pane(ids[1]).boundingBox())!.height))
       .toBeCloseTo(Math.round(bounds.height / 2), -1)
+    await captureDragScreenshot(page, testInfo.outputPath('bottom-right-quadrant-drop.png'))
     await expect
       .poll(async () => (await pane(ids[1]).boundingBox())!.x > bounds.x + bounds.width * 0.4)
       .toBe(true)
@@ -269,10 +269,10 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       { x: targetBounds.x + 4, y: targetBounds.y + 16 }
     )
     await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
-    await captureDragScreenshot(page, testInfo.outputPath('same-folder-tab-insertion.png'))
     await page.mouse.up()
     await expect(pane(ids[0]).locator(`[data-tab-id="${terminalIds[3]}"]`)).toBeVisible()
     await expect(pane(ids[3])).toHaveCount(0)
+    await captureDragScreenshot(page, testInfo.outputPath('same-folder-tab-insertion.png'))
     const final = await page.evaluate(async () => {
       await window.api.session.flush()
       return window.api.session.get()

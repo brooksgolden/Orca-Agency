@@ -6,6 +6,7 @@ import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboar
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { assertPackagedExecutableIdentity } from './helpers/packaged-executable-identity'
+import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-retry'
 
 async function clickPrintedFileLink(
   page: Page,
@@ -102,11 +103,13 @@ test('packaged file links and folder workspace splits retain their workspace', a
   try {
     await assertPackagedExecutableIdentity(app, executablePath)
     const page = await app.firstWindow()
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.setBackgroundThrottling(false)
-      }
-    })
+    await retryTransientMainEvaluate(() =>
+      app.evaluate(({ BrowserWindow }) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.webContents.setBackgroundThrottling(false)
+        }
+      })
+    )
     await page.waitForFunction(() => Boolean(window.api))
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []

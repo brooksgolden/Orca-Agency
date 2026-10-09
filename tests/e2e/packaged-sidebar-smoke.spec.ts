@@ -51,11 +51,13 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       true
     )
     const page = await app.firstWindow({ timeout: 60_000 })
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.setBackgroundThrottling(false)
-      }
-    })
+    await retryTransientMainEvaluate(() =>
+      app.evaluate(({ BrowserWindow }) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.webContents.setBackgroundThrottling(false)
+        }
+      })
+    )
     await page.waitForFunction(() => Boolean(window.api))
     expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const errors: string[] = []
@@ -255,20 +257,24 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     await page.keyboard.type('echo GRID_CARD_ZERO > grid-output.txt')
     await page.keyboard.press('Enter')
     await expect
-      .poll(
-        () =>
-          folderPaths.filter((folder) => existsSync(path.join(folder, 'grid-output.txt'))).length
+      .poll(() =>
+        folderPaths.some((folder) => {
+          const file = path.join(folder, 'grid-output.txt')
+          return existsSync(file) && readShellOutput(file).includes('GRID_CARD_ZERO')
+        })
       )
-      .toBe(1)
+      .toBe(true)
     await cards.nth(1).locator('.xterm').click()
     await page.keyboard.type('echo GRID_CARD_ONE > grid-output.txt')
     await page.keyboard.press('Enter')
     await expect
-      .poll(
-        () =>
-          folderPaths.filter((folder) => existsSync(path.join(folder, 'grid-output.txt'))).length
+      .poll(() =>
+        folderPaths.some((folder) => {
+          const file = path.join(folder, 'grid-output.txt')
+          return existsSync(file) && readShellOutput(file).includes('GRID_CARD_ONE')
+        })
       )
-      .toBe(2)
+      .toBe(true)
     const outputs = folderPaths
       .slice(0, 2)
       .map((folder) => readShellOutput(path.join(folder, 'grid-output.txt')))
