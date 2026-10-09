@@ -3,16 +3,9 @@
 // the tree `npm install` put there, and every terminal on a Windows SSH host leaked one File handle
 // for the life of the relay process.
 //
-// The ORDER of the conin release is the fix. Releasing it at the top of the branch -- the placement
-// the desktop patch uses -- was measured at 3x WORSE than shipping nothing (File +2/terminal and a
-// new Process +1/terminal); releasing it after the console-list fork and the native kill is flat.
-//
-// Those numbers are the `!useConptyDll` branch, which is the branch a RELAY runs. Every desktop
-// site that opens a terminal pane sets `useConptyDll: true` and takes the other branch, where
-// upstream already destroys the input socket. The hidden rate-limit probe
-// (`src/main/rate-limits/claude-pty.ts`) does omit the option and so does run this hunk, but no
-// user-visible pane does. The divergence pinned below is about which
-// branch each host runs for terminals -- not about a regression in the panes users open.
+// The order of the conin release is the fix. Both desktop and relay can run the non-DLL branch.
+// Releasing it before the console-list fork leaked two File and one Process handle per terminal
+// in the measured relay workload. Both patches now release it after the native kill.
 import { createRequire } from 'node:module'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -33,22 +26,15 @@ const DESKTOP_HUNKS = {
   'windowsPtyAgent.js': [
     [
       [
-        '                this._inSocket.readable = false;',
-        '                // The non-DLL path previously only flipped `readable`, leaving the',
-        '                // conin PipeWrap alive until the host exited (#947).',
+        '                this._conoutSocketWorker.dispose();',
+        '                // Release conin only after the console-list fork and native kill.',
+        '                // Closing it earlier aborts teardown and leaks both pipes (#947).',
         '                this._inSocket.destroy();',
-        '                this._outSocket.readable = false;',
         ''
       ].join('\n'),
-      [
-        '                this._inSocket.readable = false;',
-        '                this._outSocket.readable = false;',
-        ''
-      ].join('\n')
+      ['                this._conoutSocketWorker.dispose();', ''].join('\n')
     ],
-    // The useConptyDll branch, which only the DESKTOP runs -- the relay takes the
-    // non-DLL branch above, where the dispose is already unconditional. Listed here
-    // so un-applying still yields published; the relay asset needs no counterpart.
+    // The DLL branch has a separate unconditional conout disposal.
     [
       [
         '                // Orca: dispose unconditionally, as the non-DLL branch above does.',
@@ -97,11 +83,7 @@ describe('Windows SSH relay node-pty ConPTY teardown patch', () => {
     )
   })
 
-  // The one hunk that must NOT match the desktop patch, and the reason is measured, not stylistic:
-  // on the branch a relay runs, releasing conin before `_getConsoleProcessList()` forks aborts
-  // teardown partway. Desktop terminal panes take the other branch, so no pane is affected either
-  // way; what this guards is a patch sync putting the early placement onto the relay's branch.
-  it('releases conin after the console-list fork, unlike the desktop patch placement', () => {
+  it('releases conin after the console-list fork in both relay and desktop patches', () => {
     const fixture = writeNodePtyFixture('1.1.0')
     patchNodePtyWindowsTeardown(fixture.root)
     const patched = readFileSync(join(fixture.libDir, 'windowsPtyAgent.js'), 'utf8')
@@ -117,9 +99,14 @@ describe('Windows SSH relay node-pty ConPTY teardown patch', () => {
     expect(branch.indexOf('this._inSocket.destroy();')).toBeGreaterThan(
       branch.indexOf('this._getConsoleProcessList()')
     )
-    // Pinned so a future "sync the relay asset to config/patches" cannot copy the early placement
-    // onto the relay's branch, where it costs +2 File and +1 Process per terminal.
-    expect(patched).not.toBe(readFileSync(desktopPath('windowsPtyAgent.js'), 'utf8'))
+    const desktop = readFileSync(desktopPath('windowsPtyAgent.js'), 'utf8')
+    const desktopBranch = desktop.slice(
+      desktop.indexOf('if (!this._useConptyDll) {'),
+      desktop.indexOf('else {', desktop.indexOf('if (!this._useConptyDll) {'))
+    )
+    expect(desktopBranch.indexOf('this._inSocket.destroy();')).toBeGreaterThan(
+      desktopBranch.indexOf('this._conoutSocketWorker.dispose();')
+    )
   })
 
   it('installs and verifies idempotently', () => {
