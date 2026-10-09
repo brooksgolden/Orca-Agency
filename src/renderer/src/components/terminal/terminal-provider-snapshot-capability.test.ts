@@ -62,6 +62,21 @@ describe('terminal provider snapshot capabilities', () => {
     expect(terminalProviderHasAuthoritativeSnapshot('new-pty')).toBe(true)
   })
 
+  it('keeps a restarted timer alive while the same PTY request is in flight', async () => {
+    let finishFirst!: (value: { id: string; authoritative: boolean | null }[]) => void
+    const firstAnswer = new Promise<{ id: string; authoritative: boolean | null }[]>((resolve) => {
+      finishFirst = resolve
+    })
+    const ids = ['new-pty']
+    const first = synchronizeTerminalProviderSnapshotCapabilities(ids, () => firstAnswer, 1_000)
+
+    expect(await synchronizeTerminalProviderSnapshotCapabilities(ids, undefined, 1_000)).toBe(100)
+
+    finishFirst([{ id: 'new-pty', authoritative: false }])
+    expect(await first).toBe(1_000)
+    expect(await synchronizeTerminalProviderSnapshotCapabilities(ids, undefined, 1_100)).toBe(900)
+  })
+
   it('refreshes a pre-provider false after startup services become ready', async () => {
     await synchronizeTerminalProviderSnapshotCapabilities(['restored-pty'], async () => [
       { id: 'restored-pty', authoritative: false }

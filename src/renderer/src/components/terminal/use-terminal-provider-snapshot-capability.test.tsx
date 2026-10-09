@@ -175,23 +175,27 @@ describe('useTerminalProviderSnapshotCapability', () => {
   // Why: the timer chain is the sole recovery vehicle for unknown verdicts,
   // and its refire reuses the same memoized id array — this pins the backoff
   // return, the rescheduled timer, and the same-identity re-ask end to end.
-  it('polls an unknown pty again on the retry timer without any id churn', async () => {
-    vi.useFakeTimers()
-    resolveCapabilities
-      .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative: null }])
-      .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative: true }])
-    const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
-    const initialRevision = hook.result.current
-    await vi.advanceTimersByTimeAsync(0)
-    expect(resolveCapabilities).toHaveBeenCalledOnce()
+  it.each([null, false])(
+    'polls a %s pty again on the retry timer without any id churn',
+    async (authoritative) => {
+      vi.useFakeTimers()
+      resolveCapabilities
+        .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative }])
+        .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative: true }])
+      const hook = renderHook(() => useTerminalProviderSnapshotCapability(true))
+      const initialRevision = hook.result.current
+      await vi.advanceTimersByTimeAsync(0)
+      expect(resolveCapabilities).toHaveBeenCalledOnce()
+      expect(hook.result.current).toBe(initialRevision)
 
-    await vi.advanceTimersByTimeAsync(1_000)
+      await vi.advanceTimersByTimeAsync(1_000)
 
-    expect(resolveCapabilities).toHaveBeenCalledTimes(2)
-    expect(terminalProviderHasAuthoritativeSnapshot('ssh:target@@pty-1')).toBe(true)
-    expect(hook.result.current).toBeGreaterThan(initialRevision)
-    hook.unmount()
-  })
+      expect(resolveCapabilities).toHaveBeenCalledTimes(2)
+      expect(terminalProviderHasAuthoritativeSnapshot('ssh:target@@pty-1')).toBe(true)
+      expect(hook.result.current).toBeGreaterThan(initialRevision)
+      hook.unmount()
+    }
+  )
 
   it('cancels an unknown-capability retry when the hook unmounts', async () => {
     vi.useFakeTimers()

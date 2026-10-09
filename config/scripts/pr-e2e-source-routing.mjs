@@ -157,7 +157,7 @@ export const PR_E2E_SOURCE_ROUTES = [
     specs: ['tests/e2e/host-parked-pane-remote-viewer.spec.ts'],
     matches: (file) =>
       isProductSource(file) &&
-      /^(?:src\/renderer\/src\/components\/terminal-pane\/(?:terminal-hidden-view-parking|terminal-tab-park-candidates|terminal-tab-activation-order|terminal-parked-pty-watcher|terminal-parked-tab-watchers|terminal-parked-watcher-registry)\.ts|src\/renderer\/src\/runtime\/sync-runtime-graph\.ts)$/.test(
+      /^(?:src\/renderer\/src\/components\/terminal-pane\/(?:terminal-hidden-view-parking|terminal-tab-park-candidates|terminal-tab-activation-order|terminal-parked-pty-watcher|terminal-parked-tab-watchers|terminal-parked-watcher-registry|use-terminal-tab-cold-parking)\.ts|src\/renderer\/src\/components\/terminal\/(?:terminal-provider-snapshot-capability|use-terminal-provider-snapshot-capability(?:-revision)?)\.ts|src\/renderer\/src\/runtime\/sync-runtime-graph\.ts)$/.test(
         file
       )
   },
@@ -191,7 +191,7 @@ export const PR_E2E_SOURCE_ROUTES = [
     specs: ['tests/e2e/terminal-parked-cli-split.spec.ts'],
     matches: (file) =>
       isProductSource(file) &&
-      /^(?:src\/main\/window\/attach-main-window-services\.ts|src\/preload\/(?:index|api\/ui-command-event-api)\.ts|src\/renderer\/src\/components\/terminal-pane\/(?:terminal-pane-split-request-routing|use-terminal-pane-lifecycle|use-terminal-tab-cold-parking)\.ts|src\/renderer\/src\/hooks\/ipc-events\/terminal-ui-routing-ipc-bridge\.ts)$/.test(
+      /^(?:src\/main\/window\/attach-main-window-services\.ts|src\/preload\/(?:index|api\/ui-command-event-api)\.ts|src\/renderer\/src\/components\/terminal-pane\/(?:terminal-pane-split-request-routing|use-terminal-pane-lifecycle|use-terminal-tab-cold-parking)\.ts|src\/renderer\/src\/components\/terminal\/(?:terminal-provider-snapshot-capability|use-terminal-provider-snapshot-capability(?:-revision)?)\.ts|src\/renderer\/src\/hooks\/ipc-events\/terminal-ui-routing-ipc-bridge\.ts)$/.test(
         file
       )
   },
