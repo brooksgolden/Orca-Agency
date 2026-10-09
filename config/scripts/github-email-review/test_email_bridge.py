@@ -34,6 +34,51 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(item['kind'], 'workflow')
         self.assertEqual(item['number'], 123)
 
+    def test_upstream_comment_on_another_authors_thread_is_followed(self):
+        target = {'repo': 'stablyai/orca', 'number': 11363, 'kind': 'issuecomment-'}
+        with patch.object(bridge, 'gh', return_value=[{'user': {'login': 'brooksgolden'}}]) as comments:
+            self.assertTrue(bridge.followed_thread(target, {'user': {'login': 'another'}}))
+        comments.assert_called_once_with('repos/stablyai/orca/issues/11363/comments?per_page=100&page=1')
+
+    def test_upstream_thread_without_our_post_stays_excluded(self):
+        target = {'repo': 'stablyai/orca', 'number': 11363, 'kind': 'issuecomment-'}
+        with patch.object(bridge, 'gh', return_value=[{'user': None}, {'user': {'login': 'another'}}]):
+            self.assertFalse(bridge.followed_thread(target, {'user': {'login': 'another'}}))
+
+    def test_owned_thread_needs_no_participation_lookup(self):
+        with patch.object(bridge, 'gh') as comments:
+            self.assertTrue(bridge.followed_thread({'repo': 'stablyai/orca'}, {'user': {'login': 'brooksgolden'}}))
+            self.assertTrue(bridge.followed_thread({'repo': 'brooksgolden/Orca-Agency'}, {}))
+        comments.assert_not_called()
+
+    def test_prior_post_on_second_page_is_found(self):
+        target = {'repo': 'stablyai/orca', 'number': 11363}
+        with patch.object(bridge, 'gh', side_effect=[[{'user': None}] * 100, [{'user': {'login': 'brooksgolden'}}]]) as api:
+            self.assertTrue(bridge.followed_thread(target, {'user': None}))
+        self.assertEqual(api.call_count, 2)
+
+    def test_pr_review_body_counts_as_our_post(self):
+        target = {'repo': 'stablyai/orca', 'number': 11363}
+        with patch.object(bridge, 'gh', side_effect=[[], [{'user': {'login': 'brooksgolden'}, 'state': 'COMMENTED'}]]) as api:
+            self.assertTrue(bridge.followed_thread(target, {'user': None, 'pull_request': {}}))
+        self.assertEqual(api.call_args_list[-1].args[0], 'repos/stablyai/orca/pulls/11363/reviews?per_page=100&page=1')
+
+    def test_pr_inline_post_counts_for_conversation_reply(self):
+        target = {'repo': 'stablyai/orca', 'number': 11363}
+        with patch.object(bridge, 'gh', side_effect=[[], [{'id': 7, 'state': 'COMMENTED', 'user': None}], [{'user': {'login': 'brooksgolden'}, 'pull_request_review_id': 7}]]) as api:
+            self.assertTrue(bridge.followed_thread(target, {'user': None, 'pull_request': {'url': 'api'}}))
+        self.assertEqual(api.call_count, 3)
+
+    def test_unsubmitted_pr_review_does_not_count_as_participation(self):
+        target = {'repo': 'stablyai/orca', 'number': 11363}
+        with patch.object(bridge, 'gh', side_effect=[[], [{'user': {'login': 'brooksgolden'}, 'state': 'PENDING', 'id': 7}], []]):
+            self.assertFalse(bridge.followed_thread(target, {'user': None, 'pull_request': {}}))
+
+    def test_pending_inline_review_comment_does_not_count_as_participation(self):
+        target = {'repo': 'stablyai/orca', 'number': 11363}
+        with patch.object(bridge, 'gh', side_effect=[[], [{'id': 7, 'state': 'PENDING', 'user': {'login': 'brooksgolden'}}], [{'user': {'login': 'brooksgolden'}, 'pull_request_review_id': 7}]]):
+            self.assertFalse(bridge.followed_thread(target, {'user': None, 'pull_request': {}}))
+
     def test_new_and_legacy_webhook_require_exact_account(self):
         config = {'triggerId': 'ti_1', 'connectedAccountId': 'ca_1'}
         new = {'type': 'composio.trigger.message', 'metadata': {'trigger_id': 'ti_1',
@@ -66,6 +111,29 @@ class QueueTests(unittest.TestCase):
     def tearDown(self):
         self.root_patch.stop()
         self.temp.cleanup()
+
+    def test_notification_on_participated_thread_is_queued_once(self):
+        mail = {'subject':'Re: [stablyai/orca] Slowdowns (Issue #21765)',
+                'body':{'content':'https://github.com/stablyai/orca/issues/21765#issuecomment-8'},
+                'receivedDateTime':'2026-10-09T02:00:00Z'}
+        saved = bridge.state(); saved['items'] = {}; bridge.write(self.root / 'state.json',saved)
+        with patch.object(bridge,'fetch_email',return_value=mail), patch.object(bridge,'wake') as wake, \
+             patch.object(bridge,'gh',side_effect=[{'user':{'login':'other'}},[{'user':{'login':'brooksgolden'}}]]):
+            result = bridge.enqueue_email('message')
+        self.assertEqual(result['result'],'queued')
+        self.assertEqual(bridge.state()['items'][result['key']]['status'],'pending')
+        wake.assert_called_once()
+
+    def test_finish_rechecks_participation_and_exact_thread_before_posting(self):
+        reply=self.root/'reply.md'; reply.write_text('Thanks. We confirmed this path and are testing a fix.')
+        responses=[{'user':{'login':'other'}},[{'user':{'login':'brooksgolden'}}],[],
+                   {'user':{'login':'other','type':'User'},'html_url':'https://github.com/stablyai/orca/issues/21765#issuecomment-8'},
+                   {'html_url':'https://github.com/stablyai/orca/issues/21765#issuecomment-10'}]
+        with patch.object(bridge,'gh',side_effect=responses) as api:
+            result=bridge.finish('key','Verified relevant comment',str(reply))
+        self.assertEqual(result['decision'],'reply')
+        self.assertEqual(api.call_args_list[-1].args[0],'repos/stablyai/orca/issues/21765/comments')
+        self.assertEqual(api.call_args_list[-1].kwargs['method'],'POST')
 
     def test_finish_does_not_release_batch_between_items(self):
         bridge.finish('key', 'Already answered')
