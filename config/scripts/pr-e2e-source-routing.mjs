@@ -12,6 +12,9 @@ const NATIVE_IME_PRODUCT_SOURCE =
 const NATIVE_IME_HARNESS =
   /^(?:config\/scripts\/focus-nested-wayland-terminal\.sh$|config\/scripts\/(?:run-terminal-ibus-hangul-e2e|terminal-ime-engagement-receipt)\.mjs$|tests\/e2e\/terminal-ime-(?:boundary-probe|byte-reader|engagement-receipt)\.ts$|tests\/e2e\/terminal-(?:ibus-hangul|hangul-terminating-digit|macos-2set-korean)-native\.spec\.ts$)/
 
+const SNAPSHOT_PARKING_SOURCES =
+  /^(?:src\/main\/ipc\/pty\/ipc\/inspect\.ts|src\/renderer\/src\/components\/terminal\/(?:terminal-provider-snapshot-(?:bound-pty-ids|capability)|use-terminal-provider-snapshot-capability(?:-revision)?)\.ts)$/
+
 export const PR_E2E_SOURCE_ROUTES = [
   {
     id: 'ssh.localhost-agent-hooks',
@@ -157,9 +160,10 @@ export const PR_E2E_SOURCE_ROUTES = [
     specs: ['tests/e2e/host-parked-pane-remote-viewer.spec.ts'],
     matches: (file) =>
       isProductSource(file) &&
-      /^(?:src\/renderer\/src\/components\/terminal-pane\/(?:terminal-hidden-view-parking|terminal-tab-park-candidates|terminal-tab-activation-order|terminal-parked-pty-watcher|terminal-parked-tab-watchers|terminal-parked-watcher-registry|use-terminal-tab-cold-parking)\.ts|src\/renderer\/src\/components\/terminal\/(?:terminal-provider-snapshot-capability|use-terminal-provider-snapshot-capability(?:-revision)?)\.ts|src\/renderer\/src\/runtime\/sync-runtime-graph\.ts)$/.test(
-        file
-      )
+      (SNAPSHOT_PARKING_SOURCES.test(file) ||
+        /^(?:src\/renderer\/src\/components\/terminal-pane\/(?:terminal-hidden-view-parking|terminal-tab-park-candidates|terminal-tab-activation-order|terminal-parked-pty-watcher|terminal-parked-tab-watchers|terminal-parked-watcher-registry|use-terminal-tab-cold-parking)\.ts|src\/renderer\/src\/runtime\/sync-runtime-graph\.ts)$/.test(
+          file
+        ))
   },
   {
     // Why a route of its own: every other terminal-pane route names what BINDS a pane — the pty
@@ -191,9 +195,10 @@ export const PR_E2E_SOURCE_ROUTES = [
     specs: ['tests/e2e/terminal-parked-cli-split.spec.ts'],
     matches: (file) =>
       isProductSource(file) &&
-      /^(?:src\/main\/window\/attach-main-window-services\.ts|src\/preload\/(?:index|api\/ui-command-event-api)\.ts|src\/renderer\/src\/components\/terminal-pane\/(?:terminal-pane-split-request-routing|use-terminal-pane-lifecycle|use-terminal-tab-cold-parking)\.ts|src\/renderer\/src\/components\/terminal\/(?:terminal-provider-snapshot-capability|use-terminal-provider-snapshot-capability(?:-revision)?)\.ts|src\/renderer\/src\/hooks\/ipc-events\/terminal-ui-routing-ipc-bridge\.ts)$/.test(
-        file
-      )
+      (SNAPSHOT_PARKING_SOURCES.test(file) ||
+        /^(?:src\/main\/window\/attach-main-window-services\.ts|src\/preload\/(?:index|api\/ui-command-event-api)\.ts|src\/renderer\/src\/components\/terminal-pane\/(?:terminal-pane-split-request-routing|use-terminal-pane-lifecycle|use-terminal-tab-cold-parking)\.ts|src\/renderer\/src\/hooks\/ipc-events\/terminal-ui-routing-ipc-bridge\.ts)$/.test(
+          file
+        ))
   },
   {
     id: 'terminal-session.paired-serve-restart-binding-continuity',
