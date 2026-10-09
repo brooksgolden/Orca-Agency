@@ -135,7 +135,10 @@ export async function synchronizeTerminalProviderSnapshotCapabilities(
   }
   const nowMs = observedAtMs ?? Date.now()
   if (livePtyIds === lastSynchronizedLivePtyIds && nowMs < earliestUnknownCapabilityRetryAtMs) {
-    return unknownCapabilityRetryDelayMs(nowMs)
+    const retryDelayMs = unknownCapabilityRetryDelayMs(nowMs)
+    return inFlightCapabilityResolutions > 0 && retryDelayMs !== null
+      ? Math.min(IN_FLIGHT_RECHECK_MS, retryDelayMs)
+      : retryDelayMs
   }
   const generation = ++synchronizationGeneration
   lastSynchronizedLivePtyIds = livePtyIds

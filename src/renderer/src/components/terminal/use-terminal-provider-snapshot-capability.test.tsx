@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import {
   clearTerminalProviderSnapshotCapabilities,
   collectTerminalProviderSnapshotPtyIds,
@@ -196,6 +196,42 @@ describe('useTerminalProviderSnapshotCapability', () => {
       hook.unmount()
     }
   )
+
+  it('retains the retry timer when activation restarts an in-flight request', async () => {
+    vi.useFakeTimers()
+    let finishFirst!: (value: { id: string; authoritative: boolean | null }[]) => void
+    const firstAnswer = new Promise<{ id: string; authoritative: boolean | null }[]>((resolve) => {
+      finishFirst = resolve
+    })
+    resolveCapabilities
+      .mockImplementationOnce(() => firstAnswer)
+      .mockResolvedValueOnce([{ id: 'ssh:target@@pty-1', authoritative: true }])
+    let renders = 0
+    const hook = renderHook(
+      ({ enabled }) => {
+        renders += 1
+        return useTerminalProviderSnapshotCapability(enabled)
+      },
+      { initialProps: { enabled: false } }
+    )
+    expect(resolveCapabilities).toHaveBeenCalledOnce()
+
+    hook.rerender({ enabled: true })
+    const rendersBeforeFalse = renders
+    await act(async () => {
+      finishFirst([{ id: 'ssh:target@@pty-1', authoritative: false }])
+      await Promise.resolve()
+    })
+    expect(renders).toBe(rendersBeforeFalse)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect(resolveCapabilities).toHaveBeenCalledTimes(2)
+    expect(terminalProviderHasAuthoritativeSnapshot('ssh:target@@pty-1')).toBe(true)
+    expect(hook.result.current).toBeGreaterThan(0)
+    hook.unmount()
+  })
 
   it('cancels an unknown-capability retry when the hook unmounts', async () => {
     vi.useFakeTimers()
