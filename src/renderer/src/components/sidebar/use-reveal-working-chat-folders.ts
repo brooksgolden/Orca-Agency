@@ -2,24 +2,31 @@ import { useEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
 import type { ChatSidebarListItem } from './chat-sidebar-groups'
 
-/** Reveal newly working folder sections once; subsequent manual collapse wins. */
-export function useRevealWorkingChatFolders(items: readonly ChatSidebarListItem[], query: string) {
+/** Reveal a working chat's folder only when it returns from the split section. */
+export function useRevealWorkingChatFolders(
+  items: readonly ChatSidebarListItem[],
+  query: string,
+  enabled: boolean
+) {
   const previous = useRef<Set<string> | null>(null)
   useEffect(() => {
-    if (query.trim()) {
+    if (!enabled || query.trim()) {
+      previous.current = null
       return
     }
-    const working = new Set(
-      items.flatMap((item) =>
-        item.kind === 'heading' && item.workingFolder !== undefined ? [item.id] : []
-      )
+    const splitChats = new Set(
+      items.flatMap((item) => (item.kind === 'heading' ? (item.splitChatIds ?? []) : []))
     )
     const state = useAppStore.getState()
-    for (const id of working) {
-      if (previous.current && !previous.current.has(id) && state.collapsedGroups.has(id)) {
-        state.toggleCollapsedGroup(id)
+    for (const item of items) {
+      if (
+        item.kind === 'heading' &&
+        state.collapsedGroups.has(item.id) &&
+        item.workingChatIds?.some((id) => previous.current?.has(id) && !splitChats.has(id))
+      ) {
+        state.toggleCollapsedGroup(item.id)
       }
     }
-    previous.current = working
-  }, [items, query])
+    previous.current = splitChats
+  }, [items, query, enabled])
 }

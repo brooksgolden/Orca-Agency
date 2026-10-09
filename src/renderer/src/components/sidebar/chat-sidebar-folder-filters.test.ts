@@ -31,7 +31,7 @@ describe('chat sidebar folder filters', () => {
     const row = chatRow({ state: 'working', promptBackedWorking: false })
     expect(
       chatSidebarListItems([row], state, '', [], new Set(['chat:folder:Acme']))[0]
-    ).toMatchObject({ collapsed: true })
+    ).toMatchObject({ collapsed: true, workingChatIds: [] })
     expect(
       chatSidebarListItems(
         [{ ...row, promptBackedWorking: true }],
@@ -40,7 +40,7 @@ describe('chat sidebar folder filters', () => {
         [],
         new Set(['chat:folder:Acme'])
       )[0]
-    ).toMatchObject({ collapsed: true, workingFolder: 'Acme' })
+    ).toMatchObject({ collapsed: true, workingChatIds: [row.id] })
   })
   it('identifies a working folder on return from a split without overriding manual collapse', () => {
     const state = chatState()
@@ -60,7 +60,7 @@ describe('chat sidebar folder filters', () => {
     const detached = chatSidebarListItems([active, other], state, '', [], preferences)
     expect(detached.find((item) => item.id === 'chat:folder:Acme')).toMatchObject({
       collapsed: true,
-      workingFolder: 'Acme'
+      workingChatIds: ['active']
     })
     expect(detached.some((item) => item.kind === 'chat' && item.id === 'active')).toBe(false)
     expect(preferences.has('chat:folder:Acme')).toBe(true)
@@ -91,7 +91,7 @@ describe('chat sidebar folder filters', () => {
     )
     expect(result.find((item) => item.id === 'chat:folder:Acme')).toMatchObject({
       collapsed: true,
-      workingFolder: undefined
+      workingChatIds: []
     })
   })
 

@@ -15,7 +15,8 @@ export type ChatSidebarListItem =
       id: string
       collapsed: boolean
       doneFolder?: string
-      workingFolder?: string
+      workingChatIds?: string[]
+      splitChatIds?: string[]
     }
   | {
       kind: 'chat'
@@ -134,18 +135,15 @@ export function chatSidebarListItems(
       groupBy === 'folder' && settings?.collapseDoneFolders && folderCompletion.get(key)
         ? key
         : undefined
-    const workingFolder =
-      groupBy === 'folder' &&
-      settings?.collapseDoneFolders &&
-      section.some((set) =>
-        set.groups.some((group) =>
-          group.members.some(
-            (row) => row.folder === key && !row.completed && chatHasWorkingTurn(row)
-          )
-        )
-      )
-        ? key
-        : undefined
+    const sectionRows = section.flatMap((set) => set.groups.flatMap((group) => group.members))
+    const revealEnabled = groupBy === 'folder' && settings?.collapseDoneFolders
+    const workingChatIds = revealEnabled
+      ? sectionRows
+          .filter((row) => row.folder === key && !row.completed && chatHasWorkingTurn(row))
+          .map((row) => row.id)
+      : undefined
+    const splitChatIds =
+      revealEnabled && key === 'Split workspaces' ? sectionRows.map((row) => row.id) : undefined
     const collapsed =
       (collapsedGroups?.has(headingId) ?? false) ||
       (doneFolder !== undefined && !settings?.expandedDoneFolders?.includes(doneFolder))
@@ -157,7 +155,8 @@ export function chatSidebarListItems(
             id: headingId,
             collapsed,
             doneFolder,
-            workingFolder,
+            workingChatIds,
+            splitChatIds,
             label: `${label} (${section.reduce((sum, set) => sum + set.groups.reduce((count, group) => count + group.members.length, 0), 0)})`
           }
         ]
