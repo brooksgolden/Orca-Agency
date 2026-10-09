@@ -17,7 +17,6 @@ import { ptyIncarnationById, ptyOwnership } from './ownership-state'
 import { clearBackgroundedDeliverySyncForPty } from './listener-lifecycle'
 import {
   activeRendererPtys,
-  bulkInputAtByPty,
   interactiveOutputCharsByPty,
   invalidatePendingPtyDrainPolicy,
   invalidatePendingPtyDrainPriority,
@@ -56,7 +55,6 @@ export function clearProviderPtyState(
   ptyIncarnationById.delete(id)
   lastInputAtByPty.delete(id)
   interactiveOutputCharsByPty.delete(id)
-  bulkInputAtByPty.delete(id)
   const activeChanged = activeRendererPtys.delete(id)
   visibleRendererPtys.delete(id)
   rendererVisibilityKnownPtys.delete(id)
