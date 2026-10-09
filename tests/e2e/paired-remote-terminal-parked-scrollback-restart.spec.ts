@@ -291,6 +291,12 @@ async function relaunchAndReveal(
 ): Promise<{
   relaunched: PairedElectronClient
   storeAfterRelaunch: number
+  restoreState: {
+    hasTab: boolean
+    restoredHostId: string | null
+    primaryHostId: string | null
+    shadowHostIds: string[]
+  }
   tokenAfterReveal: boolean
 }> {
   const relaunched = await launchPairedElectronClient(offer, testInfo, 'parked-restart-relaunch', {
@@ -299,6 +305,22 @@ async function relaunchAndReveal(
   })
   await activateWorktree(relaunched.page, parked.worktreeId)
   const storeAfterRelaunch = await readStoreBufferLength(relaunched.page, parked.webTabId)
+  const restoreState = await relaunched.page.evaluate(
+    ({ worktreeId, webTabId }) => {
+      const state = window.__store?.getState()
+      return {
+        hasTab: state?.tabsByWorktree[worktreeId]?.some((tab) => tab.id === webTabId) ?? false,
+        restoredHostId: state?.restoredRuntimeHostIdByWorkspaceSessionKey[worktreeId] ?? null,
+        primaryHostId: state?.contestedPrimaryHostBySessionKey[worktreeId] ?? null,
+        shadowHostIds: Object.entries(state?.contestedHostWorkspaceSessions ?? {})
+          .filter(([, session]) =>
+            session?.tabsByWorktree?.[worktreeId]?.some((tab) => tab.id === webTabId)
+          )
+          .map(([hostId]) => hostId)
+      }
+    },
+    { worktreeId: parked.worktreeId, webTabId: parked.webTabId }
+  )
   await openPairedClientTab(relaunched.page, parked.worktreeId, parked.webTabId)
   const tokenAfterReveal = await waitForPairedPaneMarker(
     relaunched.page,
@@ -306,7 +328,7 @@ async function relaunchAndReveal(
     parked.token,
     PAINT_BUDGET_MS
   )
-  return { relaunched, storeAfterRelaunch, tokenAfterReveal }
+  return { relaunched, storeAfterRelaunch, restoreState, tokenAfterReveal }
 }
 
 async function closeCreatedTerminals(
@@ -354,6 +376,7 @@ test.describe('host retains nothing', () => {
           storeAtPark: parked.storeAtPark,
           onDiskAfterPark,
           storeAfterRelaunch: reveal.storeAfterRelaunch,
+          restoreState: reveal.restoreState,
           tokenAfterReveal: reveal.tokenAfterReveal
         })}`
       )
@@ -409,6 +432,7 @@ test.describe('host retains nothing', () => {
           storeAtPark: parked.storeAtPark,
           onDiskAfterQuit,
           storeAfterRelaunch: reveal.storeAfterRelaunch,
+          restoreState: reveal.restoreState,
           tokenAfterReveal: reveal.tokenAfterReveal
         })}`
       )
