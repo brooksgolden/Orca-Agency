@@ -15,6 +15,7 @@ export {
   getLinkedWorktreeMainRepoRoot,
   normalizeGitRepoRootForInputPath
 } from './repo-detection'
+export { isGitRepoAsync, getGitRepoRootAsync } from './repo-detection-async'
 export {
   DEFAULT_BASE_REF_PROBES,
   getBaseRefDefault,

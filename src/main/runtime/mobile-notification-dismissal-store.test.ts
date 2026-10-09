@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { MobileNotificationDismissalStore } from './mobile-notification-dismissal-store'
+import { writeSecureJsonFile } from '../../shared/secure-file'
+const write = async (path: string, value: unknown) => {
+  writeSecureJsonFile(path, value)
+}
 const paths: string[] = []
 afterEach(() => {
   paths.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true }))
@@ -11,7 +15,7 @@ afterEach(() => {
 function fixture() {
   const path = mkdtempSync(join(tmpdir(), 'orca-dismissals-'))
   paths.push(path)
-  return { path, store: new MobileNotificationDismissalStore(path) }
+  return { path, store: new MobileNotificationDismissalStore(path, write) }
 }
 const shown = { notificationId: 'same', notificationEpoch: 'old', notificationSeq: 12 }
 const alert = {
@@ -20,16 +24,18 @@ const alert = {
   title: 'QA',
   body: ''
 }
-it('reconciles an old delivered alert after desktop restart and preserves unrelated identities', () => {
+it('reconciles an old delivered alert after desktop restart and preserves unrelated identities', async () => {
   const h = fixture()
   h.store.record({ ...alert, ...shown })
-  const restarted = new MobileNotificationDismissalStore(h.path)
+  await h.store.flush()
+  const restarted = new MobileNotificationDismissalStore(h.path, write)
   restarted.record({
     type: 'dismiss',
     notificationId: 'same',
     notificationEpoch: 'new',
     notificationSeq: 1
   })
+  await restarted.flush()
   const loaded = new MobileNotificationDismissalStore(h.path)
   expect(
     loaded.reconcile([
@@ -40,7 +46,7 @@ it('reconciles an old delivered alert after desktop restart and preserves unrela
     ])
   ).toEqual([shown])
 })
-it('does not dismiss a newer replacement and does not treat missing or expired history as dismissal', () => {
+it('does not dismiss a newer replacement and does not treat missing or expired history as dismissal', async () => {
   const h = fixture()
   const now = Date.now()
   vi.spyOn(Date, 'now').mockReturnValue(now)
@@ -54,4 +60,67 @@ it('does not dismiss a newer replacement and does not treat missing or expired h
   vi.mocked(Date.now).mockReturnValue(now + 7 * 86400_000)
   expect(h.store.reconcile([shown])).toEqual([])
   expect(new MobileNotificationDismissalStore(`${h.path}-unknown`).reconcile([shown])).toEqual([])
+  await h.store.flush()
+})
+
+it('returns immediately during a slow write and saves only the latest pending snapshot', async () => {
+  const h = fixture()
+  const releases: (() => void)[] = []
+  const writer = vi.fn(
+    (_path: string, _value: unknown) => new Promise<void>((resolve) => releases.push(resolve))
+  )
+  const store = new MobileNotificationDismissalStore(h.path, writer)
+  store.record({ ...alert, ...shown })
+  await vi.waitFor(() => expect(writer).toHaveBeenCalledOnce())
+  for (let i = 13; i <= 100; i++) {
+    store.record({ ...alert, ...shown, notificationSeq: i })
+  }
+  store.record({ type: 'dismiss', ...shown, notificationSeq: 101 })
+  expect(store.reconcile([{ ...shown, notificationSeq: 100 }])).toHaveLength(1)
+  expect(writer).toHaveBeenCalledOnce()
+  releases.shift()!()
+  await vi.waitFor(() => expect(writer).toHaveBeenCalledTimes(2))
+  expect(writer.mock.calls[1][1]).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ notificationSeq: 101, dismissedThrough: 101 })
+    ])
+  )
+  let flushed = false
+  const pending = store.flush().then(() => {
+    flushed = true
+  })
+  await Promise.resolve()
+  expect(flushed).toBe(false)
+  releases.shift()!()
+  await pending
+  expect(flushed).toBe(true)
+})
+
+it('retains in-memory dismissal state and retries on new activity after a failed writer', async () => {
+  const h = fixture()
+  const writer = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('Unavailable'))
+    .mockRejectedValueOnce(new Error('Still unavailable'))
+    .mockResolvedValue(undefined)
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const store = new MobileNotificationDismissalStore(h.path, writer)
+  store.record({ type: 'dismiss', ...shown, notificationSeq: 13 })
+  await store.flush()
+  expect(store.reconcile([shown])).toEqual([shown])
+  expect(writer).toHaveBeenCalledTimes(2)
+  expect(warning).toHaveBeenCalledTimes(2)
+  store.record({ type: 'dismiss', ...shown, notificationSeq: 14 })
+  await store.flush()
+  expect(writer).toHaveBeenCalledTimes(3)
+})
+
+it('retries a failed snapshot once on flush even without new activity', async () => {
+  const h = fixture()
+  const writer = vi.fn().mockRejectedValueOnce(new Error('Transient')).mockResolvedValue(undefined)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const store = new MobileNotificationDismissalStore(h.path, writer)
+  store.record({ type: 'dismiss', ...shown })
+  await store.flush()
+  expect(writer).toHaveBeenCalledTimes(2)
 })

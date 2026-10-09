@@ -83,6 +83,45 @@ describe('registerFilesystemHandlers', () => {
     invalidateAuthorizedRootsCache()
   })
 
+  it('does not execute Git status for a registered folder project', async () => {
+    const repos = vi
+      .spyOn(store, 'getRepos')
+      .mockReturnValue(store.getRepos().map((repo) => ({ ...repo, kind: 'folder' })))
+    try {
+      invalidateAuthorizedRootsCache()
+      registerFilesystemHandlers(store as never)
+      const status = await handlers.get('git:status')!(null, { worktreePath: REPO_PATH })
+      expect(status).toEqual({ entries: [], conflictOperation: 'unknown' })
+      expect(getStatusMock).not.toHaveBeenCalled()
+      expect(listWorktreesMock).not.toHaveBeenCalled()
+    } finally {
+      repos.mockRestore()
+      invalidateAuthorizedRootsCache()
+    }
+  })
+
+  it('does not ask the SSH provider for Git status of a registered folder project', async () => {
+    const repos = vi
+      .spyOn(store, 'getRepos')
+      .mockReturnValue(
+        store.getRepos().map((repo) => ({ ...repo, kind: 'folder', connectionId: 'ssh-folder' }))
+      )
+    try {
+      registerFilesystemHandlers(store as never)
+      expect(
+        await handlers.get('git:status')!(null, {
+          worktreePath: REPO_PATH,
+          connectionId: 'ssh-folder'
+        })
+      ).toEqual({ entries: [], conflictOperation: 'unknown' })
+      expect(getSshGitProviderMock).not.toHaveBeenCalled()
+      expect(getStatusMock).not.toHaveBeenCalled()
+      expect(listWorktreesMock).not.toHaveBeenCalled()
+    } finally {
+      repos.mockRestore()
+    }
+  })
+
   it('normalizes repo worktree paths and keeps git file paths relative', async () => {
     stageFileMock.mockResolvedValue(undefined)
 

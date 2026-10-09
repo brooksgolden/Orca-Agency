@@ -43,7 +43,7 @@ function Start-IndependentOrca {
     $restartNode = Get-ReviewedInspectorNode $exe $toolchainRoot $frozenManifest.rolloutInspectorNodeSha256
     # WMI keeps the restart outside this terminal's kill-on-close job.
     $launch = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-        CommandLine = '"' + $exe + '" --remote-debugging-address=127.0.0.1 --remote-debugging-port=19387'
+        CommandLine = '"' + $exe + '" --orca-main-thread-diagnostics --remote-debugging-address=127.0.0.1 --remote-debugging-port=19387'
         CurrentDirectory = $target
     }
     if ($launch.ReturnValue -ne 0) { throw "Desktop restart failed with Windows result $($launch.ReturnValue). App files remain intact." }
@@ -157,11 +157,7 @@ try {
     $crashReporters = @(Get-ReviewedInstallProcesses $exe | Where-Object {
         Test-ReviewedCrashReporter $_
     })
-    $foreignProcesses = @(Get-ReviewedInstallProcesses $exe | Where-Object {
-        -not (Test-ReviewedCrashReporter $_) -and $_.ProcessId -ne $desktopId -and
-        $_.ParentProcessId -ne $desktopId
-    })
-    if ($foreignProcesses.Count) { throw 'Another process uses the installed executable; no desktop was closed.' }
+    Wait-ReviewedDesktopExclusiveUse $exe $desktopId
     $env:ORCA_CLOSE_THROUGH_MAIN_PROCESS = '1'
     Write-Host 'Using the PID-verified main-process close route.'
     $env:ORCA_DESKTOP_QUIT_PID = [string]$desktopId
