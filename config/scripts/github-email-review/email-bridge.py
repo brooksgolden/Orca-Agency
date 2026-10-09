@@ -245,6 +245,8 @@ def finish(key, reason, reply=None, run_token=None):
             raise ValueError('This item belongs to another review batch')
         if item['status'] == 'handled':
             return item
+        if run_token and (item['status'] != 'pending' or (saved['activeRun'] or {}).get('token') != run_token):
+            return {'result': 'expired_batch', 'reason': 'This reviewer no longer owns the pending item'}
         target = item['target']
         if reply is not None:
             if target['kind'] == 'workflow':
@@ -382,6 +384,12 @@ def inspect_active_run():
         uncertain = not run_id and elapsed > 120
         progress = datetime.fromisoformat(current.get('lastProgressAt', current['startedAt']).replace('Z', '+00:00')).timestamp()
         expired = time.time() - progress > 1800 or elapsed > 14400
+        # A renderer completion can precede the reviewer's final queue decision.
+        unfinished = any(item['status'] == 'pending' and item.get('runToken') == current.get('token')
+                         for item in saved['items'].values())
+        if (run and run['status'] == 'completed' and unfinished
+                and current.get('lastProgressAt') and time.time() - progress <= 300):
+            ended = False
         released = uncertain or expired or ended
         if released:
             saved['lastRun'] = current
