@@ -1,4 +1,5 @@
 import { RuntimeRpcMobilePairing } from './runtime-rpc-mobile-pairing'
+import { settleWithinMs } from '../../quit-teardown-deadline'
 
 export class RuntimeRpcShutdown extends RuntimeRpcMobilePairing {
   /** Why: test-only seam — runs one ownership check instead of waiting out the poll interval. */
@@ -29,6 +30,13 @@ export class RuntimeRpcShutdown extends RuntimeRpcMobilePairing {
     )
     // Why: before-quit fences relay input; direct auth can still refresh lastSeen while these transports close.
     this.deviceRegistry?.flushPendingLastSeen()
+    const dismissals = await settleWithinMs(
+      this.runtime.flushMobileNotificationDismissals?.() ?? Promise.resolve(),
+      2_000
+    )
+    if (dismissals.outcome !== 'settled') {
+      console.warn('[notifications] Dismissal persistence did not finish before RPC shutdown')
+    }
     const failedStop = stopResults.find((result) => result.status === 'rejected')
     if (failedStop?.status === 'rejected') {
       throw failedStop.reason

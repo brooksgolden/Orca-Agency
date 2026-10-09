@@ -1,11 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import {
-  writeSecureJsonFile,
-  hardenExistingSecureFile,
-  isUnreadableError
-} from '../../shared/secure-file'
+import { hardenExistingSecureFile, isUnreadableError } from '../../shared/secure-file'
 import type { MobileNotificationEvent } from './runtime-mobile-notification-controller'
+import { writeNotificationDismissals } from './notification-dismissal-writer'
 
 export type DeliveredNotificationIdentity = {
   notificationId: string
@@ -20,7 +17,15 @@ export class MobileNotificationDismissalStore {
   private readonly path: string
   private entries: RecordEntry[] = []
   private unreadable = false
-  constructor(userDataPath: string) {
+  private dirty = false
+  private persistence: Promise<void> | null = null
+  constructor(
+    userDataPath: string,
+    private readonly write: (
+      path: string,
+      value: unknown
+    ) => Promise<void> = writeNotificationDismissals
+  ) {
     this.path = join(userDataPath, 'mobile-notification-dismissals.json')
     try {
       hardenExistingSecureFile(this.path)
@@ -74,10 +79,51 @@ export class MobileNotificationDismissalStore {
       })
     }
     next = next.slice(-LIMIT)
-    if (!this.unreadable) {
-      writeSecureJsonFile(this.path, next)
-    }
     this.entries = next
+    if (!this.unreadable) {
+      this.schedulePersistence()
+    }
+  }
+
+  private schedulePersistence(): void {
+    this.dirty = true
+    if (this.persistence) {
+      return
+    }
+    let failed = false
+    // One active snapshot and the latest pending one keep burst writes and memory bounded.
+    this.persistence = Promise.resolve()
+      .then(async () => {
+        while (this.dirty) {
+          this.dirty = false
+          await this.write(this.path, this.entries)
+        }
+      })
+      .catch(() => {
+        failed = true
+        this.dirty = true
+        console.warn('[notifications] Could not persist dismissal recovery state')
+      })
+      .finally(() => {
+        this.persistence = null
+        if (this.dirty && !failed) {
+          this.schedulePersistence()
+        }
+      })
+  }
+
+  async flush(): Promise<void> {
+    let retried = false
+    while (true) {
+      if (!this.persistence && this.dirty && !this.unreadable && !retried) {
+        retried = true
+        this.schedulePersistence()
+      }
+      if (!this.persistence) {
+        return
+      }
+      await this.persistence
+    }
   }
 
   reconcile(delivered: readonly DeliveredNotificationIdentity[]): DeliveredNotificationIdentity[] {

@@ -267,7 +267,11 @@ function installWillQuitHandler(): void {
       { name: 'structured-agent-session', promise: structuredAgentSessionShutdown },
       { name: 'usage-cache', promise: usageCacheFlush },
       { name: 'stats', promise: statsFlush },
-      { name: 'state', promise: storeFlush }
+      { name: 'state', promise: storeFlush },
+      {
+        name: 'notification-dismissals',
+        promise: state.runtime?.flushMobileNotificationDismissals?.() ?? Promise.resolve()
+      }
     ])
       .then((pendingTeardowns) => {
         if (pendingTeardowns.length > 0) {
