@@ -34,6 +34,16 @@ async function dragTo(page: Page, start: { x: number; y: number }, end: { x: num
   await page.mouse.move(end.x, end.y, { steps: 8 })
 }
 
+async function captureDragScreenshot(page: Page, outputPath: string): Promise<void> {
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' })
+    writeFileSync(outputPath, Buffer.from(data, 'base64'))
+  } finally {
+    await cdp.detach()
+  }
+}
+
 test('packaged mouse drags swap quadrants and combine same-folder tab bars', async (// oxlint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture argument.
 {}, testInfo) => {
   const executablePath = process.env.ORCA_SMOKE_EXECUTABLE
@@ -166,7 +176,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       y: originalTopRight.y + originalTopRight.height / 2
     })
     await expect(page.locator('[data-workspace-drop-swap]')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('occupied-quadrant-swap.png') })
+    await captureDragScreenshot(page, testInfo.outputPath('occupied-quadrant-swap.png'))
     await page.mouse.up()
     await expect
       .poll(async () => Math.round((await pane(ids[3]).boundingBox())!.y))
@@ -197,7 +207,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     await expect
       .poll(async () => (await pane(ids[2]).boundingBox())!.width)
       .toBeCloseTo(rowBounds.width, -1)
-    await page.screenshot({ path: testInfo.outputPath('three-pane-row-quadrant.png') })
+    await captureDragScreenshot(page, testInfo.outputPath('three-pane-row-quadrant.png'))
 
     // Tall columns reproduce the layout that previously trapped panes away from quadrants.
     await page.evaluate(
@@ -217,7 +227,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     const end = { x: bounds.x + bounds.width * 0.9, y: bounds.y + bounds.height * 0.9 }
     await dragTo(page, await headerPoint(page, ids[1]), end)
     await expect(page.locator('[data-workspace-quadrant-drop="bottom-right"]')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('bottom-right-quadrant-drop.png') })
+    await captureDragScreenshot(page, testInfo.outputPath('bottom-right-quadrant-drop.png'))
     await page.mouse.up()
     await expect
       .poll(async () => Math.round((await pane(ids[1]).boundingBox())!.height))
@@ -259,7 +269,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       { x: targetBounds.x + 4, y: targetBounds.y + 16 }
     )
     await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('same-folder-tab-insertion.png') })
+    await captureDragScreenshot(page, testInfo.outputPath('same-folder-tab-insertion.png'))
     await page.mouse.up()
     await expect(pane(ids[0]).locator(`[data-tab-id="${terminalIds[3]}"]`)).toBeVisible()
     await expect(pane(ids[3])).toHaveCount(0)
