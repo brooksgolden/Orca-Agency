@@ -59,16 +59,25 @@ export function warmWindowsConptyOnce(spawnPty: typeof pty.spawn = spawnWarmupPt
         env: process.env as Record<string, string>,
         ...windowsConptySpawnOptions()
       })
-      const killTimer = setTimeout(() => {
+      let killed = false
+      const releaseWarmupPty = (): void => {
+        if (killed) {
+          return
+        }
+        killed = true
         try {
           proc.kill()
         } catch {
-          /* best-effort cleanup of a stuck warm-up shell */
+          /* best-effort cleanup of a warm-up shell */
         }
-      }, WARMUP_KILL_TIMEOUT_MS)
+      }
+      const killTimer = setTimeout(releaseWarmupPty, WARMUP_KILL_TIMEOUT_MS)
       killTimer.unref?.()
       proc.onExit(() => {
         clearTimeout(killTimer)
+        // node-pty keeps the pseudoconsole and pipe worker until kill(), even
+        // after this short-lived shell exits on its own.
+        releaseWarmupPty()
       })
     } catch {
       /* warm-up is best-effort; real spawns surface their own errors */

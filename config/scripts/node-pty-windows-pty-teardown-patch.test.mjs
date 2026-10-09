@@ -180,6 +180,18 @@ function unapplyDesktopHunks(file, desktop) {
       expect(published.split(patched).length - 1).toBe(1)
       published = published.replace(patched, original)
     }
+    const asset = readFileSync(
+      join(projectDir, 'config', 'relay-assets', 'node-pty-1.1.0-windows-pty-teardown-patch.cjs'),
+      'utf8'
+    )
+    const target = loadPatchTargets(asset).PATCH_TARGETS.find(
+      (entry) => entry.relativePath.at(-1) === file
+    )
+    const [before, after] = target.replacements.find(([from]) =>
+      from.includes('WindowsPtyAgent.prototype._getConsoleProcessList')
+    )
+    expect(published.split(after).length - 1).toBe(1)
+    published = published.replace(after, before)
     return published
   }
   const asset = readFileSync(

@@ -73,9 +73,9 @@ describe('warmWindowsConptyOnce', () => {
     })
     expect(options).toMatchObject({ useConptyDll: selected === 'bundled', cols: 2, rows: 1 })
 
-    // A clean exit must not leave the kill timer to fire later.
+    // A clean exit must release node-pty's remaining pseudoconsole handles.
     fireExit()
-    expect(proc.kill).not.toHaveBeenCalled()
+    expect(proc.kill).toHaveBeenCalledTimes(1)
   })
 
   it('kills the warm-up shell if it never exits', async () => {

@@ -1241,6 +1241,50 @@ index a358ffb177357e177661033c1b092f9c9d0e5f5a..994ef290a9e2e28ad9bacf36c18d9b3e
              }
          }
          else {
+@@ -185,15 +189,38 @@ var WindowsPtyAgent = /** @class */ (function () {
+     WindowsPtyAgent.prototype._getConsoleProcessList = function () {
+         var _this = this;
+         return new Promise(function (resolve) {
+-            var agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);
+-            agent.on('message', function (message) {
++            var fallback = [_this._innerPid];
++            var agent;
++            try {
++                agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);
++            }
++            catch (_a) {
++                resolve(fallback);
++                return;
++            }
++            var settled = false;
++            var finish = function (list) {
++                if (settled) {
++                    return;
++                }
++                settled = true;
+                 clearTimeout(timeout);
+-                resolve(message.consoleProcessList);
++                resolve(list);
++            };
++            agent.on('message', function (message) {
++                finish(message && Array.isArray(message.consoleProcessList) ? message.consoleProcessList : fallback);
+             });
++            // A failed helper must not crash the daemon or abort ConPTY teardown.
++            agent.on('error', function () { finish(fallback); });
+             var timeout = setTimeout(function () {
+                 // Something went wrong, just send back the shell PID
+-                agent.kill();
+-                resolve([_this._innerPid]);
++                try {
++                    agent.kill();
++                }
++                catch (_a) {
++                    // The helper may already have exited.
++                }
++                finish(fallback);
+             }, 5000);
+         });
+     };
 diff --git a/lib/windowsTerminal.js b/lib/windowsTerminal.js
 index 3c38f89..e20b3e6 100644
 --- a/lib/windowsTerminal.js
@@ -1350,6 +1394,47 @@ index d7054449516f0c9a62af351c2caa17331206d530..8fcebc570ca489cf46bbec91f010d3a9
        }
      } else {
        // Because pty.kill closes the handle, it will kill most processes by itself.
+@@ -189,14 +193,35 @@ export class WindowsPtyAgent {
+   private _getConsoleProcessList(): Promise<number[]> {
+     return new Promise<number[]>(resolve => {
+-      const agent = fork(path.join(__dirname, 'conpty_console_list_agent'), [ this._innerPid.toString() ]);
+-      agent.on('message', message => {
++      const fallback = [ this._innerPid ];
++      let agent: ReturnType<typeof fork>;
++      try {
++        agent = fork(path.join(__dirname, 'conpty_console_list_agent'), [ this._innerPid.toString() ]);
++      } catch {
++        resolve(fallback);
++        return;
++      }
++      let settled = false;
++      const finish = (list: number[]): void => {
++        if (settled) {
++          return;
++        }
++        settled = true;
+         clearTimeout(timeout);
+-        resolve(message.consoleProcessList);
++        resolve(list);
++      };
++      agent.on('message', message => {
++        finish(message && Array.isArray(message.consoleProcessList) ? message.consoleProcessList : fallback);
+       });
++      // A failed helper must not crash the daemon or abort ConPTY teardown.
++      agent.on('error', () => finish(fallback));
+       const timeout = setTimeout(() => {
+         // Something went wrong, just send back the shell PID
+-        agent.kill();
+-        resolve([ this._innerPid ]);
++        try {
++          agent.kill();
++        } catch {
++          // The helper may already have exited.
++        }
++        finish(fallback);
+       }, 5000);
+     });
+   }
 diff --git a/src/windowsTerminal.ts b/src/windowsTerminal.ts
 index 13f6c6d..eda63c8 100644
 --- a/src/windowsTerminal.ts

@@ -73,17 +73,23 @@ const { join, resolve } = require('node:path')
 
 const EXPECTED_NODE_PTY_VERSION = '1.1.0'
 
+const CONSOLE_LIST_BEFORE =
+  "    WindowsPtyAgent.prototype._getConsoleProcessList = function () {\n        var _this = this;\n        return new Promise(function (resolve) {\n            var agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);\n            agent.on('message', function (message) {\n                clearTimeout(timeout);\n                resolve(message.consoleProcessList);\n            });\n            var timeout = setTimeout(function () {\n                // Something went wrong, just send back the shell PID\n                agent.kill();\n                resolve([_this._innerPid]);\n            }, 5000);\n        });\n    };\n"
+const CONSOLE_LIST_AFTER =
+  "    WindowsPtyAgent.prototype._getConsoleProcessList = function () {\n        var _this = this;\n        return new Promise(function (resolve) {\n            var fallback = [_this._innerPid];\n            var agent;\n            try {\n                agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);\n            }\n            catch (_a) {\n                resolve(fallback);\n                return;\n            }\n            var settled = false;\n            var finish = function (list) {\n                if (settled) {\n                    return;\n                }\n                settled = true;\n                clearTimeout(timeout);\n                resolve(list);\n            };\n            agent.on('message', function (message) {\n                finish(message && Array.isArray(message.consoleProcessList) ? message.consoleProcessList : fallback);\n            });\n            // A failed helper must not crash the daemon or abort ConPTY teardown.\n            agent.on('error', function () { finish(fallback); });\n            var timeout = setTimeout(function () {\n                // Something went wrong, just send back the shell PID\n                try {\n                    agent.kill();\n                }\n                catch (_a) {\n                    // The helper may already have exited.\n                }\n                finish(fallback);\n            }, 5000);\n        });\n    };\n"
+
 /** Each entry is one published file, its patched form, and the edits between them. */
 const PATCH_TARGETS = [
   {
     relativePath: ['lib', 'windowsPtyAgent.js'],
     originalSha256: '8636d16b38266112204061a22b135734177c242837982fd3a4055be726efa64a',
-    patchedSha256: '1e23ef480569e73706e3ab4f5482c7e553c76f51414ae8e7b0bdcc2fd75f7280',
+    patchedSha256: '7c3d43d2f08f58e4012555f7e50aaf972422a166045782005f82d75445e65f80',
     replacements: [
       [
         '                this._ptyNative.kill(this._pty, this._useConptyDll);\n                this._conoutSocketWorker.dispose();\n',
         '                this._ptyNative.kill(this._pty, this._useConptyDll);\n                this._conoutSocketWorker.dispose();\n                // Orca: released AFTER the console-list fork and the native kill, not before them.\n                // Destroying conin first aborts teardown partway -- measured on a Windows SSH relay\n                // as +2 File and +1 Process handles per terminal, against +1 File unpatched.\n                this._inSocket.destroy();\n'
-      ]
+      ],
+      [CONSOLE_LIST_BEFORE, CONSOLE_LIST_AFTER]
     ]
   },
   {
