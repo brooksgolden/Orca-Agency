@@ -109,7 +109,12 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
       chatSidebarListItems(rows, { ...state, ...panes }, query, splits, collapsedGroups, focused),
     [rows, state, panes, query, splits, collapsedGroups, focused]
   )
-  useRevealWorkingChatFolders(items, query)
+  useRevealWorkingChatFolders(
+    items,
+    query,
+    state.settings?.chatSidebar?.groupBy === 'folder' &&
+      !!state.settings.chatSidebar.collapseDoneFolders
+  )
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of rows) {

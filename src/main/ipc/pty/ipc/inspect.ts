@@ -127,7 +127,7 @@ export function installPtyInspectIpcHandlers(deps: {
         }
         seen.add(value)
         const provider = tryGetProviderForPty(value)
-        // Resolved providers without the optional method are definitively non-authoritative; null remains retryable.
+        // False is safe-side; a newly spawned session may become snapshot-backed on retry.
         capabilities.push({
           id: value,
           authoritative:

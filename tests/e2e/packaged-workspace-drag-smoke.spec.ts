@@ -1,6 +1,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { _electron as electron, test, expect, type Page } from '@stablyai/playwright-test'
+import {
+  _electron as electron,
+  test,
+  expect,
+  type Page,
+  type ElectronApplication
+} from '@stablyai/playwright-test'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
@@ -9,9 +15,9 @@ import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-ret
 import { captureHiddenRendererScreenshot } from './helpers/hidden-renderer-screenshot'
 
 async function headerPoint(page: Page, workspaceId: string) {
-  await expect(
-    page.locator(`[data-tab-group-strip-id][data-worktree-id="${workspaceId}"]`)
-  ).toBeVisible()
+  await page
+    .locator(`[data-tab-group-strip-id][data-worktree-id="${workspaceId}"]`)
+    .waitFor({ state: 'visible' })
   return page.evaluate((id) => {
     const strip = document.querySelector<HTMLElement>(
       `[data-tab-group-strip-id][data-worktree-id="${id}"]`
@@ -39,11 +45,37 @@ async function dragTo(page: Page, start: { x: number; y: number }, end: { x: num
   await page.mouse.move(end.x, end.y, { steps: 8 })
 }
 
+async function captureDragLayout(app: ElectronApplication, page: Page, outputPath: string) {
+  await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find((item) =>
+      item.webContents.getURL().includes('index.html')
+    )!
+    await window.capturePage(undefined, { stayHidden: true, stayAwake: true })
+  })
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  )
+  const data = await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find((item) =>
+      item.webContents.getURL().includes('index.html')
+    )!
+    const capture = await window.capturePage(undefined, { stayHidden: true, stayAwake: true })
+    if (capture.isEmpty()) {
+      throw new Error('Hidden drag layout capture is empty')
+    }
+    return capture.toPNG().toString('base64')
+  })
+  writeFileSync(outputPath, Buffer.from(data, 'base64'))
+}
+
 test('packaged mouse drags swap quadrants and combine same-folder tab bars', async (// oxlint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture argument.
 {}, testInfo) => {
   const executablePath = process.env.ORCA_SMOKE_EXECUTABLE
   test.skip(!executablePath, 'Set ORCA_SMOKE_EXECUTABLE to the reviewed package')
-  test.setTimeout(300_000)
+  test.setTimeout(480_000)
   const profilePath = testInfo.outputPath('profile')
   mkdirSync(profilePath, { recursive: true })
   const profile = getE2ECompletedOnboardingProfile()
@@ -74,7 +106,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
   })
   try {
     await assertPackagedExecutableIdentity(app, executablePath)
-    const page = await app.firstWindow()
+    const page = await app.firstWindow({ timeout: 60_000 })
     await retryTransientMainEvaluate(() =>
       app.evaluate(({ BrowserWindow }) => {
         for (const window of BrowserWindow.getAllWindows()) {
@@ -83,7 +115,6 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       })
     )
     await page.waitForFunction(() => Boolean(window.api))
-    expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
     const folders = ['shared', 'second', 'third', 'shared'].map((name) =>
       path.join(profilePath, name)
     )
@@ -104,7 +135,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       }
       return ids
     }, folders)
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     for (const id of ids) {
       await page
         .locator(`[role="option"][data-worktree-id="${id}"]`)
@@ -161,12 +192,13 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
         pair('vertical', leaf(ids[1]), leaf(ids[3]))
       )
     )
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     const root = page.locator('[data-workspace-split-root]')
     const pane = (id: string) => page.locator(`[data-workspace-surface-id="${id}"]:visible`)
     for (const id of ids) {
       await expect(pane(id)).toBeVisible()
     }
+    expect(await page.evaluate(() => '__store' in window)).toBe(false)
     const originalTopRight = (await pane(ids[1]).boundingBox())!
     await dragTo(page, await headerPoint(page, ids[3]), {
       x: originalTopRight.x + originalTopRight.width / 2,
@@ -181,7 +213,13 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     await expect
       .poll(async () => (await pane(ids[1]).boundingBox())!.y > originalTopRight.y + 20)
       .toBe(true)
+    await captureDragLayout(app, page, testInfo.outputPath('occupied-quadrant-swap.png'))
 
+    await page
+      .locator(`[role="option"][data-worktree-id="${ids[0]}"]`)
+      .first()
+      .locator('[data-worktree-card-surface]')
+      .click()
     await page.evaluate(
       (layout) =>
         localStorage.setItem(
@@ -190,12 +228,11 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
         ),
       pair('vertical', leaf(ids[0]), pair('horizontal', leaf(ids[1]), leaf(ids[2])))
     )
-    await page.reload()
-    await page
-      .locator(`[role="option"][data-worktree-id="${ids[1]}"]`)
-      .first()
-      .locator('[data-worktree-card-surface]')
-      .click()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+    for (const id of ids.slice(0, 3)) {
+      await expect(pane(id)).toBeVisible()
+    }
+    await expect(pane(ids[3])).toHaveCount(0)
     const rowBounds = (await root.boundingBox())!
     await dragTo(page, await headerPoint(page, ids[1]), {
       x: rowBounds.x + rowBounds.width * 0.1,
@@ -209,7 +246,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     await expect
       .poll(async () => (await pane(ids[2]).boundingBox())!.width)
       .toBeCloseTo(rowBounds.width, -1)
-    await captureHiddenRendererScreenshot(page, testInfo.outputPath('three-pane-row-quadrant.png'))
+    await captureDragLayout(app, page, testInfo.outputPath('three-pane-row-quadrant.png'))
 
     // Tall columns reproduce the layout that previously trapped panes away from quadrants.
     await page.evaluate(
@@ -224,7 +261,10 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
         pair('horizontal', leaf(ids[1]), pair('horizontal', leaf(ids[2]), leaf(ids[3])))
       )
     )
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+    for (const id of ids) {
+      await expect(pane(id)).toBeVisible()
+    }
     const bounds = (await root.boundingBox())!
     const end = { x: bounds.x + bounds.width * 0.9, y: bounds.y + bounds.height * 0.9 }
     await dragTo(page, await headerPoint(page, ids[1]), end)
@@ -240,6 +280,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     await expect
       .poll(async () => (await pane(ids[1]).boundingBox())!.x > bounds.x + bounds.width * 0.4)
       .toBe(true)
+    await captureDragLayout(app, page, testInfo.outputPath('bottom-right-quadrant-drop.png'))
 
     const sourceTab = pane(ids[3]).locator(`[data-tab-id="${terminalIds[3]}"]`)
     const targetTab = pane(ids[0]).locator(`[data-tab-id="${terminalIds[0]}"]`)
@@ -281,6 +322,7 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     await page.mouse.up()
     await expect(pane(ids[0]).locator(`[data-tab-id="${terminalIds[3]}"]`)).toBeVisible()
     await expect(pane(ids[3])).toHaveCount(0)
+    await captureDragLayout(app, page, testInfo.outputPath('same-folder-tab-insertion.png'))
     const final = await page.evaluate(async () => {
       await window.api.session.flush()
       return window.api.session.get()
@@ -289,7 +331,8 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
       [terminalIds[0], terminalIds[3]].sort()
     )
     expect(final.tabsByWorktree[ids[3]] ?? []).toEqual([])
-    await page.reload()
+    await targetTab.click()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(2)
     expect(
       await pane(ids[0])
@@ -299,13 +342,45 @@ test('packaged mouse drags swap quadrants and combine same-folder tab bars', asy
     expect(
       (await page.evaluate(() => window.api.pty.listSessions())).map((item) => item.id).sort()
     ).toEqual(initialPtyIds)
+    await pane(ids[0]).getByRole('button', { name: 'New tab', exact: true }).click()
+    await page.getByRole('menuitem', { name: /New Terminal: PowerShell/ }).click()
+    await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(3)
+    const addedTab = pane(ids[0]).locator('[data-tab-id]').last()
+    const addedTabId = (await addedTab.getAttribute('data-tab-id'))!
+    await addedTab.click({ button: 'right' })
+    // Hidden native windows can lose pointer hover while Radix positions the submenu.
+    await page.getByRole('menuitem', { name: 'Split terminal', exact: true }).press('ArrowRight')
+    await page.getByRole('menuitem', { name: /Split terminal right/ }).press('Enter')
+    await expect(pane(ids[0]).locator('.xterm:visible')).toHaveCount(2)
+    await expect
+      .poll(async () => (await page.evaluate(() => window.api.pty.listSessions())).length)
+      .toBe(initialPtyIds.length + 2)
+    const created = await page.evaluate(async () => {
+      await window.api.session.flush()
+      return window.api.session.get()
+    })
+    expect(created.tabsByWorktree[ids[0]].map((tab) => tab.id)).toContain(addedTabId)
+    expect(created.terminalLayoutsByTabId[addedTabId].root?.type).toBe('split')
+    const createdPtyIds = (await page.evaluate(() => window.api.pty.listSessions()))
+      .map((item) => item.id)
+      .sort()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+    await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(3)
+    await expect(pane(ids[0]).locator('.xterm:visible')).toHaveCount(2)
+    expect(
+      (await page.evaluate(() => window.api.pty.listSessions())).map((item) => item.id).sort()
+    ).toEqual(createdPtyIds)
+    await captureDragLayout(app, page, testInfo.outputPath('create-after-tab-move.png'))
     expect(
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().every((window) => !window.isVisible())
       )
     ).toBe(true)
   } finally {
-    await closeElectronAppForE2E(app)
-    await cleanupE2EDaemons(profilePath)
+    try {
+      await closeElectronAppForE2E(app)
+    } finally {
+      await cleanupE2EDaemons(profilePath)
+    }
   }
 })
