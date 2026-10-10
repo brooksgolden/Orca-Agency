@@ -105,7 +105,9 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       'Smoke projects'
     )
     await expect(row(ids[0]).locator('[data-worktree-status-context]')).toContainText('1d')
-    await row(ids[2]).getByRole('button', { name: 'Mark workspace Done' }).click()
+    await row(ids[2]).locator('[data-worktree-card-surface]').click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Move to Status' }).hover()
+    await page.getByRole('menuitemradio', { name: 'Done' }).click()
     await expect.poll(() => lane(ids[2])).toBe('completed')
     await row(ids[0]).locator('[data-worktree-card-surface]').click()
     await expect(page.locator('.xterm:visible')).toHaveCount(1, { timeout: 30_000 })

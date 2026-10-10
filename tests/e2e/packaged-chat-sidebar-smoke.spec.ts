@@ -309,7 +309,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       await window.api.projectGroups.create({ name: 'Old inbox label', parentPath })
     }, inbox)
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: 'New chat', exact: true }).click()
+    await page.getByRole('button', { name: 'New workspace', exact: true }).click()
     const newChat = page.getByRole('dialog', { name: 'New chat', exact: true })
     await expect(newChat.getByRole('combobox', { name: 'Folder', exact: true })).toContainText(
       'Uncategorized (default)'
