@@ -269,6 +269,7 @@ describe('packaged runtime resources', () => {
       )
     ).toBe(true)
     expect(packagedTargets).toContain(join('node_modules', 'proper-lockfile'))
+    expect(packagedTargets).toContain(join('node_modules', 'smol-toml'))
   })
 
   it('includes the Claude agent SDK in every desktop package plan', () => {
