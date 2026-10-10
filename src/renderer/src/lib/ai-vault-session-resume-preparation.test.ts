@@ -11,6 +11,51 @@ afterEach(() => {
 })
 
 describe('prepareAiVaultSessionForResume', () => {
+  it('prepares a filed Claude chat in its selected folder before launch', async () => {
+    const prepareSessionResume = vi.fn().mockResolvedValue({
+      useRealCodexHome: false,
+      relocatedClaudeSession: {
+        cwd: '/selected-folder',
+        filePath: '/claude/projects/selected-folder/session-1.jsonl'
+      }
+    })
+    stubPreparation(prepareSessionResume)
+    const saved = {
+      ...session({
+        agent: 'claude',
+        cwd: '/original-folder',
+        filePath: '/claude/projects/original-folder/session-1.jsonl',
+        resumeCommand: 'cd /original-folder && claude --resume session-1'
+      }),
+      resumeCwd: '/selected-folder'
+    }
+
+    await expect(prepareAiVaultSessionForResume(saved)).resolves.toMatchObject({
+      sessionId: saved.sessionId,
+      cwd: '/selected-folder',
+      filePath: '/claude/projects/selected-folder/session-1.jsonl',
+      resumeCommand: ''
+    })
+    expect(saved.cwd).toBe('/original-folder')
+    expect(prepareSessionResume).toHaveBeenCalledWith({
+      agent: 'claude',
+      sessionId: saved.sessionId,
+      filePath: saved.filePath,
+      codexHome: saved.codexHome,
+      executionHostId: 'local',
+      resumeCwd: '/selected-folder'
+    })
+  })
+
+  it('refuses to launch a filed Claude chat when its folder cannot be prepared', async () => {
+    stubPreparation(vi.fn().mockResolvedValue({ useRealCodexHome: false }))
+    const saved = { ...session({ agent: 'claude' }), resumeCwd: '/selected-folder' }
+
+    await expect(prepareAiVaultSessionForResume(saved)).rejects.toThrow(
+      'Could not prepare this Claude chat in its selected folder.'
+    )
+  })
+
   it('returns a real-home launch identity only after targeted materialization succeeds', async () => {
     const prepareSessionResume = vi.fn().mockResolvedValue({ useRealCodexHome: true })
     stubPreparation(prepareSessionResume)

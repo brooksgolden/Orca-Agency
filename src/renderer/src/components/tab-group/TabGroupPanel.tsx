@@ -25,6 +25,7 @@ import type { ClientHostedBrowserRow } from '../../../../shared/client-hosted-br
 import { useClientHostedBrowserRows } from '@/lib/pane-manager/client-hosted-browser-row-state'
 import { resolveClientHostedBrowserRowStripGroupId } from '../tab-bar/client-hosted-browser-row-strip-placement'
 import { useEditorGroupFileDropOwner } from '../editor/use-editor-group-file-drop-owner'
+import { useWorkspaceHeaderDrag } from '../workspace-split/use-workspace-header-drag'
 
 const EditorPanel = lazy(() => import('../editor/EditorPanel'))
 const EMPTY_GROUPS: readonly TabGroup[] = []
@@ -72,6 +73,7 @@ export default function TabGroupPanel({
   isTabDragActive?: boolean
   hoveredTabInsertion?: HoveredTabInsertion | null
 }): React.JSX.Element {
+  const onWorkspaceHeaderPointerDown = useWorkspaceHeaderDrag(worktreeId)
   const rightSidebarOpen = useAppStore((state) => state.rightSidebarOpen)
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
@@ -279,6 +281,7 @@ export default function TabGroupPanel({
           data-tab-group-strip-id={groupId}
           data-terminal-focus-release-surface="true"
           data-worktree-id={worktreeId}
+          onPointerDown={onWorkspaceHeaderPointerDown}
         >
           <div className="flex h-full items-stretch pr-1.5">
             {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the collapsed left-sidebar's floating toggle clickable. */}

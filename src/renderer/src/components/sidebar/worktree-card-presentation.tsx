@@ -238,7 +238,11 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     <div className="ml-auto flex shrink-0 items-center gap-1 pr-1.5">{detailsAndPorts}</div>
   ) : null
   const hasSecondaryCardContent =
-    hasMetaRow || !!remoteBranchConflict || showInlineAgentList || showLineageChildChip
+    (card.groupBy === 'workspace-status' && !affiliateListMode) ||
+    hasMetaRow ||
+    !!remoteBranchConflict ||
+    showInlineAgentList ||
+    showLineageChildChip
   const titleOnlyCard = !hasSecondaryCardContent
 
   return {

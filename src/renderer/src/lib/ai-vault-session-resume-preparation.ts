@@ -1,4 +1,5 @@
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
+import type { AiVaultResumeSession } from '../../../shared/ai-vault-resume-preparation'
 import {
   isLegacySharedCodexHome,
   isPerAccountManagedCodexHome
@@ -9,10 +10,36 @@ import {
 } from '../../../shared/execution-host'
 import type { AiVaultResumeCommandSession } from './ai-vault-resume-command'
 
-export function prepareAiVaultSessionForResume(session: AiVaultSession): Promise<AiVaultSession> {
-  return session.structuredSession
-    ? Promise.resolve(session)
-    : prepareAiVaultSessionHome(session, false)
+export async function prepareAiVaultSessionForResume(
+  session: AiVaultResumeSession
+): Promise<AiVaultSession> {
+  if (session.structuredSession) {
+    return session
+  }
+  if (
+    session.agent === 'claude' &&
+    session.executionHostId === LOCAL_EXECUTION_HOST_ID &&
+    session.resumeCwd
+  ) {
+    const result = await window.api.aiVault.prepareSessionResume({
+      agent: session.agent,
+      sessionId: session.sessionId,
+      filePath: session.filePath,
+      codexHome: session.codexHome,
+      executionHostId: session.executionHostId,
+      resumeCwd: session.resumeCwd
+    })
+    if (!result.relocatedClaudeSession) {
+      throw new Error('Could not prepare this Claude chat in its selected folder.')
+    }
+    return {
+      ...session,
+      cwd: result.relocatedClaudeSession.cwd,
+      filePath: result.relocatedClaudeSession.filePath,
+      resumeCommand: ''
+    }
+  }
+  return prepareAiVaultSessionHome(session, false)
 }
 
 /** Picks the Codex home a fork of `session` runs under, the same way a resume picks it. */

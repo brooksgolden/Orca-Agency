@@ -13,6 +13,10 @@ import {
 } from './terminal-file-open-routing'
 import { fileLinkTargetExists, resolveFileLinkTarget } from './terminal-file-link-target'
 import {
+  collectPriorTerminalFileLinkAnchors,
+  resolveExistingTerminalFileLinkPath
+} from './terminal-relative-file-link-context'
+import {
   buildHardWrappedPathLogicalLineCandidates,
   buildWrappedLogicalLine,
   rangeForParsedFileLink,
@@ -107,6 +111,15 @@ export function createFilePathLinkProvider(
       }
 
       const pathExists = createTerminalPathExistenceBatch()
+      const paneLinkCwd = deps.getPaneLinkCwd?.(paneId) ?? startupCwd
+      let priorAnchors: string[] | undefined
+      const getPriorAnchors = (): string[] =>
+        (priorAnchors ??= collectPriorTerminalFileLinkAnchors(
+          buffer,
+          bufferLineNumber,
+          paneLinkCwd,
+          deps.terminalHomePath
+        ))
       void Promise.all(
         logicalLines.flatMap((logicalLine) =>
           extractTerminalFileLinkCandidates(logicalLine.text).map(
@@ -114,7 +127,7 @@ export function createFilePathLinkProvider(
               const runtimeEnvironmentId =
                 deps.getRuntimeEnvironmentIdForPane?.(paneId) ?? deps.runtimeEnvironmentId ?? null
               const target = resolveFileLinkTarget(parsed, {
-                cwd: deps.getPaneLinkCwd?.(paneId) ?? startupCwd,
+                cwd: paneLinkCwd,
                 homePath: deps.terminalHomePath,
                 worktreeId,
                 worktreePath,
@@ -125,10 +138,32 @@ export function createFilePathLinkProvider(
               if (!target || !range) {
                 return null
               }
-              if (!(await fileLinkTargetExists(target, pathExistsCache, pathExists))) {
+              const usePaneContext =
+                !target.isKnownWorktreeRoot && /^[\p{L}\p{N}._-]+[\\/]/u.test(parsed.pathText)
+              const mappedPath = usePaneContext
+                ? target.fileContext.sourceHostResolved
+                  ? await resolveExistingTerminalFileLinkPath({
+                      parsed,
+                      buffer,
+                      bufferLineNumber,
+                      cwd: paneLinkCwd,
+                      homePath: deps.terminalHomePath,
+                      worktreePath,
+                      wslDistro: deps.wslDistro,
+                      runtimeEnvironmentId,
+                      fileContext: target.fileContext,
+                      pathExistsCache,
+                      pathExists,
+                      getPriorAnchors
+                    })
+                  : null
+                : (await fileLinkTargetExists(target, pathExistsCache, pathExists))
+                  ? target.absolutePath
+                  : null
+              if (!mappedPath) {
                 return null
               }
-              const { absolutePath: mappedPath, fileContext } = target
+              const { fileContext } = target
 
               return {
                 logicalLine,
