@@ -153,6 +153,7 @@ function fixture(options: { platform?: NodeJS.Platform } = {}) {
   document.body.append(container, outside)
   const pasteFromClipboard = vi.fn()
   const executePanePasteText = vi.fn()
+  const protectedPasteOptions = { windowsInputRecordNewline: 'alt-enter' as const }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the listeners use only these controller fields.
   const controller = {
     forceBracketedMultilineTextPaste: false,
@@ -161,10 +162,11 @@ function fixture(options: { platform?: NodeJS.Platform } = {}) {
     managerRef: { current: { getActivePane: () => pane, getPanes: () => [pane, sibling] } },
     setTerminalError: vi.fn()
   } as unknown as TerminalPaneCloseController
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these are the two execution callbacks read by the listener.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these are the execution callbacks read by the listener.
   const execution = {
     pasteFromClipboard,
-    executePanePasteText
+    executePanePasteText,
+    resolveProtectedMultilineOptions: vi.fn(() => protectedPasteOptions)
   } as unknown as TerminalPanePasteExecution
   dispose = registerTerminalPanePasteListeners({
     container,
@@ -189,7 +191,16 @@ function fixture(options: { platform?: NodeJS.Platform } = {}) {
     }
     return element
   }
-  return { pane, sibling, outside, pasteFromClipboard, cover, uncover, shell }
+  return {
+    pane,
+    sibling,
+    outside,
+    pasteFromClipboard,
+    protectedPasteOptions,
+    cover,
+    uncover,
+    shell
+  }
 }
 
 function paste(target: Element, text = 'event text'): ClipboardEvent {
@@ -375,6 +386,9 @@ describe('paste inside a chat cover never reaches the terminal', () => {
     expect(f.pasteFromClipboard).toHaveBeenCalledExactlyOnceWith(f.pane, 'paste-event')
     window.dispatchEvent(new Event(APP_MENU_PASTE_EVENT, { cancelable: true }))
     expect(mocks.terminalClipboard).toHaveBeenCalledTimes(1)
+    expect(mocks.terminalClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ protectedMultilineTextPasteOptions: f.protectedPasteOptions })
+    )
   })
 })
 
