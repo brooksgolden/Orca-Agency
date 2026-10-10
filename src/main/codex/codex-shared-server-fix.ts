@@ -86,7 +86,6 @@ export async function disableCodexSharedServerAutoStart(codexHome: string): Prom
   return list !== null && readFeatureEnabled(list, CODEX_SHARED_SERVER_FEATURE_KEY) === false
 }
 
-
 /** Stops this home's shared server; true only once it is proven gone. */
 export async function stopCodexSharedServer(codexHome: string): Promise<boolean> {
   // Why the probe decides: only it shows whether this home's server is actually gone.

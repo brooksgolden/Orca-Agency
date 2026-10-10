@@ -209,7 +209,7 @@ describe('Codex restart resumes its own conversation', () => {
       previousAccountLabel: 'Same label',
       nextAccountLabel: 'Same label',
       previousAccountId: 'account-a',
-      nextAccountId: 'account-b',
+      nextAccountId: 'account-b'
     }
     expect(
       codexRestartResumeStartup(source, chatWorktree.id, 'a', leafId, undefined, 'old').command

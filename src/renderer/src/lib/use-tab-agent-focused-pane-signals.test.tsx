@@ -65,7 +65,10 @@ function layoutFocusedOn(activeLeafId: string): TerminalLayoutSnapshot {
   }
 }
 
-function foreground(agent: TerminalAgent | null, shellForeground = false): PaneForegroundAgentEntry {
+function foreground(
+  agent: TerminalAgent | null,
+  shellForeground = false
+): PaneForegroundAgentEntry {
   return { agent, shellForeground }
 }
 

@@ -160,7 +160,7 @@ describe('codex detached pane restart executor', () => {
       {
         ptyId: OLD_PTY,
         previousAccountLabel: ACCOUNT_A,
-        nextAccountLabel: ACCOUNT_A,
+        nextAccountLabel: ACCOUNT_A
       }
     ])
     useAppStore.setState({

@@ -192,7 +192,11 @@ describe('launching from the session grid', () => {
 
   // The tab bar's `+` is the other caller, and it still hands focus to what it just opened.
   it('still activates for a caller that did not ask to stay put', () => {
-    const result = launchAgentInNewTab({ requestId: 'foreground-agent-launch', agent: 'claude', worktreeId: ACTIVE_WT })
+    const result = launchAgentInNewTab({
+      requestId: 'foreground-agent-launch',
+      agent: 'claude',
+      worktreeId: ACTIVE_WT
+    })
 
     if (result?.surface.kind !== 'local-terminal') {
       throw new Error('Expected terminal launch')

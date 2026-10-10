@@ -150,7 +150,9 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
             </RetainedPaneHost>
           ) : null
         }
-        const isActive = Boolean(isVisible && isWorktreeFocused && assignment?.groupId === activeGroupId)
+        const isActive = Boolean(
+          isVisible && isWorktreeFocused && assignment?.groupId === activeGroupId
+        )
         const activityTerminalPortal = findActivityTerminalPortal(activityTerminalPortals, {
           worktreeId,
           tabId: terminalTab.id
