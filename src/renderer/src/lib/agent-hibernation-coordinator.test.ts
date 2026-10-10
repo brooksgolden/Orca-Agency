@@ -10,6 +10,7 @@ import {
 import { setDriverForPty } from './pane-manager/mobile-driver-state'
 import { registerVisibleTerminalTab, setForegroundTerminalTabIds } from './foreground-terminal-tabs'
 import { recordAgentHibernationPaneOutput } from './agent-hibernation-output-activity'
+import { verifyEmptyAgentComposer } from './agent-hibernation-composer-check'
 import { createCompatibleRuntimeStatusResponseIfNeeded } from '../runtime/runtime-compatibility-test-fixture'
 import {
   deferred,
@@ -25,11 +26,25 @@ import {
   tab
 } from './agent-hibernation-coordinator-test-fixture'
 
+vi.mock('./agent-hibernation-composer-check', () => ({
+  verifyEmptyAgentComposer: vi.fn().mockResolvedValue(true)
+}))
+
 const PI_TRANSCRIPT_PATH = join(tmpdir(), 'pi-session-1.jsonl')
 
 afterEach(resetAgentHibernationCoordinatorFixture)
 
 describe('agent sleep coordinator', () => {
+  it('keeps a completed pane running when its composer cannot be proven empty', async () => {
+    const shutdown = installEligibleState(vi.fn().mockResolvedValue(undefined))
+    vi.mocked(verifyEmptyAgentComposer).mockResolvedValueOnce(false)
+
+    await runAgentHibernationTick()
+    await runAgentHibernationTick()
+
+    expect(shutdown).not.toHaveBeenCalled()
+  })
+
   it('hibernates an eligible background worktree after two stable ticks', async () => {
     vi.useFakeTimers()
     const shutdown = installEligibleState(vi.fn().mockResolvedValue(undefined))

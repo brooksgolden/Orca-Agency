@@ -11,6 +11,9 @@ import type { TabGroupLayoutNode } from './tab-types'
 import type { TerminalExitCause } from './terminal-exit-cause'
 import type { TerminalPaneLayoutNode } from './terminal-tab-types'
 import type { TuiAgent } from './tui-agent'
+import type { RuntimeTerminalState } from './runtime-terminal-read'
+
+export type { RuntimeTerminalRead, RuntimeTerminalState } from './runtime-terminal-read'
 
 export type RuntimeTerminalSummary = {
   handle: string
@@ -181,23 +184,6 @@ export type RuntimeTerminalShow = RuntimeTerminalSummary & {
   rendererGraphEpoch: number
   /** Null means evaluated with no wait; absent means not evaluated. */
   agentWait?: RuntimeTerminalInteractiveWait | null
-}
-
-export type RuntimeTerminalState = 'running' | 'exited' | 'unknown'
-
-export type RuntimeTerminalRead = {
-  handle: string
-  status: RuntimeTerminalState
-  tail: string[]
-  truncated: boolean
-  limited?: boolean
-  oldestCursor?: string
-  nextCursor: string | null
-  latestCursor?: string
-  returnedLineCount?: number
-  source?: 'stream' | 'screen' | 'screen-unavailable'
-  /** UI-only composer text, excluded from `tail`. */
-  draft?: string
 }
 
 export type RuntimeTerminalRename = {

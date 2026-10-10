@@ -31,6 +31,7 @@ import type {
 } from '../../../shared/runtime-types'
 import { getWindowParkVisible, subscribeWindowParkVisibility } from './window-park-visibility'
 import { getEntryTabId } from './agent-hibernation-pane-eligibility'
+import { verifyEmptyAgentComposer } from './agent-hibernation-composer-check'
 
 export const AGENT_HIBERNATION_TICK_MS = 60 * 1000
 
@@ -231,6 +232,11 @@ async function hibernatePaneIfStillEligible(
   if (coordinator.shuttingDownCandidateIds.has(id)) {
     return
   }
+  const initialState = useAppStore.getState()
+  const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(initialState, worktreeId)
+  if (!(await verifyEmptyAgentComposer(confirmedCandidate, runtimeEnvironmentId))) {
+    return
+  }
   // Why: the confirmed pane can only be authorized by its owning worktree. A
   // global sweep here made C pane teardowns issue C×W fresh runtime listings.
   const candidates = await currentCandidates(coordinator.now(), worktreeId)
@@ -241,10 +247,14 @@ async function hibernatePaneIfStillEligible(
   if (!stillEligible) {
     return
   }
+  if (
+    getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId) !== runtimeEnvironmentId
+  ) {
+    return
+  }
   coordinator.shuttingDownCandidateIds.add(id)
   try {
     const state = useAppStore.getState()
-    const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
     await state.shutdownCompletedAgentPaneForHibernation(worktreeId, {
       paneKey: confirmedCandidate.paneKey,
       tabId: confirmedCandidate.tabId,
