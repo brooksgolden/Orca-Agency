@@ -61,7 +61,7 @@ export function WorkspaceTabDragLayer({
           renders a ghost in a document-level portal that tracks the cursor
           across the whole window — the source tab keeps its spot, the
           ghost follows the cursor. */}
-        <DragOverlay dropAnimation={null}>
+        <DragOverlay className="pointer-events-none" dropAnimation={null}>
           {dragSplit.activeDrag ? <TabDragPreview drag={dragSplit.activeDrag} /> : null}
         </DragOverlay>
         {dragSplit.hoveredDropTarget &&

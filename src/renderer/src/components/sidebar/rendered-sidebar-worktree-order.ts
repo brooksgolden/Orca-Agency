@@ -14,6 +14,7 @@ import { orderHostSectionOptions } from './host-section-order'
 import { buildSidebarHostOptions } from './sidebar-host-options'
 import { getLogicalRepoOrderRankById } from './project-header-drop'
 import { getRenderedWorktreesInSidebarOrder } from './worktree-sidebar-row-preference'
+import { buildWorktreeComparator } from './smart-sort'
 import { selectWorktreeListReviewCacheInputs } from './worktree-list/listing/review-cache-inputs'
 import {
   filterFolderWorkspacesForVisibleHosts,
@@ -63,11 +64,12 @@ export function computeRenderedSidebarRows(
     state.groupBy,
     state.worktreeCardProperties
   )
+  const repoMap = getRepoMapFromState(state)
 
   const rows = buildRows(
     state.groupBy,
     [...visibleWorktrees],
-    getRepoMapFromState(state),
+    repoMap,
     prCache,
     state.collapsedGroups,
     getLogicalRepoOrderRankById(state.repos.map((repo) => repo.id)),
@@ -93,7 +95,10 @@ export function computeRenderedSidebarRows(
     // Why no hostLabelById: it only feeds display-only host context labels, never row order.
     undefined,
     defaultHostId,
-    pinnedDisplayPolicy
+    pinnedDisplayPolicy,
+    state.groupBy === 'workspace-status' && state.sortBy === 'recent'
+      ? buildWorktreeComparator('recent', repoMap, Date.now(), new Map())
+      : undefined
   )
 
   // Why lazy: with no host filter, addHostSectionRows is a pass-through, so skip building the whole host registry on a keystroke.

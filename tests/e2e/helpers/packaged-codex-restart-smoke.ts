@@ -54,6 +54,13 @@ export async function assertPackagedDefaultHomeCodexRestart(
   }
   const homeKey = (home: string): string =>
     normalizeRuntimePathForComparison(realpathSync.native(home))
+  const effectiveHome = (line: string): string => {
+    const [, userHome, selectedHome] = line.split('|').map((value) => value.trim())
+    if (!userHome) {
+      throw new Error('The isolated Codex launch did not report USERPROFILE')
+    }
+    return selectedHome || path.join(userHome, '.codex')
+  }
   try {
     const original = await page.evaluate(
       ({ command, folder, worktreeId }) =>
@@ -75,10 +82,8 @@ export async function assertPackagedDefaultHomeCodexRestart(
       .poll(() => captureLines().join('\n'), { timeout: 30_000 })
       .toContain('before-restart')
     const freshLine = captureLines().find((line) => line.includes('before-restart'))!
-    const selectedFreshHome = freshLine.split('|')[2].trim()
-    expect(homeKey(selectedFreshHome)).toBe(
-      homeKey(path.join(path.dirname(isolatedHome), 'codex-runtime-home', 'home'))
-    )
+    const selectedFreshHome = effectiveHome(freshLine)
+    expect(homeKey(selectedFreshHome)).toBe(homeKey(codexHome))
     expect(homeKey(selectedFreshHome)).not.toBe(homeKey(otherHome))
     const replacement = await page.evaluate(
       ({ command, folder, worktreeId, oldPtyId, sessionId, transcriptPath }) =>
@@ -143,11 +148,11 @@ export async function assertPackagedDefaultHomeCodexRestart(
       })
       .toContain(`resume ${secondSessionId}`)
     const controlLine = captureLines().find((line) => line.startsWith('ordinary-resume '))!
-    expect(homeKey(controlLine.split('|')[2].trim())).toBe(homeKey(codexHome))
+    expect(homeKey(effectiveHome(controlLine))).toBe(homeKey(codexHome))
     await page.evaluate((id) => window.api.pty.kill(id), control.id)
 
-    // This proves custom-home refusal, not the fresh launch's credential identity.
-    const rejected = await page.evaluate(
+    // A caller-supplied home must not change the selected account during replacement.
+    const replacementWithSpoofedHome = await page.evaluate(
       ({ command, folder, worktreeId, oldPtyId, secondSessionId, secondTranscript, otherHome }) =>
         window.api.pty.spawn({
           cols: 80,
@@ -177,18 +182,16 @@ export async function assertPackagedDefaultHomeCodexRestart(
         otherHome
       }
     )
-    ownedPtyIds.push(rejected.id)
-    expect(rejected.agentResumeUnavailable).toBe(true)
+    ownedPtyIds.push(replacementWithSpoofedHome.id)
+    expect(replacementWithSpoofedHome.agentResumeUnavailable).not.toBe(true)
     await expect
       .poll(() => captureLines().find((line) => line.startsWith('changed-home ')) ?? '', {
         timeout: 30_000
       })
       .not.toBe('')
-    const rejectedLine = captureLines().find((line) => line.startsWith('changed-home '))!
-    expect(rejectedLine).not.toContain(`resume ${secondSessionId}`)
-    expect(rejectedLine.split('|')[3].trim()).not.toMatch(/\bresume\b/)
-    // Windows' selected runtime home overrides a spawn-only env path on fresh launches.
-    expect(homeKey(rejectedLine.split('|')[2].trim())).toBe(homeKey(selectedFreshHome))
+    const changedHomeLine = captureLines().find((line) => line.startsWith('changed-home '))!
+    expect(changedHomeLine).toContain(`resume ${secondSessionId}`)
+    expect(homeKey(effectiveHome(changedHomeLine))).toBe(homeKey(selectedFreshHome))
   } finally {
     for (const id of ownedPtyIds.toReversed()) {
       await page.evaluate((ownedId) => window.api.pty.kill(ownedId), id).catch(() => {})

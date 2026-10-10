@@ -213,7 +213,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     )
     await expect.poll(() => lane(ids[1])).toBe('completed')
 
-    // Keep activity above the new-workspace grace floor so it determines ordering.
+    // Smart prioritizes working attention; Recent uses the recorded activity times.
     await page.evaluate(async (ids) => {
       for (const [index, id] of ids.slice(0, 2).entries()) {
         await window.api.folderWorkspaces.update({
@@ -240,9 +240,25 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
           (id) => id === `folder:${ids[0]}` || id === `folder:${ids[1]}`
         )
       )
-      .toEqual([`folder:${ids[0]}`, `folder:${ids[1]}`])
-    await page.evaluate(() => window.api.ui.set({ sortBy: 'recent' }))
+      .toEqual([`folder:${ids[1]}`, `folder:${ids[0]}`])
     await page.reload()
+    await page.getByRole('button', { name: 'Workspace options' }).click()
+    await page.getByRole('menuitem', { name: /Sort by/ }).hover()
+    await page.getByRole('menuitemradio', { name: 'Name', exact: true }).click()
+    await page.keyboard.press('Escape')
+    // Reattached PTYs can bump activity during reload; set the comparison after they reconnect.
+    await page.evaluate(async (ids) => {
+      for (const [index, id] of ids.slice(0, 2).entries()) {
+        await window.api.folderWorkspaces.update({
+          folderWorkspaceId: id,
+          updates: { lastActivityAt: Date.now() + (2 - index) * 600_000 }
+        })
+      }
+    }, ids)
+    await page.getByRole('button', { name: 'Workspace options' }).click()
+    await page.getByRole('menuitem', { name: /Sort by/ }).hover()
+    await page.getByRole('menuitemradio', { name: 'Recent', exact: true }).click()
+    await page.keyboard.press('Escape')
     await expect
       .poll(async () =>
         (await displayedOrder()).filter(

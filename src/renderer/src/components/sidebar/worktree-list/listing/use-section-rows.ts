@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
+import { useNow } from '@/hooks/use-now'
 import type { AppState } from '@/store/types'
 import type { FolderWorkspace } from '../../../../../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../../../../../shared/project-group-types'
@@ -22,9 +23,11 @@ import { addHostSectionRows } from '../../host-section-rows'
 import { orderHostSectionOptions } from '../../host-section-order'
 import { buildSidebarHostOptions } from '../../sidebar-host-options'
 import { selectPendingWorktreeCreationKeys } from './pending-worktree-creation-keys'
+import { buildWorktreeComparator, type SortBy } from '../../smart-sort'
 
 type SectionRowsArgs = {
   groupBy: WorktreeGroupBy
+  sortBy: SortBy
   projectOrderBy: ProjectOrderBy
   pinnedDisplayPolicy: PinnedWorktreeDisplayPolicy
   defaultHostId: ExecutionHostId
@@ -73,6 +76,12 @@ function collectRenderedSidebarRowKeys(sectionRows: ReturnType<typeof addHostSec
 // tier wrapped around them.
 export function useSidebarSectionRows(args: SectionRowsArgs) {
   const { repos, worktrees, repoMap, effectiveCollapsedGroups, defaultHostId } = args
+  const recentSortNow = useNow(
+    60_000,
+    args.groupBy === 'workspace-status' &&
+      args.sortBy === 'recent' &&
+      args.visibleFolderWorkspacesForRows.length > 0
+  )
   const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
   const sshTargetLabels = useAppStore((s) => s.sshTargetLabels)
   const sshConnectionStates = useAppStore((s) => s.sshConnectionStates)
@@ -179,10 +188,15 @@ export function useSidebarSectionRows(args: SectionRowsArgs) {
         args.visibleFolderWorkspacesForRows,
         hostLabelById,
         defaultHostId,
-        args.pinnedDisplayPolicy
+        args.pinnedDisplayPolicy,
+        args.groupBy === 'workspace-status' && args.sortBy === 'recent'
+          ? buildWorktreeComparator('recent', repoMap, recentSortNow, new Map())
+          : undefined
       ),
     [
       args.groupBy,
+      args.sortBy,
+      recentSortNow,
       worktrees,
       repoMap,
       args.prCache,
