@@ -45,6 +45,43 @@ describe('agent sleep coordinator', () => {
     expect(shutdown).not.toHaveBeenCalled()
   })
 
+  it('keeps a pane running when a draft appears during final liveness refresh', async () => {
+    const shutdown = installEligibleState(vi.fn().mockResolvedValue(undefined))
+    vi.mocked(verifyEmptyAgentComposer).mockClear()
+    let nowCalls = 0
+    startAgentHibernationCoordinator({
+      intervalMs: 60_000,
+      now: () => {
+        nowCalls += 1
+        return NOW
+      }
+    })
+    vi.mocked(verifyEmptyAgentComposer).mockImplementationOnce(async () => nowCalls < 3)
+
+    await runAgentHibernationTick()
+    await runAgentHibernationTick()
+
+    expect(nowCalls).toBeGreaterThanOrEqual(3)
+    expect(verifyEmptyAgentComposer).toHaveBeenCalledTimes(1)
+    expect(shutdown).not.toHaveBeenCalled()
+  })
+
+  it('keeps a pane running when it becomes foreground during composer verification', async () => {
+    const shutdown = installEligibleState(vi.fn().mockResolvedValue(undefined))
+    const composer = deferred<boolean>()
+    vi.mocked(verifyEmptyAgentComposer).mockClear()
+    vi.mocked(verifyEmptyAgentComposer).mockReturnValueOnce(composer.promise)
+
+    await runAgentHibernationTick()
+    const confirmingTick = runAgentHibernationTick()
+    await vi.waitFor(() => expect(verifyEmptyAgentComposer).toHaveBeenCalledTimes(1))
+    setForegroundTerminalTabIds(['tab-1'])
+    composer.resolve(true)
+    await confirmingTick
+
+    expect(shutdown).not.toHaveBeenCalled()
+  })
+
   it('hibernates an eligible background worktree after two stable ticks', async () => {
     vi.useFakeTimers()
     const shutdown = installEligibleState(vi.fn().mockResolvedValue(undefined))
