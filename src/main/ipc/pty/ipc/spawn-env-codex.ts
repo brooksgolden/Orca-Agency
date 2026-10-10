@@ -7,13 +7,6 @@ import { isNativeWindowsLocalPtySpawn } from '../../../runtime/terminal-model-qu
 import { stampWslOrchestrationCompatibilityHost } from '../../../pty/wsl-orca-env'
 import { ensureCodexStateDbBackfillRecoveryStarted } from '../../../codex/codex-state-db-backfill-recovery'
 import { buildPtyHostEnv } from '../host-env/assembly'
-import { resolveCodexReplacementResumeLaunch } from '../host-env/codex-resume'
-import { getCustomCodexHomeOverrideForLaunch } from '../../../codex/codex-real-home-path'
-import {
-  getSystemCodexHomePath,
-  resolveOrcaManagedCodexHomePath
-} from '../../../codex/codex-home-paths'
-import { isSystemDefaultCodexHomeEquivalent } from '../../../codex-accounts/system-default-home-equivalence'
 import {
   getCompatibleSelectedCodexHomePath,
   getCodexSelectionTargetForPty,
@@ -46,39 +39,11 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
         launchAgent: args.launchAgent,
         providerSession: args.resumeProviderSession,
         target: ctx.codexSelectionTarget,
-        launchEnv: ctx.baseEnv
+        launchEnv: ctx.baseEnv,
+        ...(args.replacesPtyId ? { useSelectedAccount: true } : {})
       })
-  const selectLaunchCodexHome = async (): Promise<string | null> =>
-    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv)) ?? null
   ctx.codexResumeLaunch = codexResumePreparation
-    ? args.replacesPtyId !== undefined
-      ? await resolveCodexReplacementResumeLaunch({
-          command: args.command,
-          prepared: codexResumePreparation,
-          resolveLaunch: ctx.deps.resolveCodexResumeLaunch,
-          isEquivalentDefaultHome: (verifiedHome, currentHome) =>
-            isSystemDefaultCodexHomeEquivalent({
-              target: ctx.codexSelectionTarget,
-              settings: ctx.deps.getSettings?.(),
-              hasCustomHome: getCustomCodexHomeOverrideForLaunch(ctx.baseEnv) !== null,
-              verifiedHome,
-              currentHome,
-              systemHome: getSystemCodexHomePath(),
-              sharedHome: resolveOrcaManagedCodexHomePath()
-            }),
-          resolveCurrentHome: async () => {
-            const selected = getCompatibleSelectedCodexHomePath(
-              ctx.codexSelectionTarget,
-              await selectLaunchCodexHome()
-            )
-            return ctx.codexSelectionTarget.runtime === 'host'
-              ? (selected ??
-                  getCustomCodexHomeOverrideForLaunch(ctx.baseEnv)?.context.codexHome ??
-                  getSystemCodexHomePath())
-              : selected
-          }
-        })
-      : await ctx.deps.resolveCodexResumeLaunch(args.command, codexResumePreparation)
+    ? await ctx.deps.resolveCodexResumeLaunch(args.command, codexResumePreparation)
     : ctx.deps.noCodexResumeLaunch(ctx.preAdoptedStablePane ? undefined : args.command)
   // Why: these three phases have unrelated costs (session provenance + hook
   // repair, account/auth resolution, then the synchronous env build). One
@@ -90,6 +55,11 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
   // Why: declared after the strip so a local-provider spawn cannot capture the
   // pre-strip env — only the daemon branch below re-derives this from baseEnv.
   ctx.env = ctx.baseEnv
+  const launchesCodex = args.launchAgent === 'codex'
+  const selectLaunchCodexHome = async (): Promise<string | null> =>
+    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv, {
+      launchesCodex
+    })) ?? null
   ctx.selectedCodexHomePath =
     !ctx.preAdoptedStablePane && !args.connectionId
       ? getCompatibleSelectedCodexHomePath(
@@ -113,13 +83,16 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
       resolveCurrent: async () =>
         getCompatibleSelectedCodexHomePath(
           ctx.codexSelectionTarget,
-          (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv)) ?? null
+          (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv, {
+            launchesCodex
+          })) ?? null
         ),
       resolveAfterUnavailable: async (unavailableManagedHomePath) =>
         getCompatibleSelectedCodexHomePath(
           ctx.codexSelectionTarget,
           (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv, {
-            unavailableManagedHomePath
+            unavailableManagedHomePath,
+            launchesCodex
           })) ?? null
         )
     })
@@ -172,6 +145,7 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
         stripInheritedOrcaCodexHome: ctx.stripInheritedOrcaCodexHome,
         launchCommand: ctx.launchCommand,
         launchAgent: isTuiAgent(args.launchAgent) ? args.launchAgent : undefined,
+        shellPath: ctx.effectiveShellOverride,
         isWsl: shouldSkipCodexHomeEnvForWindowsShell(ctx.effectiveShellOverride, ctx.cwd),
         wslDistro: ctx.codexSelectionTarget.runtime === 'wsl' ? ctx.expectedWslDistro : null,
         agentStatusHooksEnabled: isAgentStatusHooksEnabled(ptySettings),

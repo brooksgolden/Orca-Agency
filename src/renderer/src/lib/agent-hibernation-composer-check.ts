@@ -2,6 +2,10 @@ import type { RuntimeTerminalRead, RuntimeTerminalResolvePane } from '../../../s
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import type { AgentHibernationCandidate } from './agent-hibernation-planner'
 
+type ComposerAttestedRead = RuntimeTerminalRead & {
+  composerState?: 'empty' | 'draft' | 'unknown'
+}
+
 export async function verifyEmptyAgentComposer(
   candidate: AgentHibernationCandidate,
   runtimeEnvironmentId: string | null
@@ -25,7 +29,7 @@ export async function verifyEmptyAgentComposer(
     ) {
       return false
     }
-    const read = await callRuntimeRpc<{ terminal: RuntimeTerminalRead }>(
+    const read = await callRuntimeRpc<{ terminal: ComposerAttestedRead }>(
       target,
       'terminal.read',
       { terminal: terminal.handle, screen: true },

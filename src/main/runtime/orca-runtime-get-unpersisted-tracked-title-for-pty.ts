@@ -1,6 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithReconcileRestoredWorkingTitleMonitor } from './orca-runtime-reconcile-restored-working-title-monitor'
-import { getDecorativeAgentTitleSignature } from '../../shared/agent-decorative-title-signature'
+import { getDecorativeTitleGateKey } from '../../shared/agent-decorative-title-signature'
 import { shouldEmitTitleFactForFrame } from './decorative-title-fact-emission'
 import type { RuntimePtyTitleTrackerEntry } from './runtime-terminal-state-records'
 import { createTerminalTitleTracker } from '../../shared/terminal-output-side-effects'
@@ -47,11 +47,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
 
   /** Decorative comparison key: only recognized agent titles fold leading spinner frames. */
   protected makeDecorativeTitleGateKey(rawTitle: string, normalizedTitle: string): string {
-    // Stable Pi/Gemini/Grok display normalization also defines their semantic gate.
-    const normalizedSignature =
-      rawTitle === normalizedTitle ? null : getDecorativeAgentTitleSignature(normalizedTitle)
-    const signature = normalizedSignature ?? getDecorativeAgentTitleSignature(rawTitle)
-    return signature === null ? `literal\u0000${normalizedTitle}` : `agent\u0000${signature}`
+    return getDecorativeTitleGateKey(rawTitle, normalizedTitle)
   }
 
   protected getOrCreatePtyTitleTrackerEntry(ptyId: string): RuntimePtyTitleTrackerEntry {
@@ -63,7 +59,9 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
     // app relaunch the PTY/leaf records can already hold a persisted title; a
     // cold tracker would miss the parked working→idle completion and never
     // arm the stale-title timer for a persisted 'working' title.
-    let initialTitle = this.ptysById.get(ptyId)?.lastOscTitle ?? null
+    // A display clear takes precedence so a cold tracker does not re-arm the retired title.
+    const pty = this.ptysById.get(ptyId)
+    let initialTitle = pty?.titleDisplayClear?.title ?? pty?.lastOscTitle ?? null
     if (initialTitle === null) {
       for (const leaf of this.getLeavesForPty(ptyId)) {
         if (leaf.lastOscTitle) {
@@ -78,6 +76,9 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           const live = this.ptyTitleTrackersByPtyId.get(ptyId)
           const gateKey = this.makeDecorativeTitleGateKey(rawTitle, normalizedTitle)
           const decorativeOnly = live?.lastMobileTitleGateKey === gateKey
+          if (!decorativeOnly && !meta?.staleWorkingTitleClear) {
+            void this.recheckHookAgentPresenceForPty(ptyId)
+          }
           if (live) {
             live.lastMobileTitleGateKey = gateKey
           }
@@ -294,6 +295,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           this.openCodeRunLifetime.onCommandStarted(ptyId)
         },
         onCommandFinished: (exitCode: number | null) => {
+          void this.recheckHookAgentPresenceForPty(ptyId)
           this.retirePtyAgentLaunchAuthority(ptyId)
           this.recordTerminalSideEffectFact(ptyId, { kind: 'command-finished', exitCode })
           this.openCodeRunLifetime.onCommandFinished(ptyId, exitCode)

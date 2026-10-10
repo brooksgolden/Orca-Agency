@@ -210,7 +210,6 @@ describe('Codex restart resumes its own conversation', () => {
       nextAccountLabel: 'Same label',
       previousAccountId: 'account-a',
       nextAccountId: 'account-b',
-      homeRouteChanged: true
     }
     expect(
       codexRestartResumeStartup(source, chatWorktree.id, 'a', leafId, undefined, 'old').command

@@ -8,17 +8,16 @@
  * kill-and-respawns any pane no mounted transport claims, rebinding the store
  * so a later mount reattaches to the replacement PTY like a restored session.
  */
-import { isTerminalLeafId } from '../../../../shared/stable-pane-id'
+import { isTerminalLeafId, makePaneKey } from '../../../../shared/stable-pane-id'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
-import { toast } from 'sonner'
-import type { TerminalPaneLayoutNode, TerminalTab } from '../../../../shared/terminal-tab-types'
+import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { AppState } from '@/store'
 import { useAppStore } from '@/store'
 import { getWorktreeMapFromState } from '@/store/selectors'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
 import { hasRegisteredRuntimeTerminalTab } from '@/runtime/sync-runtime-graph'
-import { codexRestartResumeStartup } from './codex-restart-resume-startup'
-import { buildDetachedCodexPaneIdentityEnv } from './codex-detached-pane-identity'
+import { buildCodexAccountRestartStartup } from '@/lib/codex-account-restart-startup'
+import { CODEX_ACCOUNT_RESTART_STARTUP } from '@/lib/codex-session-restart'
 import { isForeignMachineCodexPtyId } from '@/lib/codex-pane-selection-lane'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import {
@@ -26,6 +25,7 @@ import {
   hasCachedWindowsTerminalCapabilities
 } from '@/lib/windows-terminal-capabilities'
 import { ptyDataHandlers, unregisterPtyDataHandlers } from './pty-dispatcher'
+import { collectLeafIds } from './terminal-pane-layout-tree'
 import { discardPreHandlerPtyState } from './pty-pre-handler-buffer'
 import { disposeParkedTerminalWatchersForPtyIds } from './terminal-parked-watcher-registry'
 
@@ -129,13 +129,35 @@ function locateCodexPane(state: AppState, ptyId: string): LocatedCodexPane | nul
 
 function getWorkspacePath(state: AppState, worktreeId: string): string | null {
   const parsed = parseWorkspaceKey(worktreeId)
-  if (parsed?.type === 'folder') {
-    return (
-      (state.folderWorkspaces ?? []).find((workspace) => workspace.id === parsed.folderWorkspaceId)
-        ?.folderPath ?? null
-    )
+  return parsed?.type === 'folder'
+    ? (state.folderWorkspaces.find((workspace) => workspace.id === parsed.folderWorkspaceId)
+        ?.folderPath ?? null)
+    : (getWorktreeMapFromState(state).get(worktreeId)?.path ?? null)
+}
+
+function buildPaneIdentityEnv(
+  state: AppState,
+  worktreeId: string,
+  tabId: string,
+  leafId: string
+): Record<string, string> {
+  const parsed = parseWorkspaceKey(worktreeId)
+  const folderWorkspace =
+    parsed?.type === 'folder'
+      ? state.folderWorkspaces.find((workspace) => workspace.id === parsed.folderWorkspaceId)
+      : null
+  return {
+    ORCA_WORKSPACE_ID: worktreeId,
+    ...(folderWorkspace
+      ? {
+          ORCA_PROJECT_GROUP_ID: folderWorkspace.projectGroupId,
+          ORCA_WORKSPACE_ROOT: folderWorkspace.folderPath
+        }
+      : {}),
+    ORCA_PANE_KEY: makePaneKey(tabId, leafId),
+    ORCA_TAB_ID: tabId,
+    ORCA_WORKTREE_ID: worktreeId
   }
-  return getWorktreeMapFromState(state).get(worktreeId)?.path ?? null
 }
 
 async function executeDetachedCodexPaneRestart(
@@ -143,16 +165,6 @@ async function executeDetachedCodexPaneRestart(
   ptyId: string
 ): Promise<void> {
   const state = useAppStore.getState()
-  const workspacePath = getWorkspacePath(state, located.worktreeId)
-  const cwd = located.tab.startupCwd ?? workspacePath ?? undefined
-  const startup = codexRestartResumeStartup(
-    state,
-    located.worktreeId,
-    located.tab.id,
-    located.leafId,
-    cwd,
-    ptyId
-  )
   if (!located.leafId) {
     // Why: without a usable layout leaf the replacement cannot be bound in
     // place, so kill now and let the tab's next mount run the Codex startup.
@@ -164,13 +176,21 @@ async function executeDetachedCodexPaneRestart(
     store.suppressPtyExit(ptyId)
     store.clearTabPtyId(located.tab.id, ptyId)
     store.consumeSuppressedPtyExit(ptyId)
-    store.queueTabStartupCommand(located.tab.id, startup)
+    store.queueTabStartupCommand(located.tab.id, { ...CODEX_ACCOUNT_RESTART_STARTUP })
     store.clearCodexRestartNotice(ptyId)
     killReplacedCodexPanePty(ptyId)
     return
   }
   const { worktreeId, tab, leafId } = located
+  const startup = buildCodexAccountRestartStartup({
+    worktreeId,
+    tabId: tab.id,
+    leafId,
+    shellOverride: tab.shellOverride
+  })
 
+  const workspacePath = getWorkspacePath(state, worktreeId)
+  const cwd = tab.startupCwd ?? workspacePath ?? undefined
   const capabilities = hasCachedWindowsTerminalCapabilities()
     ? getCachedWindowsTerminalCapabilities()
     : null
@@ -199,22 +219,15 @@ async function executeDetachedCodexPaneRestart(
     rows: 24,
     ...(cwd ? { cwd } : {}),
     cwdFallback: 'worktree',
-    env: {
-      ...startup.env,
-      ...buildDetachedCodexPaneIdentityEnv(state, worktreeId, tab.id, leafId)
-    },
-    command: startup.command,
-    startupCommandDelivery: startup.startupCommandDelivery,
-    launchAgent: startup.launchAgent,
-    ...(startup.envToDelete ? { envToDelete: startup.envToDelete } : {}),
-    ...(startup.launchConfig ? { launchConfig: startup.launchConfig } : {}),
-    ...(startup.resumeProviderSession
-      ? { resumeProviderSession: startup.resumeProviderSession }
-      : {}),
+    ...startup,
+    env: { ...startup.env, ...buildPaneIdentityEnv(state, worktreeId, tab.id, leafId) },
     worktreeId,
     tabId: tab.id,
     leafId,
     replacesPtyId: ptyId,
+    ...(restartReplacesLayoutRoot(currentState.terminalLayoutsByTabId[tab.id], leafId)
+      ? { placement: { kind: 'root' as const } }
+      : {}),
     ...(tab.shellOverride ? { shellOverride: tab.shellOverride } : {}),
     ...(projectRuntime ? { projectRuntime } : {}),
     initiallyHidden: true
@@ -242,11 +255,6 @@ async function executeDetachedCodexPaneRestart(
   store.clearCodexRestartNotice(spawned.id)
   store.clearCodexRestartNotice(ptyId)
   releaseReplacedCodexPanePty(ptyId)
-  if (spawned.agentResumeUnavailable) {
-    toast.info('The previous Codex conversation could not be resumed. A new session was started.', {
-      id: `codex-resume-unavailable:${spawned.id}`
-    })
-  }
 }
 
 function isLocatedCodexPaneCurrent(
@@ -303,27 +311,23 @@ function reopenCurrentCodexRestartPrompt(located: LocatedCodexPane, replacedPtyI
   }
 }
 
-function layoutRootContainsLeaf(
-  node: TerminalPaneLayoutNode | null | undefined,
+// Why: mount replays panes from the root — a root that doesn't name this leaf
+// mints a fresh one and silently orphans the replacement PTY. Rewriting is
+// only safe when this is the tab's sole bound pane; a split keeps its root.
+function restartReplacesLayoutRoot(
+  layout: TerminalLayoutSnapshot | undefined,
   leafId: string
 ): boolean {
-  if (!node) {
-    return false
-  }
-  if (node.type === 'leaf') {
-    return node.leafId === leafId
-  }
-  return layoutRootContainsLeaf(node.first, leafId) || layoutRootContainsLeaf(node.second, leafId)
+  return (
+    !collectLeafIds(layout?.root).includes(leafId) &&
+    Object.keys(layout?.ptyIdsByLeafId ?? {}).every((id) => id === leafId)
+  )
 }
 
 function rebindCodexPaneLayoutLeaf(tabId: string, leafId: string, newPtyId: string): void {
   const store = useAppStore.getState()
   const layout = store.terminalLayoutsByTabId[tabId]
-  const boundLeafIds = Object.keys(layout?.ptyIdsByLeafId ?? {})
-  // Why: mount replays panes from the root — a root that doesn't name this leaf
-  // mints a fresh one and silently orphans the replacement PTY. Rewriting is
-  // only safe when this is the tab's sole bound pane; a split keeps its root.
-  if (!layoutRootContainsLeaf(layout?.root, leafId) && boundLeafIds.every((id) => id === leafId)) {
+  if (restartReplacesLayoutRoot(layout, leafId)) {
     store.setTabLayout(
       tabId,
       singlePaneLayoutSnapshot(leafId, newPtyId, layout?.titlesByLeafId?.[leafId] ?? null)

@@ -10,6 +10,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { PROTOCOL_VERSION } from './types'
+import { resolveDaemonUnixSocketPath } from './daemon-socket-endpoint-path'
 import { currentDaemonEndpointGeneration } from './daemon-endpoint-generation'
 import { DaemonCrashLoopError, DaemonRespawnThrottle } from './daemon-respawn-throttle'
 
@@ -139,7 +140,7 @@ export function getDaemonSocketPath(
     const build = generation ? `-g${generation}` : ''
     return `\\\\?\\pipe\\orca-terminal-host-v${protocolVersion}${build}-${suffix}`
   }
-  return join(runtimeDir, `daemon-v${protocolVersion}.sock`)
+  return resolveDaemonUnixSocketPath(runtimeDir, `daemon-v${protocolVersion}.sock`)
 }
 
 export function getDaemonTokenPath(

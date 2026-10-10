@@ -7,8 +7,6 @@ const RESTRICTED_ENV_KEYS = new Set([
   'USERPROFILE',
   'HOMEDRIVE',
   'HOMEPATH',
-  'APPDATA',
-  'LOCALAPPDATA',
   'CODEX_HOME',
   'ORCA_CODEX_HOME',
   // Why: Orca's spawn hook writes Claude folder trust into the config this names.
@@ -27,7 +25,6 @@ type ElectronHomeIsolationOptions = {
   extraEnv: Record<string, string>
   userDataDir: string
   realHome?: string
-  platform?: NodeJS.Platform
 }
 
 export type ElectronHomeIsolation = {
@@ -68,8 +65,7 @@ export function createElectronHomeIsolation({
   launchEnv,
   extraEnv,
   userDataDir,
-  realHome = os.homedir(),
-  platform = process.platform
+  realHome = os.homedir()
 }: ElectronHomeIsolationOptions): ElectronHomeIsolation {
   assertOverlayDoesNotReplaceIsolation(launchEnv, 'launchEnv')
   assertOverlayDoesNotReplaceIsolation(extraEnv, 'orcaAppExtraEnv')
@@ -80,11 +76,11 @@ export function createElectronHomeIsolation({
   // short names). Git canonicalizes worktree paths, so a non-canonical HOME
   // makes freshly created worktrees invisible to Orca's listing comparisons.
   const isolatedHome = realpathSync.native(requestedIsolatedHome)
-  const isolatedWindowsAppData = path.join(userDataDir, 'appdata')
-  const isolatedWindowsLocalAppData = path.join(userDataDir, 'local-app-data')
-  if (platform === 'win32') {
-    mkdirSync(isolatedWindowsAppData, { recursive: true, mode: 0o700 })
-    mkdirSync(isolatedWindowsLocalAppData, { recursive: true, mode: 0o700 })
+  // Why: Windows resolves roaming AppData under USERPROFILE, and Electron 43 crashes natively
+  // (0xFFFF7003) when that lookup fails before userData is pinned.
+  if (process.platform === 'win32') {
+    mkdirSync(path.join(isolatedHome, 'AppData', 'Roaming'), { recursive: true })
+    mkdirSync(path.join(isolatedHome, 'AppData', 'Local'), { recursive: true })
   }
   // Why: a bad fixture path must fail before Electron can resolve a real Codex
   // home; userData isolation alone does not change app.getPath('home').
@@ -101,12 +97,6 @@ export function createElectronHomeIsolation({
       ...extraEnv,
       HOME: isolatedHome,
       USERPROFILE: isolatedHome,
-      ...(platform === 'win32'
-        ? {
-            APPDATA: realpathSync.native(isolatedWindowsAppData),
-            LOCALAPPDATA: realpathSync.native(isolatedWindowsLocalAppData)
-          }
-        : {}),
       ORCA_E2E_USER_DATA_DIR: userDataDir,
       ORCA_E2E_HOME_DIR: isolatedHome
     }

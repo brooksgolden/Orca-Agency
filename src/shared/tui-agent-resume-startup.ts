@@ -1,4 +1,5 @@
 import {
+  getAgentForkArgv,
   getAgentResumeArgv,
   type AgentProviderSessionMetadata,
   type ResumableTuiAgent
@@ -29,11 +30,23 @@ export function buildAgentResumeStartupPlan(args: {
   sessionOptions?: Record<string, SessionOptionValue>
   sessionOptionsOverrideAgentArgs?: boolean
   isRemote?: boolean
+  /** The caller chose the terminal folder on purpose, so Codex must not ask for the recorded one. */
+  resumeInLaunchCwd?: boolean
+  /** Open a copy of the conversation instead of re-entering it; null for agents that cannot. */
+  fork?: boolean
 }): AgentStartupPlan | null {
-  const argv = getAgentResumeArgv(args.agent, args.providerSession, args.ompResumeFilePath)
-  if (!argv) {
+  const initialResumeArgv = args.fork
+    ? getAgentForkArgv(args.agent, args.providerSession)
+    : getAgentResumeArgv(args.agent, args.providerSession, args.ompResumeFilePath)
+  if (!initialResumeArgv) {
     return null
   }
+  // Why: Codex otherwise prompts for the folder, defaulting to the recorded one even once it was
+  // deleted (#17745). Kept before `resume` so dropAgentResumeArgvFromCommand strips only that.
+  const argv =
+    args.agent === 'codex' && args.resumeInLaunchCwd
+      ? [initialResumeArgv[0], '-c', 'tui.resume_cwd=current', ...initialResumeArgv.slice(1)]
+      : initialResumeArgv
   const shell = resolveStartupShell(args.platform, args.shell)
   const resolvedAgentCommand = args.agentCommand?.trim()
   const baseCommand = resolvedAgentCommand

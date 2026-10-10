@@ -583,16 +583,29 @@ describe('main runtime working-title evidence', () => {
     const baseline = context.wiring.statusStore.getStatusSnapshot()[0]
     expect(context.identities.read(paneKey)).toMatchObject({ kind: 'observed' })
     vi.setSystemTime(Date.now() + 1)
-    expect(
-      context.wiring.statusStore.inferInterrupt({
+    // Stable requires provider evidence; Ctrl+C alone may leave the Codex turn running.
+    context.wiring.statusStore.ingestRemote(
+      {
         paneKey,
-        intent: 'ctrl-c',
-        baselineAgentType: 'codex',
-        baselinePrompt: baseline.prompt,
-        baselineUpdatedAt: baseline.receivedAt,
-        baselineStateStartedAt: baseline.stateStartedAt
-      })
-    ).toBe(true)
+        tabId: 'tab-1',
+        worktreeId: TEST_WORKTREE_ID,
+        source: 'codex',
+        hookEventName: 'Stop',
+        providerSession: baseline.providerSession,
+        payload: {
+          state: 'done',
+          prompt: baseline.prompt,
+          agentType: 'codex',
+          interrupted: true,
+          mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: Date.now() }
+        }
+      },
+      null
+    )
+    expect(context.wiring.statusStore.getStatusSnapshot()[0]).toMatchObject({
+      state: 'done',
+      interrupted: true
+    })
     context.listener.mockClear()
     return context
   }

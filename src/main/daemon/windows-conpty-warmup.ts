@@ -1,7 +1,6 @@
 import os from 'node:os'
 import type * as pty from 'node-pty'
 import { createRequire } from 'node:module'
-import { canUseBunPty, spawnBunPty } from './pty-subprocess/bun-pty-process'
 import { assignHostProcessToKillOnCloseJob } from '../windows/windows-pty-job'
 import { windowsConptySpawnOptions } from '../providers/windows-conpty-backend'
 
@@ -9,25 +8,6 @@ const WARMUP_KILL_TIMEOUT_MS = 10_000
 const requireFromMain = createRequire(__filename)
 
 const spawnWarmupPty: typeof pty.spawn = (file, args, options) => {
-  if (canUseBunPty()) {
-    if (!Array.isArray(args)) {
-      throw new Error('Bun PTY requires argument arrays')
-    }
-    const env: Record<string, string> = {}
-    for (const [key, value] of Object.entries(options.env ?? process.env)) {
-      if (value !== undefined) {
-        env[key] = value
-      }
-    }
-    return spawnBunPty({
-      file,
-      args,
-      cwd: options.cwd ?? os.homedir(),
-      env,
-      cols: options.cols ?? 2,
-      rows: options.rows ?? 1
-    })
-  }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: node-pty's installed package implements the declared spawn contract.
   const nodePty = requireFromMain('node-pty') as typeof pty
   return nodePty.spawn(file, args, options)
@@ -48,9 +28,7 @@ export function warmWindowsConptyOnce(spawnPty: typeof pty.spawn = spawnWarmupPt
   setImmediate(() => {
     try {
       // Warm-up children must die with the daemon, even before its first real terminal.
-      if (!canUseBunPty()) {
-        assignHostProcessToKillOnCloseJob()
-      }
+      assignHostProcessToKillOnCloseJob()
       const proc = spawnPty(process.env.COMSPEC || 'cmd.exe', ['/c', 'exit'], {
         name: 'xterm-256color',
         cols: 2,

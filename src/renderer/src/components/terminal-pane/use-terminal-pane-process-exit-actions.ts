@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect } from 'react'
 import { useAppStore } from '../../store'
-import { codexRestartResumeStartup } from './codex-restart-resume-startup'
+import { buildCodexAccountRestartStartup } from '@/lib/codex-account-restart-startup'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { connectPanePty } from './pty-connection'
 import { bindPanePtyId } from '@/lib/pane-manager/mobile-fit-overrides'
@@ -65,20 +65,19 @@ export function useTerminalPaneProcessExitActions(controller: TerminalPaneCloseC
       if (!manager || !pane) {
         return
       }
-      const transport = paneTransportsRef.current.get(paneId)
-      const existingPtyId = transport?.getPtyId()
       const startup =
-        restartStartup === undefined
-          ? codexRestartResumeStartup(
-              useAppStore.getState(),
-              worktreeId,
-              tabId,
-              pane.leafId,
-              cwd,
-              existingPtyId
-            )
-          : restartStartup
+        restartStartup ??
+        buildCodexAccountRestartStartup({
+          tabId,
+          worktreeId,
+          leafId: pane.leafId,
+          shellOverride: useAppStore
+            .getState()
+            .tabsByWorktree[worktreeId]?.find((tab) => tab.id === tabId)?.shellOverride
+        })
+      const transport = paneTransportsRef.current.get(paneId)
       const panePtyBinding = panePtyBindingsRef.current.get(paneId)
+      const existingPtyId = transport?.getPtyId()
       if (existingPtyId) {
         suppressPtyExit(existingPtyId)
         clearCodexRestartNotice(existingPtyId)

@@ -86,12 +86,16 @@ describe('Claude rows held open by child agents', () => {
     try {
       await settleMainAgentBeside(server, ['achild-a'])
       await post(server, CHILD_PERMISSION)
+      expect(row(server).subagents).toEqual([
+        expect.objectContaining({ id: 'achild-a', state: 'working' })
+      ])
       osc(server, 'done')
 
       expect(row(server)).toMatchObject({
         state: 'waiting',
         toolName: 'Bash',
-        mainAgent: { state: 'done' }
+        mainAgent: { state: 'done' },
+        subagents: [expect.objectContaining({ id: 'achild-a', state: 'working' })]
       })
     } finally {
       server.stop()

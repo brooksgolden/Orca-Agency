@@ -18,7 +18,7 @@ const candidate: AgentHibernationCandidate = {
   signature: 'stable'
 }
 
-const blankRead: RuntimeTerminalRead = {
+const blankRead: RuntimeTerminalRead & { composerState: 'empty' } = {
   handle: 'term',
   status: 'running',
   tail: [],

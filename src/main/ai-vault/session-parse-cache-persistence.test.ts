@@ -165,6 +165,7 @@ const CACHED_SESSION_FIELDS = {
   resumedSessionIdPrefix: true,
   lastHumanTurnAt: true,
   previewMessagesTruncated: true,
+  antigravityOpeningPrompt: true,
   firstUserPrompt: true,
   lastUserPrompt: true,
   queuedMessageCount: true,

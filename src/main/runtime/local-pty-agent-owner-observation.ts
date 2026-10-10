@@ -3,14 +3,14 @@ import {
   recognizeAgentProcessFromCommandLine
 } from '../../shared/agent-process-recognition'
 import { selectForegroundProcessCandidate } from '../../shared/foreground-process-selection'
-import type { TuiAgent } from '../../shared/tui-agent'
+import type { TerminalAgent } from '../../shared/terminal-agent'
 import type { IPtyProvider } from '../providers/types'
 import { queryWindowsPaneProcessInventory } from '../providers/windows-foreground-process-rows'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 
 export type LocalPtyAgentOwnerObservation =
   | { available: false; launchPresent?: boolean; local?: true }
-  | { available: true; agent: TuiAgent | null; launchPresent: boolean }
+  | { available: true; agent: TerminalAgent | null; launchPresent: boolean }
 
 export async function observeLocalPtyAgentOwner(
   pty: Pick<
