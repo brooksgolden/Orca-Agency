@@ -193,6 +193,22 @@ export function freshestChatSnapshot(
   }
   const baseAt = Date.parse(base.updatedAt ?? base.modifiedAt)
   const liveAt = Date.parse(live.updatedAt ?? live.modifiedAt)
+  // Why: the hook's verified transcript path is authoritative even within the activity throttle.
+  const relocated =
+    base.filePath !== live.filePath &&
+    base.executionHostId === live.executionHostId &&
+    base.agent === live.agent &&
+    base.sessionId === live.sessionId
+  if (relocated) {
+    return {
+      ...base,
+      cwd: live.cwd,
+      filePath: live.filePath,
+      title: live.title,
+      updatedAt: liveAt > baseAt ? live.updatedAt : base.updatedAt,
+      modifiedAt: liveAt > baseAt ? live.modifiedAt : base.modifiedAt
+    }
+  }
   return Number.isFinite(baseAt) && liveAt <= baseAt + (throttle ? LIVE_SNAPSHOT_REFRESH_MS : 0)
     ? base
     : { ...base, title: live.title, updatedAt: live.updatedAt, modifiedAt: live.modifiedAt }

@@ -52,6 +52,18 @@ describe('mayCheckFileLinkTargetUnprompted', () => {
       }
     }
   })
+  it('refuses an outside network share on a remote runtime too', () => {
+    expect(
+      mayCheckFileLinkTargetUnprompted(
+        {
+          absolutePath: '//evil.example/share/a.ts',
+          isKnownWorktreeRoot: false,
+          isRemoteRuntimePath: true
+        },
+        { worktreePath: '/home/me/repo', runtimeEnvironmentId: 'env-1' }
+      )
+    ).toBe(false)
+  })
 
   it('allows paths inside a workspace on a network share', () => {
     expect(mayCheck('src/a.ts', String.raw`C:\Users\me\repo`)).toBe(true)

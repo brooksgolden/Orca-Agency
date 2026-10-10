@@ -22,6 +22,12 @@ async function headerPoint(page: Page, workspaceId: string) {
     const strip = document.querySelector<HTMLElement>(
       `[data-tab-group-strip-id][data-worktree-id="${id}"]`
     )!
+    if (
+      navigator.userAgent.includes('Windows') &&
+      getComputedStyle(strip).getPropertyValue('-webkit-app-region') !== 'no-drag'
+    ) {
+      throw new Error('The workspace header is still a native window-drag region')
+    }
     const bounds = strip.getBoundingClientRect()
     for (let x = bounds.right - 4; x > bounds.left; x -= 4) {
       const y = bounds.top + bounds.height / 2

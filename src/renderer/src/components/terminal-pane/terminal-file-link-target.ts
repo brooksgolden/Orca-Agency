@@ -93,13 +93,12 @@ export function resolveFileLinkTarget(
  * server and can send the user's credentials. The workspace's own WSL distro is not a share.
  */
 export function mayCheckFileLinkTargetUnprompted(
-  target: FileLinkTarget,
-  host: FileLinkHost
+  target: Pick<FileLinkTarget, 'absolutePath' | 'isKnownWorktreeRoot' | 'isRemoteRuntimePath'>,
+  host: Pick<FileLinkHost, 'worktreePath' | 'wslDistro' | 'runtimeEnvironmentId'>
 ): boolean {
   const { absolutePath } = target
   if (
     target.isKnownWorktreeRoot ||
-    target.isRemoteRuntimePath ||
     !/^[\\/]{2}/.test(absolutePath) ||
     isPathInsideWorktree(absolutePath, host.worktreePath)
   ) {

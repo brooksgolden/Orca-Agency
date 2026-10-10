@@ -125,8 +125,9 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerTermi
       hookOwnsCommand ||
       (previous?.payload.agentType === 'claude' &&
         event.payload.agentType === 'claude' &&
-        isAgentStatusHeldOpenByChildWork(previous.payload) &&
-        Boolean(previous.payload.subagents?.length))
+        Boolean(previous.payload.subagents?.length) &&
+        (isAgentStatusHeldOpenByChildWork(previous.payload) ||
+          previous.payload.state === 'waiting'))
     ) {
       // Why: OSC carries no child identity, so it cannot settle or repaint a row child agents hold open
       // (working, or waiting on a child's prompt); their lifecycle hooks will.

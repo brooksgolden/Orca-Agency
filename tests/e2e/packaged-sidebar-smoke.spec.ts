@@ -104,7 +104,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
     await expect(row(ids[0]).locator('[data-worktree-status-context]')).toContainText(
       'Smoke projects'
     )
-    await expect(row(ids[0]).locator('[data-worktree-status-context]')).toContainText('d')
+    await expect(row(ids[0]).locator('[data-worktree-status-context]')).toContainText('1d')
     await row(ids[2]).getByRole('button', { name: 'Mark workspace Done' }).click()
     await expect.poll(() => lane(ids[2])).toBe('completed')
     await row(ids[0]).locator('[data-worktree-card-surface]').click()

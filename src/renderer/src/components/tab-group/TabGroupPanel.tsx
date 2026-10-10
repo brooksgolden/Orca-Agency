@@ -251,6 +251,9 @@ export default function TabGroupPanel({
   const focusedActionChromeClassName = `flex shrink-0 items-center gap-0.5 overflow-hidden transition-[opacity] duration-150 ${
     isFocused ? 'ml-1.5 pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 w-0'
   }`
+  const attachedStripRegion: React.CSSProperties & { WebkitAppRegion: string } = {
+    WebkitAppRegion: navigator.userAgent.includes('Mac') ? 'drag' : 'no-drag'
+  }
   return (
     <div
       // Why: vertical borders stay `border-border` so the focus highlight (--accent ~#f5f5f5 in light) doesn't paint a near-white strip by the resize handle; only the bottom border changes on focus.
@@ -271,17 +274,17 @@ export default function TabGroupPanel({
       // Why: keyboard/AT focus can enter a split group without a pointer event, so sync group focus to DOM focus for global shortcuts.
       onFocusCapture={commands.focusGroup}
     >
-      {/* Why: each split group needs its own tab row because multiple groups can show at once but the titlebar has only one shared center slot. */}
-      {/* Why: macOS hiddenInset titleBarStyle makes -webkit-app-region: drag the only way to move the window from this tab row. */}
-      {/* Why absent (not hidden) for an 'external' host: the floating panel's titlebar owns the one
-          strip, and a mounted second strip would register duplicate sortables in the drag scope. */}
+      {/* Why: macOS hiddenInset needs this row to move the window; other platforms use it for pane drag. */}
       {tabStrip !== 'attached' ? null : (
         <div
           className="h-[32px] shrink-0 border-b border-border bg-card"
           data-tab-group-strip-id={groupId}
           data-terminal-focus-release-surface="true"
           data-worktree-id={worktreeId}
-          onPointerDown={onWorkspaceHeaderPointerDown}
+          style={attachedStripRegion}
+          onPointerDown={
+            navigator.userAgent.includes('Mac') ? undefined : onWorkspaceHeaderPointerDown
+          }
         >
           <div className="flex h-full items-stretch pr-1.5">
             {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the collapsed left-sidebar's floating toggle clickable. */}

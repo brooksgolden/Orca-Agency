@@ -1,7 +1,21 @@
 import type { IBufferLine, IBufferRange } from '@xterm/xterm'
 import { extractTerminalFileLinkCandidates } from '@/lib/terminal-links'
-import { openDetectedFilePath } from './terminal-file-open-routing'
-import { resolveFileLinkTarget } from './terminal-file-link-target'
+import {
+  mapTerminalFilePath,
+  openDetectedFilePath,
+  terminalLinkWslDistro
+} from './terminal-file-open-routing'
+import { resolveFileLinkTarget, type FileLinkTarget } from './terminal-file-link-target'
+import {
+  collectPriorTerminalFileLinkAnchors,
+  contextualFileLinkTargets
+} from './terminal-relative-file-link-context'
+import {
+  getTerminalPathExistsCacheKey,
+  readTerminalPathExistsCache,
+  wasTerminalPathExistsCacheRecentlyProbed
+} from './terminal-path-exists-cache'
+import { isRemoteRuntimeFileOperation } from '@/runtime/runtime-file-client'
 import {
   buildHardWrappedPathLogicalLineCandidates,
   buildWrappedLogicalLine,
@@ -39,6 +53,7 @@ export function openFilePathLinkAtBufferPosition(
       pathText: string
       cachedExists: boolean | undefined
       isKnownWorktreeRoot: boolean
+      fileContext: FileLinkTarget['fileContext']
     }[] = []
     for (const parsed of extractTerminalFileLinkCandidates(logicalLine.text)) {
       const target = resolveFileLinkTarget(parsed, {
@@ -62,7 +77,8 @@ export function openFilePathLinkAtBufferPosition(
         column: target.column,
         pathText: parsed.pathText,
         cachedExists: deps.pathExistsCache?.get(target.cacheKey),
-        isKnownWorktreeRoot: target.isKnownWorktreeRoot
+        isKnownWorktreeRoot: target.isKnownWorktreeRoot,
+        fileContext: target.fileContext
       })
     }
 
@@ -72,8 +88,77 @@ export function openFilePathLinkAtBufferPosition(
     const knownWorktreeRootMatch = matches
       .filter((match) => match.isKnownWorktreeRoot)
       .sort((a, b) => b.pathText.length - a.pathText.length)[0]
-    const uncachedMatch = matches.find((match) => match.cachedExists !== false)
-    const match = cachedMatch ?? knownWorktreeRootMatch ?? uncachedMatch
+    // Why: an earlier absolute path can prove this relative text names a different folder.
+    const hasContext =
+      collectPriorTerminalFileLinkAnchors(
+        buffer,
+        position.y,
+        deps.startupCwd,
+        deps.terminalHomePath
+      ).length > 0
+    const contextualMatches =
+      hasContext && deps.pathExistsCache
+        ? matches.flatMap((candidate) => {
+            if (!/^[\p{L}\p{N}._-]+[\\/]/u.test(candidate.pathText)) {
+              return []
+            }
+            const targets = contextualFileLinkTargets(
+              buffer,
+              position.y,
+              candidate.pathText,
+              deps.startupCwd,
+              deps.terminalHomePath
+            )
+            const cacheValue = (path: string): boolean | undefined => {
+              const mapped = mapTerminalFilePath(
+                path,
+                deps.worktreePath,
+                terminalLinkWslDistro(deps.wslDistro, deps.runtimeEnvironmentId)
+              )
+              const cacheKey = getTerminalPathExistsCacheKey({
+                absolutePath: mapped,
+                connectionId: candidate.fileContext.connectionId,
+                isRemoteRuntimePath: isRemoteRuntimeFileOperation(candidate.fileContext, mapped),
+                runtimeEnvironmentId: deps.runtimeEnvironmentId
+              })
+              return wasTerminalPathExistsCacheRecentlyProbed(deps.pathExistsCache!, cacheKey)
+                ? readTerminalPathExistsCache(deps.pathExistsCache!, cacheKey)
+                : undefined
+            }
+            const unresolved = targets.some(
+              ({ anchorPath, absolutePath }) =>
+                cacheValue(anchorPath) === undefined || cacheValue(absolutePath) === undefined
+            )
+            if (unresolved) {
+              return []
+            }
+            const verified = targets.filter(
+              ({ anchorPath, absolutePath }) =>
+                cacheValue(anchorPath) === true && cacheValue(absolutePath) === true
+            )
+            const paths = new Set(verified.map(({ absolutePath }) => absolutePath))
+            if (paths.size !== 1) {
+              return []
+            }
+            const absolutePath = mapTerminalFilePath(
+              verified[0].absolutePath,
+              deps.worktreePath,
+              terminalLinkWslDistro(deps.wslDistro, deps.runtimeEnvironmentId)
+            )
+            return [{ ...candidate, absolutePath }]
+          })
+        : []
+    const uncachedMatch = hasContext
+      ? matches.find(
+          (candidate) =>
+            candidate.cachedExists !== false && !/^[\p{L}\p{N}._-]+[\\/]/u.test(candidate.pathText)
+        )
+      : matches.find((candidate) => candidate.cachedExists !== false)
+    const match =
+      cachedMatch ??
+      knownWorktreeRootMatch ??
+      (contextualMatches.length === 1 ? contextualMatches[0] : undefined) ??
+      uncachedMatch
     if (match) {
       openDetectedFilePath(match.absolutePath, match.line, match.column, {
         ...deps,

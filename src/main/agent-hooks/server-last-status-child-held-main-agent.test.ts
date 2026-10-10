@@ -101,6 +101,23 @@ describe('Claude rows held open by child agents', () => {
       server.stop()
     }
   })
+  it('keeps a child permission prompt while the main agent is still working', async () => {
+    const server = await startServer()
+    try {
+      await post(server, { hook_event_name: 'UserPromptSubmit', prompt: 'delegate' })
+      await post(server, { hook_event_name: 'SubagentStart', agent_id: 'achild-a' })
+      await post(server, CHILD_PERMISSION)
+      expect(row(server)).toMatchObject({ state: 'waiting', mainAgent: { state: 'working' } })
+      osc(server, 'working')
+      expect(row(server)).toMatchObject({
+        state: 'waiting',
+        mainAgent: { state: 'working' },
+        subagents: [expect.objectContaining({ id: 'achild-a' })]
+      })
+    } finally {
+      server.stop()
+    }
+  })
 
   it('keeps a child-held working row when OSC reports done', async () => {
     const server = await startServer()
