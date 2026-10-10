@@ -62,6 +62,8 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
   },
   codex: {
     detectCmd: 'codex',
+    // Why: inline Codex greatly reduces Windows ConPTY redraw traffic during pasted drafts.
+    launchCmdByPlatform: { win32: 'codex --no-alt-screen' },
     promptInjectionMode: 'argv',
     windowsInputRecordPasteNewline: 'alt-enter',
     preflightTrust: 'codex',
@@ -349,6 +351,9 @@ export function getTuiAgentLaunchCommand(
 ): string {
   // Why: local-only orca-ide rename (avoids GNOME Orca clash) must not leak to Linux remotes, whose relay shim is always `orca`.
   if (opts?.isRemote && platform === 'linux') {
+    return config.launchCmd
+  }
+  if (opts?.isRemote && platform === 'win32' && config.detectCmd === 'codex') {
     return config.launchCmd
   }
   return config.launchCmdByPlatform?.[platform] ?? config.launchCmd

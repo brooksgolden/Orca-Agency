@@ -85,6 +85,19 @@ describe('tui agent startup plans', () => {
     expect(plan?.launchCommand).toBe("claude 'fix Bob''s \"quoted\" branch'")
   })
 
+  it('starts a new Windows Codex session in the measured low-redraw mode', () => {
+    const plan = buildAgentStartupPlan({
+      agent: 'codex',
+      prompt: '',
+      cmdOverrides: {},
+      platform: 'win32',
+      allowEmptyPromptLaunch: true
+    })
+
+    expect(plan?.launchCommand).toBe('codex --no-alt-screen')
+    expect(plan?.launchConfig.agentCommand).toBe('codex --no-alt-screen')
+  })
+
   it('invokes fully quoted argv commands in PowerShell', () => {
     expect(buildShellCommandFromArgv(['codex', 'resume', 's1'], 'powershell')).toBe(
       "& 'codex' 'resume' 's1'"
@@ -443,7 +456,7 @@ describe('tui agent startup plans', () => {
       platform: 'win32'
     })
 
-    expect(plan?.launchCommand).toBe("codex '--cd' '.' 'resume' 's1'")
+    expect(plan?.launchCommand).toBe("codex --no-alt-screen '--cd' '.' 'resume' 's1'")
     expect(plan?.startupCommandDelivery).toBe('shell-ready')
   })
 

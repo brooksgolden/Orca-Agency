@@ -12,10 +12,12 @@ describe('Codex resume directory choice', () => {
     })
     expect(plan?.launchCommand).toBe(
       shell === 'cmd'
-        ? 'codex "--cd" "." "resume" "exact-session"'
-        : "codex '--cd' '.' 'resume' 'exact-session'"
+        ? 'codex --no-alt-screen "--cd" "." "resume" "exact-session"'
+        : `${shell === 'powershell' ? 'codex --no-alt-screen' : 'codex'} '--cd' '.' 'resume' 'exact-session'`
     )
-    expect(plan?.launchConfig.agentCommand).toBe('codex')
+    expect(plan?.launchConfig.agentCommand).toBe(
+      shell === 'posix' ? 'codex' : 'codex --no-alt-screen'
+    )
   })
 
   it.each([
