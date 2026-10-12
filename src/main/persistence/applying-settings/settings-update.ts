@@ -55,7 +55,11 @@ export type SettingsMutationOperations = {
 export function updateSettings(
   operations: SettingsMutationOperations,
   updates: Partial<GlobalSettings>,
-  options: { notifyListeners?: boolean; originWebContentsId?: number } = {}
+  options: {
+    notifyListeners?: boolean
+    originWebContentsId?: number
+    revokeAutomationChatIds?: readonly string[]
+  } = {}
 ): GlobalSettings {
   const sanitizedUpdates = stripRetiredGlobalSettings(updates)
   if ('opencodeSessionCookie' in updates && !updates.opencodeSessionCookie) {
@@ -256,6 +260,7 @@ export function updateSettings(
   const previousSettings = operations.state.settings
   // Why: a renderer preference write can race a host-owned automation-origin write.
   if (sanitizedUpdates.chatSidebar && previousSettings.chatSidebar?.automationChats?.length) {
+    const revoked = new Set(options.revokeAutomationChatIds ?? [])
     sanitizedUpdates.chatSidebar = {
       ...sanitizedUpdates.chatSidebar,
       automationChats: [
@@ -263,7 +268,7 @@ export function updateSettings(
           ...previousSettings.chatSidebar.automationChats,
           ...(sanitizedUpdates.chatSidebar.automationChats ?? [])
         ])
-      ]
+      ].filter((id) => !revoked.has(id))
     }
   }
   operations.state.settings = {

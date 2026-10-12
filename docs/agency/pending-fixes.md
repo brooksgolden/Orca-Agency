@@ -2,6 +2,10 @@
 
 Read this file during each weekly update. Include pending fixes in the release notes only after the source, Claude review, package, installed functionality and visual checks pass. Then record the published release next to each included item.
 
+## October 12 active chat classification
+
+- **Keep a real chat in Chats:** A scoped settings revocation can remove a mistaken automation owner without dropping genuine automation ownership during stale preference writes. The affected live session must appear under In Progress after the controlled profile repair and installed restart. Source regression: `src/main/persistence/applying-settings/settings-update-chat-automation.test.ts`. Installation and visual verification remain pending.
+
 ## Quiet weekly updates
 
 Native Windows ARM64 continues to skip the upstream desktop feed and update campaigns. Manual checks, downloads and install requests now return idle without showing an update error or an upstream download link. The reviewed Saturday installer remains the update route. Cloud sign-out reminders stay enabled. The October 7 cloud session was invalidated at 19:23 EDT; its original server rejection was not recorded. Brooks signed in again, and the new encrypted session is saved. Do not claim that the sign-out cause is fixed or restore an old rotating credential from an installation backup.

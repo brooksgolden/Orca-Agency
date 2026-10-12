@@ -75,7 +75,11 @@ export class ProfilePreferences {
 
   updateSettings(
     updates: Partial<GlobalSettings>,
-    options: { notifyListeners?: boolean; originWebContentsId?: number } = {}
+    options: {
+      notifyListeners?: boolean
+      originWebContentsId?: number
+      revokeAutomationChatIds?: readonly string[]
+    } = {}
   ): GlobalSettings {
     return updateSettingsOperation(getSettingsMutationOperations(this), updates, options)
   }
