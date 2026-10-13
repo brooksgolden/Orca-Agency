@@ -1,9 +1,28 @@
 import { performance } from 'node:perf_hooks'
 import { describe, expect, it } from 'vitest'
 import { appendNormalizedToTailBuffer } from './terminal-tail-buffer'
+import { normalizeTerminalChunk } from './terminal-ansi-normalization'
 import { trimTerminalLineRight } from './terminal-tail-line-controls'
 
 describe('terminal redraw whitespace', () => {
+  it('retains a completed line when a CRLF is split across PTY chunks', () => {
+    const first = normalizeTerminalChunk('FLOODED:token\r')
+    const partial = appendNormalizedToTailBuffer([], '', first.text)
+    const second = normalizeTerminalChunk('\n', first.pendingAnsi)
+    const completed = appendNormalizedToTailBuffer(partial.lines, partial.partialLine, second.text)
+    expect(completed.lines).toEqual(['FLOODED:token'])
+    expect(completed.newlyCompletedLines).toEqual(['FLOODED:token'])
+  })
+
+  it('keeps a trailing carriage return as a redraw when the next chunk is text', () => {
+    const first = normalizeTerminalChunk('progress 10%\r')
+    expect(first).toEqual({ text: 'progress 10%', pendingAnsi: '\r' })
+    expect(normalizeTerminalChunk('progress 20%', first.pendingAnsi)).toEqual({
+      text: '\rprogress 20%',
+      pendingAnsi: ''
+    })
+  })
+
   it.each([
     ['hello \t', 'hello'],
     [' \thello \t world \t', ' \thello \t world'],

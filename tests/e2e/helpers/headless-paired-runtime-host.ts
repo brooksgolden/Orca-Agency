@@ -46,7 +46,12 @@ export type HeadlessPairedRuntimeHost = {
 type HeadlessHostCleanup = () => Promise<void> | void
 
 // Why: Windows keeps a just-killed daemon's handles on the profile briefly, so removal sees EPERM.
-const PROFILE_REMOVAL: RmOptions = { recursive: true, force: true, maxRetries: 50, retryDelay: 100 }
+const PROFILE_REMOVAL: RmOptions = {
+  recursive: true,
+  force: true,
+  maxRetries: 150,
+  retryDelay: 100
+}
 
 /** CI diagnostics: the profile's logs outlive its deletion when this names a directory. */
 function preserveProfileLogs(userDataDir: string): void {

@@ -118,6 +118,10 @@ export function normalizeTerminalChunk(
       textStart = index + 1
       continue
     }
+    if (char === '\r' && index + 1 === combined.length) {
+      appendTerminalNormalizedSpan(parts, combined, textStart, index)
+      return { text: parts.join(''), pendingAnsi: '\r' }
+    }
     const code = combined.charCodeAt(index)
     if (code === 0x08 || code === 0x09 || code === 0x0a || code === 0x0d) {
       appendTerminalNormalizedSpan(parts, combined, textStart, index)
