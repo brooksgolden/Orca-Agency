@@ -24,6 +24,34 @@ describe('terminal redraw whitespace', () => {
   })
 
   it.each([
+    ['repeated carriage returns', ['X\r\r', '\n']],
+    ['split color sequence', ['X\r\x1b[3', '1m\n']],
+    ['split escape introducer', ['X\r\x1b', '[31m\n']],
+    ['complete color sequence', ['X\r\x1b[31m', '\n']],
+    ['title sequence', ['X\r\x1b]0;title\u0007', '\n']],
+    ['cursor visibility sequence', ['X\r\x1b[?25l', '\n']]
+  ])('retains a completed line across %s', (_name, chunks) => {
+    let pendingAnsi = ''
+    let lines: string[] = []
+    let partialLine = ''
+    for (const chunk of chunks) {
+      const normalized = normalizeTerminalChunk(chunk, pendingAnsi)
+      pendingAnsi = normalized.pendingAnsi
+      const next = appendNormalizedToTailBuffer(lines, partialLine, normalized.text)
+      lines = next.lines
+      partialLine = next.partialLine
+    }
+    expect(lines).toEqual(['X'])
+    expect(partialLine).toBe('')
+    expect(pendingAnsi).toBe('')
+  })
+
+  it('normalizes a long carriage-return redraw in linear time', () => {
+    const normalized = normalizeTerminalChunk(`X${'\r'.repeat(64_000)}Y`)
+    expect(normalized).toEqual({ text: 'X\rY', pendingAnsi: '' })
+  })
+
+  it.each([
     ['hello \t', 'hello'],
     [' \thello \t world \t', ' \thello \t world'],
     [' \t', ''],

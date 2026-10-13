@@ -35,7 +35,11 @@ describe('chat sidebar in-progress filter', () => {
         true
       ])
       expect(items.filter((item) => item.kind === 'heading').map((item) => item.label)).toEqual(
-        groupBy === 'recent' ? [] : [groupBy === 'folder' ? 'Acme (2)' : 'In Progress (2)']
+        groupBy === 'recent'
+          ? []
+          : groupBy === 'folder'
+            ? ['Acme (2)', 'Completed only (0)']
+            : ['In Progress (2)']
       )
     }
   )
@@ -82,7 +86,9 @@ describe('chat sidebar in-progress filter', () => {
     expect(items.map((item) => item.showFolder)).toEqual([false, true, true])
     expect(items[0].splitStart).toBe(true)
     expect(items[2].splitEnd).toBe(true)
-    expect(chatSidebarListItems(rows, source('folder'), 'Completed only')).toEqual([])
+    expect(chatSidebarListItems(rows, source('folder'), 'Completed only')).toMatchObject([
+      { kind: 'heading', label: 'Completed only (0)' }
+    ])
     expect(
       chatSidebarListItems(
         rows,
@@ -90,7 +96,11 @@ describe('chat sidebar in-progress filter', () => {
           ...source('folder'),
           settings: {
             ...source('folder').settings,
-            chatSidebar: { showOnlyInProgress: true, hiddenFolders: ['Acme'] }
+            chatSidebar: {
+              groupBy: 'folder',
+              showOnlyInProgress: true,
+              hiddenFolders: ['Acme', 'Completed only']
+            }
           }
         },
         ''

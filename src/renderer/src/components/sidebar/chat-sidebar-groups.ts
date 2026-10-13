@@ -124,10 +124,28 @@ export function chatSidebarListItems(
     section.push(group)
     sections.set(key, section)
   }
-  const keys = groupBy === 'status' ? ['In progress', 'Done'] : [...sections.keys()]
+  const visibleFolders = new Set(
+    joined.flatMap((set) => set.groups.flatMap((group) => group.members.map((row) => row.folder)))
+  )
+  const keys =
+    groupBy === 'status'
+      ? ['In progress', 'Done']
+      : groupBy === 'folder'
+        ? [
+            ...new Set([
+              ...sections.keys(),
+              ...[...folderCompletion.keys()].filter(
+                (folder) =>
+                  !hiddenFolders.includes(folder) &&
+                  !visibleFolders.has(folder) &&
+                  (!text || folder.toLocaleLowerCase().includes(text))
+              )
+            ])
+          ]
+        : [...sections.keys()]
   return keys.flatMap((key): ChatSidebarListItem[] => {
-    const section = sections.get(key)
-    if (!section?.length) {
+    const section = sections.get(key) ?? []
+    if (!section.length && (groupBy !== 'folder' || !folderCompletion.has(key))) {
       return []
     }
     const headingId = `chat:${groupBy}:${key}`
