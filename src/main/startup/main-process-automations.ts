@@ -16,7 +16,8 @@ export function initializeMainProcessAutomations(): AutomationService {
     claudeUsage,
     codexUsage,
     // Why: desktop clients mirror remote-host automations, but only a server process should execute remote_host_service-owned schedules.
-    headless: state.isServeMode
+    headless: state.isServeMode,
+    dispatchHeadlessly: true
   })
   state.automations = service
   return service

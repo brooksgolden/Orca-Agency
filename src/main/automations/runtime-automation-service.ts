@@ -7,7 +7,11 @@ import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { AutomationService } from './service'
-import type { AutomationRun } from '../../shared/automations-types'
+import {
+  isFinalAutomationRunStatus,
+  type Automation,
+  type AutomationRun
+} from '../../shared/automations-types'
 import { createHeadlessRunTerminalRetention } from './headless-run-terminal-retention'
 import {
   getTuiAgentDetectCommands,
@@ -26,10 +30,13 @@ export function createRuntimeAutomationService(input: {
   codexUsage?: CodexUsageStore
   /** A server process: it executes remote_host_service-owned schedules and dispatches headlessly. */
   headless: boolean
+  /** Desktop runs can use background dispatch without claiming remote-host schedules. */
+  dispatchHeadlessly?: boolean
 }): AutomationService {
   const { store, runtime, claudeUsage, codexUsage } = input
   // The handle each headless launch returned, so its watcher never depends on a pane-key lookup.
   const launchedHandles = new Map<string, string>()
+  const reusedPaneRuns = new Map<string, string>()
   const observer = createRuntimeAutomationRunTerminalObserver(runtime, {
     getAgentStatusRowsForPane: (paneKey) => runtime.getAgentStatusRowsForPane(paneKey),
     agentCommandsForRun: (run) =>
@@ -49,70 +56,168 @@ export function createRuntimeAutomationService(input: {
     },
     onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
     allowRemoteHostScheduling: input.headless,
-    headlessDispatcher: input.headless
-      ? async ({ automation, run, target }) => {
-          let terminalHandle: string
-          let terminalSessionId: string | null = null
-          let terminalPaneKey: string | null = null
-          let terminalPtyId: string | null = null
-          let workspaceId: string
-          let workspaceDisplayName: string | null = null
-          if (automation.workspaceMode === 'new_per_run') {
-            const created = await runtime.createManagedWorktree(
-              buildHeadlessAutomationWorktreeCreateArgs({ automation, run, repo: target.repo })
-            )
-            terminalHandle = created.startupTerminal?.handle ?? ''
-            terminalSessionId = created.startupTerminal?.tabId ?? null
-            terminalPaneKey = created.startupTerminal?.paneKey ?? null
-            terminalPtyId = created.startupTerminal?.ptyId ?? null
-            workspaceId = created.worktree.id
-            workspaceDisplayName = created.worktree.displayName ?? null
-            if (!terminalHandle) {
-              throw new Error(
-                created.warning ||
-                  'Automation workspace was created, but no agent terminal started.'
+    headlessDispatcher:
+      input.headless || input.dispatchHeadlessly
+        ? async ({ automation, run, target }) => {
+            let terminalHandle: string
+            let terminalSessionId: string | null = null
+            let terminalPaneKey: string | null = null
+            let terminalPtyId: string | null = null
+            let workspaceId: string
+            let workspaceDisplayName: string | null = null
+            if (automation.workspaceMode === 'new_per_run') {
+              const created = await runtime.createManagedWorktree(
+                buildHeadlessAutomationWorktreeCreateArgs({ automation, run, repo: target.repo })
               )
+              terminalHandle = created.startupTerminal?.handle ?? ''
+              terminalSessionId = created.startupTerminal?.tabId ?? null
+              terminalPaneKey = created.startupTerminal?.paneKey ?? null
+              terminalPtyId = created.startupTerminal?.ptyId ?? null
+              workspaceId = created.worktree.id
+              workspaceDisplayName = created.worktree.displayName ?? null
+              if (!terminalHandle) {
+                throw new Error(
+                  created.warning ||
+                    'Automation workspace was created, but no agent terminal started.'
+                )
+              }
+            } else {
+              if (!automation.workspaceId) {
+                throw new Error('The target workspace is no longer available.')
+              }
+              const reusable = automation.reuseSession
+                ? findReusableRunTerminal({
+                    store,
+                    runtime,
+                    automation,
+                    currentRun: run,
+                    reusedPaneRuns
+                  })
+                : null
+              if (reusable) {
+                reusedPaneRuns.set(reusable.run.terminalPaneKey!, run.id)
+                try {
+                  const sent = await runtime.sendTerminalAgentPrompt(
+                    reusable.handle,
+                    automation.prompt,
+                    { inputKind: 'driving', acceptQueued: true }
+                  )
+                  if (!sent.accepted) {
+                    throw new Error('The reused automation session did not accept the prompt.')
+                  }
+                } catch (error) {
+                  reusedPaneRuns.delete(reusable.run.terminalPaneKey!)
+                  throw error
+                }
+                terminalHandle = reusable.handle
+                terminalSessionId = reusable.run.terminalSessionId
+                terminalPaneKey = reusable.run.terminalPaneKey
+                terminalPtyId = reusable.run.terminalPtyId
+                workspaceId = automation.workspaceId
+                const worktree = await runtime.showManagedWorktree(`id:${workspaceId}`)
+                workspaceDisplayName = worktree.displayName ?? null
+              } else {
+                const terminal = await runtime.launchAgentTerminal(`id:${automation.workspaceId}`, {
+                  agent: automation.agentId,
+                  prompt: automation.prompt,
+                  title: run.title,
+                  unlisted: true,
+                  ...(automation.extraAgentArgs
+                    ? { extraAgentArgs: automation.extraAgentArgs }
+                    : {})
+                })
+                terminalHandle = terminal.handle
+                terminalSessionId = terminal.tabId ?? null
+                terminalPaneKey = terminal.paneKey ?? null
+                terminalPtyId = terminal.ptyId ?? null
+                workspaceId = terminal.worktreeId
+                const worktree = await runtime.showManagedWorktree(`id:${workspaceId}`)
+                workspaceDisplayName = worktree.displayName ?? null
+              }
             }
-          } else {
-            if (!automation.workspaceId) {
-              throw new Error('The target workspace is no longer available.')
+            if (terminalPaneKey) {
+              launchedHandles.set(terminalPaneKey, terminalHandle)
+              if (launchedHandles.size > MAX_REMEMBERED_LAUNCHES) {
+                launchedHandles.delete(launchedHandles.keys().next().value ?? '')
+              }
             }
-            const terminal = await runtime.launchAgentTerminal(`id:${automation.workspaceId}`, {
-              agent: automation.agentId,
-              prompt: automation.prompt,
-              title: run.title,
-              ...(automation.extraAgentArgs ? { extraAgentArgs: automation.extraAgentArgs } : {})
-            })
-            terminalHandle = terminal.handle
-            terminalSessionId = terminal.tabId ?? null
-            terminalPaneKey = terminal.paneKey ?? null
-            terminalPtyId = terminal.ptyId ?? null
-            workspaceId = terminal.worktreeId
-            const worktree = await runtime.showManagedWorktree(`id:${workspaceId}`)
-            workspaceDisplayName = worktree.displayName ?? null
-          }
-          if (terminalPaneKey) {
-            launchedHandles.set(terminalPaneKey, terminalHandle)
-            if (launchedHandles.size > MAX_REMEMBERED_LAUNCHES) {
-              launchedHandles.delete(launchedHandles.keys().next().value ?? '')
+            // No completion: the run's watcher observes it, retrying wait timeouts until it settles.
+            return {
+              workspaceId,
+              workspaceDisplayName,
+              terminalSessionId,
+              terminalPaneKey,
+              terminalPtyId
             }
           }
-          // No completion: the run's watcher observes it, retrying wait timeouts until it settles.
-          return {
-            workspaceId,
-            workspaceDisplayName,
-            terminalSessionId,
-            terminalPaneKey,
-            terminalPtyId
-          }
-        }
-      : undefined
+        : undefined
   })
   runtime.setAutomationService(service)
-  if (input.headless) {
+  if (input.headless || input.dispatchHeadlessly) {
     bindHeadlessRunTerminalRetention(service, store, runtime)
   }
   return service
+}
+
+function findReusableRunTerminal(input: {
+  store: Store
+  runtime: OrcaRuntimeService
+  automation: Automation
+  currentRun: AutomationRun
+  reusedPaneRuns: Map<string, string>
+}): { run: AutomationRun & { terminalPaneKey: string }; handle: string } | null {
+  const { store, runtime, automation, currentRun, reusedPaneRuns } = input
+  const runs = store.listAutomationRuns(automation.id)
+  for (const candidate of runs
+    .filter(
+      (run) =>
+        run.id !== currentRun.id &&
+        run.workspaceId === automation.workspaceId &&
+        run.status === 'completed' &&
+        Boolean(run.terminalPaneKey && run.terminalPtyId)
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)) {
+    const paneKey = candidate.terminalPaneKey!
+    const previousUse = reusedPaneRuns.get(paneKey)
+    if (previousUse) {
+      const previousRun = runs.find((run) => run.id === previousUse)
+      if (previousRun && !isFinalAutomationRunStatus(previousRun.status)) {
+        continue
+      }
+      reusedPaneRuns.delete(paneKey)
+    }
+    if (
+      runs.some(
+        (run) =>
+          run.id !== candidate.id &&
+          run.terminalPaneKey === paneKey &&
+          !isFinalAutomationRunStatus(run.status)
+      )
+    ) {
+      continue
+    }
+    const handle = runtime.getTerminalHandleForPaneKey(paneKey)
+    if (
+      !handle ||
+      runtime.getTerminalPtyIdForHandle(handle) !== candidate.terminalPtyId ||
+      runtime.readTerminalClientUse(candidate.terminalPtyId!) !== 'unused'
+    ) {
+      continue
+    }
+    const latest = runtime
+      .getAgentStatusRowsForPane(paneKey)
+      .toSorted((a, b) => b.receivedAt - a.receivedAt)[0]
+    if (
+      latest?.state !== 'done' ||
+      (latest.agentType &&
+        latest.agentType !== 'unknown' &&
+        latest.agentType !== automation.agentId)
+    ) {
+      continue
+    }
+    return { run: candidate as AutomationRun & { terminalPaneKey: string }, handle }
+  }
+  return null
 }
 
 /** A headless host has no renderer to close finished run terminals; its service does it. */

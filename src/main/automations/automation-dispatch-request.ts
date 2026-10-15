@@ -119,7 +119,7 @@ export async function requestAutomationDispatch(
     return refuse(target.error)
   }
   const renderer = ctx.getRenderer()
-  if (renderer) {
+  if (renderer && !ctx.headlessDispatcher) {
     return sendRendererDispatch(
       renderer,
       {
