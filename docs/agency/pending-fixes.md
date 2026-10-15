@@ -6,6 +6,8 @@ Read this file during each weekly update. Include pending fixes in the release n
 
 - **Collapse an emptied workspace pane:** Closing the final tab in the AN dashboard pane left a black middle column between the live Initio and Keelwater panes. The split layout still contained the AN dashboard workspace ID even though it had no tabs. A one-time renderer layout repair removed only that leaf; both original terminal sessions stayed connected and the surviving panes filled the window. Fix the last-tab and pane-close paths so they remove an empty leaf and reflow the remaining panes without closing their sessions. Verify the three-to-two pane case in the packaged app.
 
+Installed locally in Agency 1.4.1046 on October 15. The last-tab path now collapses the empty split leaf. The pane X and tab header fixes, plus Copy file path, passed source review and five exact ARM64 package checks. The guarded restart preserved all 92 tabs, 9 PTYs and 648 saved chats. The globally selected workspace changed at restart, although its previous tab and all per-workspace tab selections remained saved. Public release remains scheduled for October 24.
+
 ## October 12 active chat classification
 
 - **Keep a real chat in Chats:** A scoped settings revocation can remove a mistaken automation owner without dropping genuine automation ownership during stale preference writes. The affected live session must appear under In Progress after the controlled profile repair and installed restart. Source regression: `src/main/persistence/applying-settings/settings-update-chat-automation.test.ts`. Installation and visual verification remain pending.
