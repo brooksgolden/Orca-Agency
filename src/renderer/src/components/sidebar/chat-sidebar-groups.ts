@@ -94,14 +94,21 @@ export function chatSidebarListItems(
       tabs.find((tab) => tab.id === row.tabId)?.createdAt ??
       row.createdAt ??
       (Date.parse(row.session?.createdAt ?? '') || Number.MAX_SAFE_INTEGER)
-    const members = [...siblings].sort(
-      (a, b) =>
+    const members = [...siblings].sort((a, b) => {
+      const aOrder = order.get(a.tabId ?? '')
+      const bOrder = order.get(b.tabId ?? '')
+      if (aOrder !== undefined || bOrder !== undefined) {
+        const difference = (aOrder ?? Number.MAX_SAFE_INTEGER) - (bOrder ?? Number.MAX_SAFE_INTEGER)
+        if (difference !== 0) {
+          return difference
+        }
+      }
+      return (
         Number(b.ownsWorkspaceName) - Number(a.ownsWorkspaceName) ||
         createdAt(a) - createdAt(b) ||
-        (order.get(a.tabId ?? '') ?? Number.MAX_SAFE_INTEGER) -
-          (order.get(b.tabId ?? '') ?? Number.MAX_SAFE_INTEGER) ||
         a.id.localeCompare(b.id)
-    )
+      )
+    })
     return { id, members }
   })
   const joined = chatSidebarSplitGroups(
