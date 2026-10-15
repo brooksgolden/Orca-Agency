@@ -2,6 +2,10 @@
 
 Read this file during each weekly update. Include pending fixes in the release notes only after the source, Claude review, package, installed functionality and visual checks pass. Then record the published release next to each included item.
 
+## October 15 empty split pane
+
+- **Collapse an emptied workspace pane:** Closing the final tab in the AN dashboard pane left a black middle column between the live Initio and Keelwater panes. The split layout still contained the AN dashboard workspace ID even though it had no tabs. A one-time renderer layout repair removed only that leaf; both original terminal sessions stayed connected and the surviving panes filled the window. Fix the last-tab and pane-close paths so they remove an empty leaf and reflow the remaining panes without closing their sessions. Verify the three-to-two pane case in the packaged app.
+
 ## October 12 active chat classification
 
 - **Keep a real chat in Chats:** A scoped settings revocation can remove a mistaken automation owner without dropping genuine automation ownership during stale preference writes. The affected live session must appear under In Progress after the controlled profile repair and installed restart. Source regression: `src/main/persistence/applying-settings/settings-update-chat-automation.test.ts`. Installation and visual verification remain pending.
