@@ -25,6 +25,33 @@ function items(settings: ChatSidebarSettings, query = '', collapsed = new Set<st
 }
 
 describe('chat sidebar folder filters', () => {
+  it('keeps a registered SEOlocal folder visible when Hide Done leaves no chat rows', () => {
+    const state = chatState({
+      projectGroups: [
+        {
+          id: 'seolocal',
+          name: 'SEOlocal',
+          parentPath: '/clients/SEOlocal',
+          parentGroupId: null,
+          createdFrom: 'manual',
+          tabOrder: 0,
+          isCollapsed: false,
+          color: null,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ]
+    })
+    state.settings!.chatSidebar = { groupBy: 'folder', showOnlyInProgress: true }
+    const done = chatRow({ id: 'done-seolocal', folder: 'SEOlocal', completed: true, tabId: null })
+    expect(chatSidebarListItems([done], state, '')).toMatchObject([
+      { kind: 'heading', id: 'chat:folder:SEOlocal', label: 'SEOlocal (0)' }
+    ])
+    expect(chatSidebarListItems([], state, '')).toMatchObject([
+      { kind: 'heading', id: 'chat:folder:SEOlocal', label: 'SEOlocal (0)' }
+    ])
+  })
+
   it('does not expand a folder for an unprompted working startup snapshot', () => {
     const state = chatState()
     state.settings!.chatSidebar = { groupBy: 'folder', collapseDoneFolders: true }

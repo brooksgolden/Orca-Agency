@@ -3,7 +3,7 @@ import {
   type ChatSidebarRow,
   type ChatSidebarState
 } from './chat-sidebar-types'
-import { hiddenChatFolderLabels } from './chat-creation-folders'
+import { chatCreationFolders, hiddenChatFolderLabels } from './chat-creation-folders'
 import { chatSidebarSplitGroups, type FocusedChatWorkspace } from './chat-sidebar-split-groups'
 import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
 import { chatSidebarPaneGroups, type ChatPaneLayout } from './chat-sidebar-pane-groups'
@@ -56,6 +56,7 @@ export function chatSidebarListItems(
       folderCompletion.set(row.folder, (folderCompletion.get(row.folder) ?? true) && row.completed)
     }
   }
+  const registeredFolders = chatCreationFolders(state.projectGroups).map((folder) => folder.name)
   for (const row of rows) {
     if (
       row.automated ||
@@ -139,13 +140,22 @@ export function chatSidebarListItems(
                   !hiddenFolders.includes(folder) &&
                   !visibleFolders.has(folder) &&
                   (!text || folder.toLocaleLowerCase().includes(text))
+              ),
+              ...registeredFolders.filter(
+                (folder) =>
+                  !hiddenFolders.includes(folder) &&
+                  !visibleFolders.has(folder) &&
+                  (!text || folder.toLocaleLowerCase().includes(text))
               )
             ])
           ]
         : [...sections.keys()]
   return keys.flatMap((key): ChatSidebarListItem[] => {
     const section = sections.get(key) ?? []
-    if (!section.length && (groupBy !== 'folder' || !folderCompletion.has(key))) {
+    if (
+      !section.length &&
+      (groupBy !== 'folder' || (!folderCompletion.has(key) && !registeredFolders.includes(key)))
+    ) {
       return []
     }
     const headingId = `chat:${groupBy}:${key}`
