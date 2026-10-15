@@ -100,7 +100,8 @@ export function buildCodexAccountRestartStartup(args: {
       ? { ompResumeFilePath: launchConfig.ompResumeFilePath }
       : {}),
     platform: resumeTarget.platform,
-    shell: resumeTarget.shell
+    shell: resumeTarget.shell,
+    resumeInLaunchCwd: true
   })
   if (!startupPlan) {
     return CODEX_ACCOUNT_RESTART_STARTUP
