@@ -42,7 +42,7 @@ export default function TabGroupPanel({
   isVisible,
   isFocused,
   hasSplitGroups,
-  fillAvailableTabStrip = false,
+  showWorkspacePaneCloseButton = !hasSplitGroups,
   tabStrip = 'attached',
   markdownAnnotationsEnabled = true,
   touchesRightEdge,
@@ -61,7 +61,7 @@ export default function TabGroupPanel({
   isVisible: boolean
   isFocused: boolean
   hasSplitGroups: boolean
-  fillAvailableTabStrip?: boolean
+  showWorkspacePaneCloseButton?: boolean
   tabStrip?: TabGroupPanelTabStrip
   /** Off for scratch workspaces (the floating panel) whose markdown is not a review surface. */
   markdownAnnotationsEnabled?: boolean
@@ -134,7 +134,6 @@ export default function TabGroupPanel({
 
   const tabBar = (
     <TabBar
-      fillAvailableWidth={fillAvailableTabStrip}
       tabs={terminalTabs}
       activeTabId={
         activeTab?.contentType === 'terminal'
@@ -349,7 +348,9 @@ export default function TabGroupPanel({
                   </Tooltip>
                 ) : null}
               </div>
-              {!hasSplitGroups ? <WorkspacePaneCloseButton worktreeId={worktreeId} /> : null}
+              {showWorkspacePaneCloseButton ? (
+                <WorkspacePaneCloseButton worktreeId={worktreeId} />
+              ) : null}
             </div>
             {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the floating right-sidebar toggle + window controls clickable. */}
             {reserveClosedExplorerToggleSpace && !rightSidebarOpen ? (

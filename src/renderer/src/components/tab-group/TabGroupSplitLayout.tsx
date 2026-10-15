@@ -10,7 +10,6 @@ export default function TabGroupSplitLayout({
   focusedGroupId,
   isWorktreeActive,
   isWorktreeFocused = isWorktreeActive,
-  fillAvailableTabStrip = false,
   reserveLeftWindowChrome = true,
   reserveRightWindowChrome = true
 }: {
@@ -19,7 +18,6 @@ export default function TabGroupSplitLayout({
   focusedGroupId?: string
   isWorktreeActive: boolean
   isWorktreeFocused?: boolean
-  fillAvailableTabStrip?: boolean
   reserveLeftWindowChrome?: boolean
   reserveRightWindowChrome?: boolean
 }): React.JSX.Element {
@@ -54,7 +52,6 @@ export default function TabGroupSplitLayout({
               focusedGroupId={focusedGroupId}
               isWorktreeActive={isWorktreeActive}
               isWorktreeFocused={isWorktreeFocused}
-              fillAvailableTabStrip={fillAvailableTabStrip}
               reserveLeftWindowChrome={reserveLeftWindowChrome}
               reserveRightWindowChrome={reserveRightWindowChrome}
               isTabDragActive={isTabDragActive}

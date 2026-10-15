@@ -339,13 +339,12 @@ describe('TabBar context menu wiring', () => {
     expect(sortable[0].props.tabCount).toBe(2)
   })
 
-  it('lets the tab strip use the available header width without changing tab sizes', async () => {
+  it('lets tabs use the available header width without consuming the pane drag surface', async () => {
     const element = await renderTabBar({
       tabs: [TERMINAL_TAB],
       editorFiles: [EDITOR_FILE],
       browserTabs: [],
-      tabBarOrder: ['term-1', 'unified-editor-1'],
-      fillAvailableWidth: true
+      tabBarOrder: ['term-1', 'unified-editor-1']
     })
     const divs = findChildrenByType(element, 'div')
     const stripWrapper = divs.find((candidate) =>
@@ -358,8 +357,7 @@ describe('TabBar context menu wiring', () => {
     expect(stripWrapper).toBeTruthy()
     expect(stripWrapper?.props.className).toContain('min-w-0')
     expect(stripWrapper?.props.className).toContain('max-w-full')
-    expect(stripWrapper?.props.className).toContain('flex-1')
-    expect(stripWrapper?.props.className).not.toContain('flex-[0_1_auto]')
+    expect(stripWrapper?.props.className).toContain('flex-[0_1_auto]')
     expect(strip).toBeTruthy()
     expect(strip?.props.className).toContain('min-w-0')
     expect(strip?.props.className).toContain('flex-1')

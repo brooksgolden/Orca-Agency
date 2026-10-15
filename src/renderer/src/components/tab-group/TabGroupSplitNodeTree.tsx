@@ -145,7 +145,6 @@ function SplitNode({
   isWorktreeActive,
   isWorktreeFocused,
   hasSplitGroups,
-  fillAvailableTabStrip,
   reserveLeftWindowChrome,
   reserveRightWindowChrome,
   tabStrip,
@@ -167,7 +166,6 @@ function SplitNode({
   isWorktreeActive: boolean
   isWorktreeFocused: boolean
   hasSplitGroups: boolean
-  fillAvailableTabStrip: boolean
   reserveLeftWindowChrome: boolean
   reserveRightWindowChrome: boolean
   tabStrip: TabGroupPanelTabStrip
@@ -205,7 +203,7 @@ function SplitNode({
         suppressLeftBorder={suppressLeftBorder}
         suppressRightBorder={suppressRightBorder}
         suppressBottomBorder={suppressBottomBorder}
-        fillAvailableTabStrip={fillAvailableTabStrip}
+        showWorkspacePaneCloseButton={touchesTopEdge && touchesRightEdge}
         reserveClosedExplorerToggleSpace={
           reserveRightWindowChrome && touchesTopEdge && touchesRightEdge
         }
@@ -237,7 +235,6 @@ function SplitNode({
           isWorktreeActive={isWorktreeActive}
           isWorktreeFocused={isWorktreeFocused}
           hasSplitGroups={hasSplitGroups}
-          fillAvailableTabStrip={fillAvailableTabStrip}
           reserveLeftWindowChrome={reserveLeftWindowChrome}
           reserveRightWindowChrome={reserveRightWindowChrome}
           tabStrip={tabStrip}
@@ -269,7 +266,6 @@ function SplitNode({
           isWorktreeActive={isWorktreeActive}
           isWorktreeFocused={isWorktreeFocused}
           hasSplitGroups={hasSplitGroups}
-          fillAvailableTabStrip={fillAvailableTabStrip}
           reserveLeftWindowChrome={reserveLeftWindowChrome}
           reserveRightWindowChrome={reserveRightWindowChrome}
           tabStrip={tabStrip}
@@ -308,7 +304,6 @@ export function TabGroupSplitNodeTree({
   tabStrip = 'attached',
   markdownAnnotationsEnabled = true,
   rootTouchesBottomEdge = false,
-  fillAvailableTabStrip = false,
   reserveLeftWindowChrome = true,
   reserveRightWindowChrome = true
 }: {
@@ -324,7 +319,6 @@ export function TabGroupSplitNodeTree({
   markdownAnnotationsEnabled?: boolean
   /** True when the host's own chrome bounds the tree's bottom edge (no border-b to paint). */
   rootTouchesBottomEdge?: boolean
-  fillAvailableTabStrip?: boolean
   reserveLeftWindowChrome?: boolean
   reserveRightWindowChrome?: boolean
 }): React.JSX.Element {
@@ -337,7 +331,6 @@ export function TabGroupSplitNodeTree({
       isWorktreeActive={isWorktreeActive}
       isWorktreeFocused={isWorktreeFocused}
       hasSplitGroups={layout.type === 'split'}
-      fillAvailableTabStrip={fillAvailableTabStrip}
       reserveLeftWindowChrome={reserveLeftWindowChrome}
       reserveRightWindowChrome={reserveRightWindowChrome}
       tabStrip={tabStrip}

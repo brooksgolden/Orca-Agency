@@ -125,7 +125,6 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
           focusedGroupId={focusedGroupId}
           isWorktreeActive={isVisible}
           isWorktreeFocused={isFocused}
-          fillAvailableTabStrip={isMultiPane}
           reserveLeftWindowChrome={reserveLeftWindowChrome}
           reserveRightWindowChrome={reserveRightWindowChrome}
         />

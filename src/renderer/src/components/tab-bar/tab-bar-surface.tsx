@@ -1,5 +1,4 @@
 import React from 'react'
-import { cn } from '@/lib/utils'
 import { SortableContext } from '@dnd-kit/sortable'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
@@ -143,10 +142,7 @@ export function renderTabBarSurface({
       <SortableContext items={sortableIds}>
         {/* Why: no-drag lets tab interactions work inside the titlebar's drag region (outer container stays window-draggable). */}
         <div
-          className={cn(
-            'group/tab-strip relative flex min-h-0 min-w-0 max-w-full',
-            props.fillAvailableWidth ? 'flex-1' : 'flex-[0_1_auto]'
-          )}
+          className="group/tab-strip relative flex min-h-0 min-w-0 max-w-full flex-[0_1_auto]"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <div

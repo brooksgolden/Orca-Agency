@@ -136,4 +136,25 @@ describe('TabGroupPanel editor area OS file drops', () => {
     fireEvent.click(view.getByRole('button', { name: 'Remove workspace from split' }))
     expect(mocks.useAppStore.getState().unsplitWorkspace).toHaveBeenCalledWith('wt-b')
   })
+
+  it('keeps the workspace pane close control in the top-right internal split header', () => {
+    const view = render(
+      <TooltipProvider>
+        <TabGroupPanel
+          groupId="group-b"
+          worktreeId="wt-b"
+          isVisible
+          isFocused
+          hasSplitGroups
+          showWorkspacePaneCloseButton
+          touchesLeftEdge={false}
+          touchesRightEdge
+          reserveClosedExplorerToggleSpace={false}
+          reserveCollapsedSidebarHeaderSpace={false}
+        />
+      </TooltipProvider>
+    )
+    fireEvent.click(view.getByRole('button', { name: 'Remove workspace from split' }))
+    expect(mocks.useAppStore.getState().unsplitWorkspace).toHaveBeenCalledWith('wt-b')
+  })
 })
