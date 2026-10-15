@@ -175,7 +175,7 @@ describe('keeping live chats after their tab closes', () => {
       ...previous,
       cwd: '/new',
       filePath: '/home/me/.claude/projects/-new/c1.jsonl',
-      updatedAt: new Date(Date.parse(base.updatedAt) + 1_000).toISOString()
+      updatedAt: new Date(Date.parse(base.updatedAt ?? base.modifiedAt) + 1_000).toISOString()
     }
     expect(freshestChatSnapshot(previous, current, true)).toMatchObject({
       cwd: '/new',

@@ -145,6 +145,9 @@ function SplitNode({
   isWorktreeActive,
   isWorktreeFocused,
   hasSplitGroups,
+  fillAvailableTabStrip,
+  reserveLeftWindowChrome,
+  reserveRightWindowChrome,
   tabStrip,
   markdownAnnotationsEnabled,
   touchesTopEdge,
@@ -164,6 +167,9 @@ function SplitNode({
   isWorktreeActive: boolean
   isWorktreeFocused: boolean
   hasSplitGroups: boolean
+  fillAvailableTabStrip: boolean
+  reserveLeftWindowChrome: boolean
+  reserveRightWindowChrome: boolean
   tabStrip: TabGroupPanelTabStrip
   markdownAnnotationsEnabled: boolean
   touchesTopEdge: boolean
@@ -199,8 +205,13 @@ function SplitNode({
         suppressLeftBorder={suppressLeftBorder}
         suppressRightBorder={suppressRightBorder}
         suppressBottomBorder={suppressBottomBorder}
-        reserveClosedExplorerToggleSpace={touchesTopEdge && touchesRightEdge}
-        reserveCollapsedSidebarHeaderSpace={touchesTopEdge && touchesLeftEdge}
+        fillAvailableTabStrip={fillAvailableTabStrip}
+        reserveClosedExplorerToggleSpace={
+          reserveRightWindowChrome && touchesTopEdge && touchesRightEdge
+        }
+        reserveCollapsedSidebarHeaderSpace={
+          reserveLeftWindowChrome && touchesTopEdge && touchesLeftEdge
+        }
         isTabDragActive={isTabDragActive}
         hoveredTabInsertion={
           hoveredTabInsertion?.groupId === node.groupId ? hoveredTabInsertion : null
@@ -226,6 +237,9 @@ function SplitNode({
           isWorktreeActive={isWorktreeActive}
           isWorktreeFocused={isWorktreeFocused}
           hasSplitGroups={hasSplitGroups}
+          fillAvailableTabStrip={fillAvailableTabStrip}
+          reserveLeftWindowChrome={reserveLeftWindowChrome}
+          reserveRightWindowChrome={reserveRightWindowChrome}
           tabStrip={tabStrip}
           markdownAnnotationsEnabled={markdownAnnotationsEnabled}
           touchesTopEdge={touchesTopEdge}
@@ -255,6 +269,9 @@ function SplitNode({
           isWorktreeActive={isWorktreeActive}
           isWorktreeFocused={isWorktreeFocused}
           hasSplitGroups={hasSplitGroups}
+          fillAvailableTabStrip={fillAvailableTabStrip}
+          reserveLeftWindowChrome={reserveLeftWindowChrome}
+          reserveRightWindowChrome={reserveRightWindowChrome}
           tabStrip={tabStrip}
           markdownAnnotationsEnabled={markdownAnnotationsEnabled}
           touchesTopEdge={isHorizontal ? touchesTopEdge : false}
@@ -290,7 +307,10 @@ export function TabGroupSplitNodeTree({
   hoveredTabInsertion,
   tabStrip = 'attached',
   markdownAnnotationsEnabled = true,
-  rootTouchesBottomEdge = false
+  rootTouchesBottomEdge = false,
+  fillAvailableTabStrip = false,
+  reserveLeftWindowChrome = true,
+  reserveRightWindowChrome = true
 }: {
   layout: TabGroupLayoutNode
   worktreeId: string
@@ -304,6 +324,9 @@ export function TabGroupSplitNodeTree({
   markdownAnnotationsEnabled?: boolean
   /** True when the host's own chrome bounds the tree's bottom edge (no border-b to paint). */
   rootTouchesBottomEdge?: boolean
+  fillAvailableTabStrip?: boolean
+  reserveLeftWindowChrome?: boolean
+  reserveRightWindowChrome?: boolean
 }): React.JSX.Element {
   return (
     <SplitNode
@@ -314,6 +337,9 @@ export function TabGroupSplitNodeTree({
       isWorktreeActive={isWorktreeActive}
       isWorktreeFocused={isWorktreeFocused}
       hasSplitGroups={layout.type === 'split'}
+      fillAvailableTabStrip={fillAvailableTabStrip}
+      reserveLeftWindowChrome={reserveLeftWindowChrome}
+      reserveRightWindowChrome={reserveRightWindowChrome}
       tabStrip={tabStrip}
       markdownAnnotationsEnabled={markdownAnnotationsEnabled}
       touchesTopEdge={true}

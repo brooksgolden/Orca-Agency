@@ -339,16 +339,17 @@ describe('TabBar context menu wiring', () => {
     expect(sortable[0].props.tabCount).toBe(2)
   })
 
-  it('keeps the tab strip content-sized until horizontal scrolling is needed', async () => {
+  it('lets the tab strip use the available header width without changing tab sizes', async () => {
     const element = await renderTabBar({
       tabs: [TERMINAL_TAB],
       editorFiles: [EDITOR_FILE],
       browserTabs: [],
-      tabBarOrder: ['term-1', 'unified-editor-1']
+      tabBarOrder: ['term-1', 'unified-editor-1'],
+      fillAvailableWidth: true
     })
     const divs = findChildrenByType(element, 'div')
     const stripWrapper = divs.find((candidate) =>
-      String(candidate.props.className ?? '').includes('flex-[0_1_auto]')
+      String(candidate.props.className ?? '').includes('group/tab-strip')
     )
     const strip = divs.find((candidate) =>
       String(candidate.props.className ?? '').includes('terminal-tab-strip')
@@ -357,11 +358,21 @@ describe('TabBar context menu wiring', () => {
     expect(stripWrapper).toBeTruthy()
     expect(stripWrapper?.props.className).toContain('min-w-0')
     expect(stripWrapper?.props.className).toContain('max-w-full')
+    expect(stripWrapper?.props.className).toContain('flex-1')
+    expect(stripWrapper?.props.className).not.toContain('flex-[0_1_auto]')
     expect(strip).toBeTruthy()
     expect(strip?.props.className).toContain('min-w-0')
     expect(strip?.props.className).toContain('flex-1')
     expect(strip?.props.className).toContain('overflow-x-auto')
     expect(strip?.props.className).not.toContain('scrollbar-sleek')
+  })
+
+  it('keeps the ordinary title bar space available for window dragging', async () => {
+    const element = await renderTabBar({ tabs: [TERMINAL_TAB] })
+    const wrapper = findChildrenByType(element, 'div').find((candidate) =>
+      String(candidate.props.className ?? '').includes('group/tab-strip')
+    )
+    expect(wrapper?.props.className).toContain('flex-[0_1_auto]')
   })
 
   it('passes the editor unifiedTabId when EditorFileTab triggers onCloseToRight', async () => {

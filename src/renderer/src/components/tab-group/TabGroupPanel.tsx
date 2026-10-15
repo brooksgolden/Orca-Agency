@@ -26,6 +26,7 @@ import { useClientHostedBrowserRows } from '@/lib/pane-manager/client-hosted-bro
 import { resolveClientHostedBrowserRowStripGroupId } from '../tab-bar/client-hosted-browser-row-strip-placement'
 import { useEditorGroupFileDropOwner } from '../editor/use-editor-group-file-drop-owner'
 import { useWorkspaceHeaderDrag } from '../workspace-split/use-workspace-header-drag'
+import { WorkspacePaneCloseButton } from '../workspace-split/WorkspacePaneCloseButton'
 
 const EditorPanel = lazy(() => import('../editor/EditorPanel'))
 const EMPTY_GROUPS: readonly TabGroup[] = []
@@ -41,6 +42,7 @@ export default function TabGroupPanel({
   isVisible,
   isFocused,
   hasSplitGroups,
+  fillAvailableTabStrip = false,
   tabStrip = 'attached',
   markdownAnnotationsEnabled = true,
   touchesRightEdge,
@@ -59,6 +61,7 @@ export default function TabGroupPanel({
   isVisible: boolean
   isFocused: boolean
   hasSplitGroups: boolean
+  fillAvailableTabStrip?: boolean
   tabStrip?: TabGroupPanelTabStrip
   /** Off for scratch workspaces (the floating panel) whose markdown is not a review surface. */
   markdownAnnotationsEnabled?: boolean
@@ -131,6 +134,7 @@ export default function TabGroupPanel({
 
   const tabBar = (
     <TabBar
+      fillAvailableWidth={fillAvailableTabStrip}
       tabs={terminalTabs}
       activeTabId={
         activeTab?.contentType === 'terminal'
@@ -319,9 +323,7 @@ export default function TabGroupPanel({
                               'auto.components.tab.group.TabGroupPanel.9acaf92093',
                               'Pane Actions'
                             )}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                            }}
+                            onClick={(event) => event.stopPropagation()}
                             className={menuButtonClassName}
                           >
                             <Ellipsis className="size-4" />
@@ -329,12 +331,7 @@ export default function TabGroupPanel({
                         </DropdownMenuTrigger>
                       </TooltipTrigger>
                       <DropdownMenuContent align="end" side="bottom" sideOffset={4}>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onSelect={() => {
-                            commands.closeGroup()
-                          }}
-                        >
+                        <DropdownMenuItem variant="destructive" onSelect={commands.closeGroup}>
                           <X className="size-4" />
                           {translate(
                             'auto.components.tab.group.TabGroupPanel.closePaneColumn',
@@ -352,6 +349,7 @@ export default function TabGroupPanel({
                   </Tooltip>
                 ) : null}
               </div>
+              {!hasSplitGroups ? <WorkspacePaneCloseButton worktreeId={worktreeId} /> : null}
             </div>
             {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the floating right-sidebar toggle + window controls clickable. */}
             {reserveClosedExplorerToggleSpace && !rightSidebarOpen ? (
