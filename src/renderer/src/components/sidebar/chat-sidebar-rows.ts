@@ -77,17 +77,12 @@ export function buildChatSidebarRows(
       chatPreference(settings?.sessions, row)?.createdAt ??
       (Number.isFinite(sessionCreatedAt) ? sessionCreatedAt : tab?.createdAt)
     const identities = [row.id, ...row.aliases, ...(row.sessionKey ? [row.sessionKey] : [])]
-    const providerCreatedAt = Date.parse(row.session?.createdAt ?? '')
-    const manuallyReopenedAutomationSession =
-      !!tab &&
-      !row.worktree.automationProvenance &&
-      Number.isFinite(providerCreatedAt) &&
-      tab.createdAt > providerCreatedAt
-    // An automation owns its original tab and provider history. A later tab that the user
-    // opens for that provider session is a separate, navigable chat, even if older sidebar
-    // writes copied the automation marker onto its tab and pane fallback identities.
+    const userResumedTab =
+      !!row.tabId &&
+      settings?.userResumedTabs?.includes(chatFallbackId(row.hostId, row.tabId)) === true
+    // An explicit user resume overrides old automation markers only for that exact tab.
     row.automated =
-      !manuallyReopenedAutomationSession && identities.some((id) => automationChats.has(id))
+      !userResumedTab && identities.some((id) => automationChats.has(id))
     // Why: hiding old history must not hide a conversation the user opens again.
     if (!row.tabId && identities.some((id) => hidden.has(id))) {
       return

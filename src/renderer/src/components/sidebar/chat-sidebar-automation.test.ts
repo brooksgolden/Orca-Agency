@@ -3,6 +3,8 @@ import { buildChatSidebarRows } from './chat-sidebar-rows'
 import { chatSidebarPreferencePatch } from './chat-sidebar-identity'
 import { chatFallbackId, chatSessionKey } from './chat-sidebar-types'
 import { chatState, chatTab, chatSession, chatWorktree } from './chat-sidebar-test-fixtures'
+import { makeFolderWorkspace } from '@/store/slices/worktrees-slice-test-fixtures'
+import { folderWorkspaceToWorktree } from '../../../../shared/folder-workspace-worktree'
 
 describe('automation runs in Chats', () => {
   it('never lists a workspace created by an automation before the provider hook arrives', () => {
@@ -43,11 +45,16 @@ describe('automation runs in Chats', () => {
       createdAt: 10_000,
       aiVaultTitle: { agent: 'codex', sessionId: 'shared', title: 'Manatal audit' }
     })
-    const otherWorktree = { ...chatWorktree, id: 'manual-workspace', displayName: 'Manatal' }
+    const lateAutomationTab = chatTab('late-automation', {
+      createdAt: 11_000,
+      aiVaultTitle: { agent: 'codex', sessionId: 'shared', title: 'Manatal audit' }
+    })
+    const folder = makeFolderWorkspace({ id: 'manual-workspace', folderPath: '/clients/Acme' })
+    const otherWorktree = folderWorkspaceToWorktree(folder)
     const state = chatState({
-      worktreesByRepo: { repo: [chatWorktree, otherWorktree] },
+      folderWorkspaces: [folder],
       tabsByWorktree: {
-        [chatWorktree.id]: [original],
+        [chatWorktree.id]: [original, lateAutomationTab],
         [otherWorktree.id]: [{ ...reopened, worktreeId: otherWorktree.id }]
       }
     })
@@ -57,11 +64,16 @@ describe('automation runs in Chats', () => {
       automationChats: [
         key,
         chatFallbackId('local', 'scheduled'),
+        chatFallbackId('local', 'late-automation'),
         // Older preference writes also marked the manually reopened tab as automated.
         chatFallbackId('local', 'reopened')
-      ]
+      ],
+      userResumedTabs: [chatFallbackId('local', 'reopened')]
     }
     const session = chatSession('shared', { createdAt: new Date(2_000).toISOString() })
+    state.settings!.chatSidebar.userResumedTabs = []
+    expect(buildChatSidebarRows(state, [session], 12_000)).toEqual([])
+    state.settings!.chatSidebar.userResumedTabs = [chatFallbackId('local', 'reopened')]
     expect(buildChatSidebarRows(state, [session], 12_000).map((row) => row.tabId)).toEqual([
       'reopened'
     ])
