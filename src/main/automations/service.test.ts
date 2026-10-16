@@ -93,7 +93,7 @@ describe('AutomationService', () => {
     )
   })
 
-  it('defers a scheduled local agent while the computer is busy, then retries without a new run', async () => {
+  it('persists a deferred local occurrence through restart and runs it after the normal grace', async () => {
     vi.setSystemTime(new Date('2026-05-13T08:59:00'))
     const store = await createStore()
     store.addRepo(makeRepo())
@@ -120,12 +120,22 @@ describe('AutomationService', () => {
     service.start()
     service.setRendererReady()
     await vi.waitFor(() => expect(localScheduleReady).toHaveBeenCalled())
-    expect(store.listAutomationRuns(automation.id)).toHaveLength(0)
+    await vi.waitFor(() => expect(store.listAutomationRuns(automation.id)).toHaveLength(1))
+    expect(store.listAutomationRuns(automation.id)[0]?.status).toBe('pending')
     expect(send).not.toHaveBeenCalled()
-    ready = true
-    await vi.advanceTimersByTimeAsync(120_000)
-    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
     service.stop()
+    vi.setSystemTime(new Date('2026-05-13T12:01:00'))
+    ready = true
+    const resumed = new AutomationService(store, { tickMs: 60_000, localScheduleReady })
+    resumed.setWebContents({ isDestroyed: () => false, send } as never)
+    resumed.start()
+    resumed.setRendererReady()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    expect(store.listAutomationRuns(automation.id)).toHaveLength(1)
+    expect(store.listAutomationRuns(automation.id)[0]?.scheduledFor).toBe(
+      new Date('2026-05-13T09:00:00').getTime()
+    )
+    resumed.stop()
   })
 
   it('returns the persisted status for manual runs after dispatch is requested', async () => {

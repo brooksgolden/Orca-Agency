@@ -27,8 +27,6 @@ import { createAutomationRunWriter, type AutomationRunWriter } from './automatio
 import { reportAutomationScheduleDrift } from './schedule-drift-report'
 import {
   describeScheduledRefusal,
-  missedBeyondGrace,
-  recordMissedRun,
   recordRefusedAutomationRun,
   recordUnevaluableAutomation
 } from './dispatch-refusal'
@@ -36,7 +34,7 @@ import type {
   AutomationsChangedPayload,
   PublishAutomationsChanged
 } from '../../shared/runtime-client-events'
-import { canStartScheduledLocalAutomation } from './local-schedule-gate'
+import { prepareScheduledAutomation } from './local-schedule-gate'
 
 const DEFAULT_TICK_MS = 60 * 1000
 
@@ -271,17 +269,15 @@ export class AutomationService {
 
   private async evaluateAutomation(automation: Automation, now: number): Promise<void> {
     const generation = this.dispatchGeneration
-    if (!canStartScheduledLocalAutomation(automation, this.store, this.localScheduleReady)) {
-      return
-    }
-    const scheduledFor = this.store.getLatestAutomationOccurrence(automation, now)
+    const scheduledFor = await prepareScheduledAutomation({
+      automation,
+      store: this.store,
+      runs: this.runs,
+      ready: this.localScheduleReady,
+      now,
+      tickMs: this.tickMs
+    })
     if (scheduledFor === null) {
-      await this.runs.advanceNextRun(automation.id, now)
-      return
-    }
-    if (missedBeyondGrace({ automation, scheduledFor, now, tickMs: this.tickMs })) {
-      await recordMissedRun({ runs: this.runs, automation, scheduledFor })
-      await this.runs.advanceNextRun(automation.id, now)
       return
     }
 
