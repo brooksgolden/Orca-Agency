@@ -36,6 +36,7 @@ import type {
   AutomationsChangedPayload,
   PublishAutomationsChanged
 } from '../../shared/runtime-client-events'
+import { canStartScheduledLocalAutomation } from './local-schedule-gate'
 
 const DEFAULT_TICK_MS = 60 * 1000
 
@@ -52,6 +53,7 @@ export class AutomationService {
   private readonly codexUsage: CodexUsageStore | null
   private readonly allowRemoteHostScheduling: boolean
   private readonly headlessDispatcher: HeadlessAutomationDispatcher | null
+  private readonly localScheduleReady: (() => boolean) | null
   /** Set on a headless host: closes completed, unused run terminals now; resolves how many. */
   releaseFinishedRunTerminals: (() => Promise<number>) | null = null
   private readonly publish: PublishAutomationsChanged | null
@@ -70,6 +72,8 @@ export class AutomationService {
       codexUsage?: CodexUsageStore
       allowRemoteHostScheduling?: boolean
       headlessDispatcher?: HeadlessAutomationDispatcher
+      /** Desktop-only resource gate; manual Run now remains an explicit user action. */
+      localScheduleReady?: () => boolean
       terminalObserver?: AutomationRunTerminalObserver
       onAutomationsChanged?: PublishAutomationsChanged
     } = {}
@@ -80,6 +84,7 @@ export class AutomationService {
     this.codexUsage = opts.codexUsage ?? null
     this.allowRemoteHostScheduling = opts.allowRemoteHostScheduling ?? false
     this.headlessDispatcher = opts.headlessDispatcher ?? null
+    this.localScheduleReady = opts.localScheduleReady ?? null
     this.publish = opts.onAutomationsChanged ?? null
     this.runs = createAutomationRunWriter(store, this.publish)
     this.completionWatcher = opts.terminalObserver
@@ -266,6 +271,9 @@ export class AutomationService {
 
   private async evaluateAutomation(automation: Automation, now: number): Promise<void> {
     const generation = this.dispatchGeneration
+    if (!canStartScheduledLocalAutomation(automation, this.store, this.localScheduleReady)) {
+      return
+    }
     const scheduledFor = this.store.getLatestAutomationOccurrence(automation, now)
     if (scheduledFor === null) {
       await this.runs.advanceNextRun(automation.id, now)

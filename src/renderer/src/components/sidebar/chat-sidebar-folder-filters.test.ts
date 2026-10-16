@@ -50,6 +50,16 @@ describe('chat sidebar folder filters', () => {
     expect(chatSidebarListItems([], state, '')).toMatchObject([
       { kind: 'heading', id: 'chat:folder:SEOlocal', label: 'SEOlocal (0)' }
     ])
+    state.settings!.chatSidebar = { groupBy: 'folder', showOnlyOpenChats: true }
+    expect(chatSidebarListItems([], state, '')).toEqual([])
+    state.settings!.chatSidebar = {
+      groupBy: 'folder',
+      showOnlyOpenChats: true,
+      showOnlyInProgress: true
+    }
+    expect(chatSidebarListItems([], state, '')).toMatchObject([
+      { kind: 'heading', id: 'chat:folder:SEOlocal', label: 'SEOlocal (0)' }
+    ])
   })
 
   it('does not expand a folder for an unprompted working startup snapshot', () => {

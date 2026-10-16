@@ -45,6 +45,7 @@ export function chatSidebarListItems(
 ): ChatSidebarListItem[] {
   const settings = state.settings?.chatSidebar
   const groupBy = settings?.groupBy ?? 'status'
+  const keepEmptyFolders = !settings?.showOnlyOpenChats || settings.showOnlyInProgress === true
   const text = query.trim().toLocaleLowerCase()
   const hiddenFolders = hiddenChatFolderLabels(settings?.hiddenFolders, state.projectGroups)
   const matches = (row: ChatSidebarRow) =>
@@ -142,13 +143,13 @@ export function chatSidebarListItems(
         ? [
             ...new Set([
               ...sections.keys(),
-              ...[...folderCompletion.keys()].filter(
+              ...(keepEmptyFolders ? [...folderCompletion.keys()] : []).filter(
                 (folder) =>
                   !hiddenFolders.includes(folder) &&
                   !visibleFolders.has(folder) &&
                   (!text || folder.toLocaleLowerCase().includes(text))
               ),
-              ...registeredFolders.filter(
+              ...(keepEmptyFolders ? registeredFolders : []).filter(
                 (folder) =>
                   !hiddenFolders.includes(folder) &&
                   !visibleFolders.has(folder) &&
@@ -161,7 +162,9 @@ export function chatSidebarListItems(
     const section = sections.get(key) ?? []
     if (
       !section.length &&
-      (groupBy !== 'folder' || (!folderCompletion.has(key) && !registeredFolders.includes(key)))
+      (groupBy !== 'folder' ||
+        !keepEmptyFolders ||
+        (!folderCompletion.has(key) && !registeredFolders.includes(key)))
     ) {
       return []
     }

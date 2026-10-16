@@ -93,6 +93,41 @@ describe('AutomationService', () => {
     )
   })
 
+  it('defers a scheduled local agent while the computer is busy, then retries without a new run', async () => {
+    vi.setSystemTime(new Date('2026-05-13T08:59:00'))
+    const store = await createStore()
+    store.addRepo(makeRepo())
+    const automation = store.createAutomation({
+      name: 'Quiet check',
+      prompt: 'Check the repo',
+      agentId: 'codex',
+      projectId: 'r1',
+      workspaceMode: 'existing',
+      workspaceId: 'wt1',
+      timezone: 'UTC',
+      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+      dtstart: new Date('2026-05-12T00:00:00').getTime()
+    })
+    vi.setSystemTime(new Date('2026-05-13T09:01:00'))
+    let ready = false
+    const localScheduleReady = vi.fn(() => ready)
+    const send = vi.fn()
+    const service = new AutomationService(store, {
+      tickMs: 60_000,
+      localScheduleReady
+    })
+    service.setWebContents({ isDestroyed: () => false, send } as never)
+    service.start()
+    service.setRendererReady()
+    await vi.waitFor(() => expect(localScheduleReady).toHaveBeenCalled())
+    expect(store.listAutomationRuns(automation.id)).toHaveLength(0)
+    expect(send).not.toHaveBeenCalled()
+    ready = true
+    await vi.advanceTimersByTimeAsync(120_000)
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    service.stop()
+  })
+
   it('returns the persisted status for manual runs after dispatch is requested', async () => {
     vi.setSystemTime(new Date('2026-05-13T08:00:00Z'))
     const store = await createStore()

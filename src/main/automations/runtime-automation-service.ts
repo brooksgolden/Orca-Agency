@@ -20,6 +20,9 @@ import {
 } from '../../shared/tui-agent-config'
 import { buildHeadlessAutomationWorktreeCreateArgs } from './headless-workspace-create'
 import { createRuntimeAutomationRunTerminalObserver } from './runtime-terminal-run-observer'
+import { agentHookServer } from '../agent-hooks/server'
+import { recordAutomationProviderSessionOwnership } from './chat-ownership'
+import { lowerLocalAutomationProcessPriority } from './local-automation-process-priority'
 
 const MAX_REMEMBERED_LAUNCHES = 256
 
@@ -32,6 +35,7 @@ export function createRuntimeAutomationService(input: {
   headless: boolean
   /** Desktop runs can use background dispatch without claiming remote-host schedules. */
   dispatchHeadlessly?: boolean
+  localScheduleReady?: () => boolean
 }): AutomationService {
   const { store, runtime, claudeUsage, codexUsage } = input
   // The handle each headless launch returned, so its watcher never depends on a pane-key lookup.
@@ -56,6 +60,7 @@ export function createRuntimeAutomationService(input: {
     },
     onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
     allowRemoteHostScheduling: input.headless,
+    localScheduleReady: input.localScheduleReady,
     headlessDispatcher:
       input.headless || input.dispatchHeadlessly
         ? async ({ automation, run, target }) => {
@@ -135,6 +140,7 @@ export function createRuntimeAutomationService(input: {
                 workspaceDisplayName = worktree.displayName ?? null
               }
             }
+            await lowerLocalAutomationProcessPriority(terminalPtyId)
             if (terminalPaneKey) {
               launchedHandles.set(terminalPaneKey, terminalHandle)
               if (launchedHandles.size > MAX_REMEMBERED_LAUNCHES) {
@@ -156,7 +162,26 @@ export function createRuntimeAutomationService(input: {
   if (input.headless || input.dispatchHeadlessly) {
     bindHeadlessRunTerminalRetention(service, store, runtime)
   }
+  bindAutomationProviderOwnership(service, store)
   return service
+}
+
+function bindAutomationProviderOwnership(service: AutomationService, store: Store): void {
+  let unsubscribe: (() => void) | null = null
+  const start = service.start.bind(service)
+  const stop = service.stop.bind(service)
+  service.start = () => {
+    start()
+    unsubscribe ??= agentHookServer.subscribeProviderSessionChanges((providers) => {
+      recordAutomationProviderSessionOwnership(store, providers)
+    })
+    recordAutomationProviderSessionOwnership(store, agentHookServer.getProviderSessionIdentities())
+  }
+  service.stop = () => {
+    unsubscribe?.()
+    unsubscribe = null
+    stop()
+  }
 }
 
 function findReusableRunTerminal(input: {

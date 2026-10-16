@@ -1,5 +1,7 @@
 import type { AutomationService } from '../automations/service'
 import { createRuntimeAutomationService } from '../automations/runtime-automation-service'
+import { powerMonitor } from 'electron'
+import { freemem } from 'node:os'
 import { mainProcessState as state } from './main-process-state'
 
 export function initializeMainProcessAutomations(): AutomationService {
@@ -17,7 +19,14 @@ export function initializeMainProcessAutomations(): AutomationService {
     codexUsage,
     // Why: desktop clients mirror remote-host automations, but only a server process should execute remote_host_service-owned schedules.
     headless: state.isServeMode,
-    dispatchHeadlessly: true
+    dispatchHeadlessly: true,
+    // Scheduled agents wait for a quiet laptop. Explicit Run now still starts immediately.
+    ...(!state.isServeMode
+      ? {
+          localScheduleReady: () =>
+            powerMonitor.getSystemIdleTime() >= 600 && freemem() >= 4 * 1024 ** 3
+        }
+      : {})
   })
   state.automations = service
   return service
