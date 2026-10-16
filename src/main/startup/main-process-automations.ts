@@ -24,7 +24,9 @@ export function initializeMainProcessAutomations(): AutomationService {
     ...(!state.isServeMode
       ? {
           localScheduleReady: () =>
-            powerMonitor.getSystemIdleTime() >= 600 && freemem() >= 4 * 1024 ** 3
+            powerMonitor.getSystemIdleTime() >= 600 &&
+            freemem() >= 4 * 1024 ** 3 &&
+            !runtime.hasMobileTerminalSubscribers()
         }
       : {})
   })
