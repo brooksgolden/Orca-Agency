@@ -60,3 +60,26 @@ export async function lowerLocalAutomationProcessPriority(ptyId: string | null):
     // The terminal root still runs at low priority if process inventory is unavailable.
   }
 }
+
+/** Agent subprocesses can start after the first process snapshot. Recheck startup only. */
+export function scheduleLocalAutomationPriorityFollowups(
+  ptyId: string | null,
+  stillOwnsPty: () => boolean,
+  lower: (id: string) => Promise<void> = lowerLocalAutomationProcessPriority
+): void {
+  if (process.platform !== 'win32' || !ptyId) {
+    return
+  }
+  for (const delayMs of [1_000, 10_000]) {
+    const timer = setTimeout(() => {
+      try {
+        if (stillOwnsPty()) {
+          void lower(ptyId).catch(() => {})
+        }
+      } catch {
+        // The runtime can close while a delayed check is pending.
+      }
+    }, delayMs)
+    timer.unref()
+  }
+}

@@ -21,7 +21,10 @@ import {
   recordAutomationChatOwnership,
   recordAutomationProviderSessionOwnership
 } from './chat-ownership'
-import { lowerLocalAutomationProcessPriority } from './local-automation-process-priority'
+import {
+  lowerLocalAutomationProcessPriority,
+  scheduleLocalAutomationPriorityFollowups
+} from './local-automation-process-priority'
 import { findReusableRunTerminal } from './headless-run-terminal-reuse'
 import { ScheduledLocalAutomationDeferredError } from './local-schedule-gate'
 
@@ -152,6 +155,12 @@ export function createRuntimeAutomationService(input: {
               }
             }
             await lowerLocalAutomationProcessPriority(terminalPtyId)
+            if (automation.executionTargetType === 'local' && terminalPtyId) {
+              scheduleLocalAutomationPriorityFollowups(
+                terminalPtyId,
+                () => runtime.getTerminalPtyIdForHandle(terminalHandle) === terminalPtyId
+              )
+            }
             recordAutomationChatOwnership(
               store,
               { ...run, terminalSessionId, terminalPaneKey },
