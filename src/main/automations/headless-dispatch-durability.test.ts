@@ -3,6 +3,7 @@ import { buildProfileStateCutoverFixture } from '../persistence/profile-state-cu
 import type { AutomationRun } from '../../shared/automations-types'
 import type { HeadlessAutomationDispatchLaunch } from './headless-dispatch'
 import { runHeadlessAutomationDispatch } from './headless-dispatch-runner'
+import { ScheduledLocalAutomationDeferredError } from './local-schedule-gate'
 
 function fixture(launch: HeadlessAutomationDispatchLaunch) {
   const state = buildProfileStateCutoverFixture('/fixture')
@@ -101,6 +102,20 @@ describe('headless automation observation during persistence', () => {
       status: 'dispatch_failed',
       workspaceId: context.automation.workspaceId,
       error: 'shell unavailable'
+    })
+    expect(context.watchRun).not.toHaveBeenCalled()
+  })
+
+  it('keeps the scheduled occurrence pending if launch resources disappear', async () => {
+    const context = fixture(terminal)
+    context.dispatcher.mockRejectedValueOnce(new ScheduledLocalAutomationDeferredError())
+    await runHeadlessAutomationDispatch(context)
+    expect(context.runs.updateRun).toHaveBeenCalledExactlyOnceWith({
+      runId: context.run.id,
+      status: 'pending',
+      workspaceId: context.automation.workspaceId,
+      precheckResult: null,
+      error: null
     })
     expect(context.watchRun).not.toHaveBeenCalled()
   })

@@ -292,13 +292,15 @@ export class AutomationService {
       return
     }
 
-    await this.requestDispatch(
+    const run = await this.requestDispatch(
       automation,
       await this.runs.createRun(automation, scheduledFor),
       target,
       generation
     )
-    await this.runs.advanceNextRun(automation.id, now)
+    if (run.status !== 'pending') {
+      await this.runs.advanceNextRun(automation.id, now)
+    }
   }
 
   private resolveTarget(automation: Automation): AutomationRunTargetResult {
@@ -325,6 +327,7 @@ export class AutomationService {
         isActive: () => !this.stopped && generation === this.dispatchGeneration,
         getRenderer: () => (this.canDispatchToRenderer() ? this.webContents : null),
         headlessDispatcher: this.headlessDispatcher,
+        localScheduleReady: this.localScheduleReady,
         resolveTarget: (current) => this.resolveTarget(current),
         runPrecheck: () => this.runPrecheck(automation.id, run.id),
         markDispatchResult: (result) => this.markDispatchResult(result),

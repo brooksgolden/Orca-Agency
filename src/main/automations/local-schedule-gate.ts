@@ -5,6 +5,8 @@ import { missedBeyondGrace, recordMissedRun } from './dispatch-refusal'
 
 const LOCAL_RESOURCE_DEFERRAL_LIMIT_MS = 24 * 60 * 60 * 1000
 
+export class ScheduledLocalAutomationDeferredError extends Error {}
+
 /** Keep a local scheduled occurrence due until the laptop is quiet and no other agent run owns it. */
 export function canStartScheduledLocalAutomation(
   automation: Pick<Automation, 'executionTargetType'>,

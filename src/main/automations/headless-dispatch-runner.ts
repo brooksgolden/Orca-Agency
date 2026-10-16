@@ -14,6 +14,7 @@ import type {
 } from './headless-dispatch'
 import type { AutomationRunTargetResult } from './run-target-resolution'
 import type { AutomationRunWriter } from './automation-run-writer'
+import { ScheduledLocalAutomationDeferredError } from './local-schedule-gate'
 
 export type HeadlessAutomationDispatchContext = {
   automation: Automation
@@ -22,6 +23,7 @@ export type HeadlessAutomationDispatchContext = {
   dispatcher: HeadlessAutomationDispatcher
   runs: AutomationRunWriter
   runPrecheck: () => Promise<AutomationPrecheckResult | null>
+  canLaunchScheduledLocal?: () => boolean
   markDispatchResult: (result: AutomationDispatchResult) => Promise<AutomationRun>
   watchRun: (run: AutomationRun) => void
 }
@@ -45,10 +47,28 @@ export async function runHeadlessAutomationDispatch(
       error: formatAutomationPrecheckFailure(precheckResult)
     })
   }
+  if (run.trigger === 'scheduled' && ctx.canLaunchScheduledLocal?.() === false) {
+    return runs.updateRun({
+      runId: run.id,
+      status: 'pending',
+      workspaceId: automation.workspaceId,
+      precheckResult,
+      error: null
+    })
+  }
   let launch: HeadlessAutomationDispatchLaunch
   try {
     launch = await ctx.dispatcher({ automation, run, target })
   } catch (error) {
+    if (error instanceof ScheduledLocalAutomationDeferredError) {
+      return runs.updateRun({
+        runId: run.id,
+        status: 'pending',
+        workspaceId: automation.workspaceId,
+        precheckResult,
+        error: null
+      })
+    }
     return runs.updateRun({
       runId: run.id,
       status: 'dispatch_failed',

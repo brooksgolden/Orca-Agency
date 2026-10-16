@@ -23,6 +23,7 @@ import {
 } from './chat-ownership'
 import { lowerLocalAutomationProcessPriority } from './local-automation-process-priority'
 import { findReusableRunTerminal } from './headless-run-terminal-reuse'
+import { ScheduledLocalAutomationDeferredError } from './local-schedule-gate'
 
 const MAX_REMEMBERED_LAUNCHES = 256
 
@@ -64,6 +65,16 @@ export function createRuntimeAutomationService(input: {
     headlessDispatcher:
       input.headless || input.dispatchHeadlessly
         ? async ({ automation, run, target }) => {
+            const requireLocalResources = (): void => {
+              if (
+                run.trigger === 'scheduled' &&
+                automation.executionTargetType === 'local' &&
+                input.localScheduleReady?.() === false
+              ) {
+                throw new ScheduledLocalAutomationDeferredError()
+              }
+            }
+            requireLocalResources()
             let terminalHandle: string
             let terminalSessionId: string | null = null
             let terminalPaneKey: string | null = null
