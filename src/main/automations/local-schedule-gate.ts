@@ -53,7 +53,8 @@ export async function prepareScheduledAutomation(input: {
     await runs.advanceNextRun(automation.id, now)
     return null
   }
-  const changedWhileWaiting = deferred && automation.updatedAt > deferred.createdAt
+  const changedWhileWaiting =
+    deferred && (automation.definitionRevision ?? 0) !== (deferred.definitionRevision ?? 0)
   const expired = deferred && now - deferred.createdAt >= LOCAL_RESOURCE_DEFERRAL_LIMIT_MS
   if (deferred && (changedWhileWaiting || expired)) {
     await runs.updateRun({

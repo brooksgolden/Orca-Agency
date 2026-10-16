@@ -90,4 +90,26 @@ describe('durable local schedule deferral', () => {
     expect(h.send).not.toHaveBeenCalled()
     h.service.stop()
   })
+
+  it('keeps a waiting occurrence when an unrelated run of the same automation finishes', async () => {
+    const h = await waitingDailyRun()
+    const waiting = h.store.listAutomationRuns(h.automation.id)[0]
+    const earlier = h.store.createAutomationRun(
+      h.automation,
+      new Date('2026-05-13T08:00:00').getTime(),
+      'manual'
+    )
+    h.store.updateAutomationRun({ runId: earlier.id, status: 'completed' })
+    expect(
+      h.store.listAutomations().find((row) => row.id === h.automation.id)?.updatedAt
+    ).toBeGreaterThan(waiting.createdAt)
+    h.setReady()
+    await vi.advanceTimersByTimeAsync(60_000)
+    await vi.waitFor(() => expect(h.send).toHaveBeenCalledTimes(1))
+    expect(
+      h.store.listAutomationRuns(h.automation.id).find((run) => run.id === waiting.id)?.status
+    ).toBe('dispatching')
+    expect(h.store.listAutomationRuns(h.automation.id)).toHaveLength(2)
+    h.service.stop()
+  })
 })
