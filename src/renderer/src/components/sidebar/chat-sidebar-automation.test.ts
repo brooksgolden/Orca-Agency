@@ -35,6 +35,40 @@ describe('automation runs in Chats', () => {
     expect(buildChatSidebarRows(state, [], 5_000).map((row) => row.tabId)).toEqual(['manual'])
   })
 
+  it('shows a manually reopened automation session in a split workspace', () => {
+    const original = chatTab('scheduled', {
+      aiVaultTitle: { agent: 'codex', sessionId: 'shared', title: 'Manatal audit' }
+    })
+    const reopened = chatTab('reopened', {
+      createdAt: 10_000,
+      aiVaultTitle: { agent: 'codex', sessionId: 'shared', title: 'Manatal audit' }
+    })
+    const otherWorktree = { ...chatWorktree, id: 'manual-workspace', displayName: 'Manatal' }
+    const state = chatState({
+      worktreesByRepo: { repo: [chatWorktree, otherWorktree] },
+      tabsByWorktree: {
+        [chatWorktree.id]: [original],
+        [otherWorktree.id]: [{ ...reopened, worktreeId: otherWorktree.id }]
+      }
+    })
+    const key = chatSessionKey('local', 'codex', 'shared')
+    state.settings!.chatSidebar = {
+      historySince: 0,
+      automationChats: [
+        key,
+        chatFallbackId('local', 'scheduled'),
+        // Older preference writes also marked the manually reopened tab as automated.
+        chatFallbackId('local', 'reopened')
+      ]
+    }
+    const session = chatSession('shared', { createdAt: new Date(2_000).toISOString() })
+    expect(buildChatSidebarRows(state, [session], 12_000).map((row) => row.tabId)).toEqual([
+      'reopened'
+    ])
+    state.tabsByWorktree[otherWorktree.id] = []
+    expect(buildChatSidebarRows(state, [session], 13_000)).toEqual([])
+  })
+
   it('remembers the provider identity after automation cleanup removes its tab', () => {
     const state = chatState({ tabsByWorktree: { [chatWorktree.id]: [chatTab('scheduled')] } })
     const current = { automationChats: [chatFallbackId('local', 'scheduled')], historySince: 0 }
