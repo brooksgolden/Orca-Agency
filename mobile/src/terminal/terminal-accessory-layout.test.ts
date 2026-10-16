@@ -53,6 +53,20 @@ describe('terminal accessory layout', () => {
     })
   })
 
+  it('adds Shift+Left Arrow before Shift+Tab in saved layouts', () => {
+    const oldIds = getDefaultTerminalAccessoryBuiltInIds().filter((id) => id !== 'shiftArrowLeft')
+    const restored = normalizeTerminalAccessoryLayoutPreference({
+      version: 2,
+      orderedBuiltInIds: oldIds,
+      visibleBuiltInIds: oldIds
+    })
+
+    expect(restored.orderedBuiltInIds.indexOf('shiftArrowLeft')).toBe(
+      restored.orderedBuiltInIds.indexOf('shiftTab') - 1
+    )
+    expect(restored.visibleBuiltInIds).toContain('shiftArrowLeft')
+  })
+
   it('normalizes invalid storage to defaults', () => {
     expect(normalizeTerminalAccessoryLayoutPreference(null).visibleBuiltInIds).toEqual(
       getDefaultTerminalAccessoryBuiltInIds()
