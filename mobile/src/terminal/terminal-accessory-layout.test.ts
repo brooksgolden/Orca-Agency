@@ -67,6 +67,19 @@ describe('terminal accessory layout', () => {
     expect(restored.visibleBuiltInIds).toContain('shiftArrowLeft')
   })
 
+  it('keeps Shift+Left Arrow next to Shift+Tab when an older layout moved Shift+Tab', () => {
+    const oldIds = getDefaultTerminalAccessoryBuiltInIds().filter((id) => id !== 'shiftArrowLeft')
+    const customOrder = ['shiftTab', ...oldIds.filter((id) => id !== 'shiftTab')]
+    const restored = normalizeTerminalAccessoryLayoutPreference({
+      version: 2,
+      orderedBuiltInIds: customOrder,
+      visibleBuiltInIds: customOrder
+    })
+
+    expect(restored.orderedBuiltInIds.slice(0, 2)).toEqual(['shiftArrowLeft', 'shiftTab'])
+    expect(restored.visibleBuiltInIds.slice(0, 2)).toEqual(['shiftArrowLeft', 'shiftTab'])
+  })
+
   it('normalizes invalid storage to defaults', () => {
     expect(normalizeTerminalAccessoryLayoutPreference(null).visibleBuiltInIds).toEqual(
       getDefaultTerminalAccessoryBuiltInIds()
