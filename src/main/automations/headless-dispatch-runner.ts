@@ -36,15 +36,19 @@ export async function runHeadlessAutomationDispatch(
   ctx: HeadlessAutomationDispatchContext
 ): Promise<AutomationRun> {
   const { automation, run, target, runs } = ctx
-  const precheckResult =
-    run.trigger === 'scheduled' && automation.precheck ? await ctx.runPrecheck() : null
-  if (precheckResult && !didAutomationPrecheckPass(precheckResult)) {
+  let precheckResult: AutomationPrecheckResult | null
+  try {
+    precheckResult =
+      run.trigger === 'scheduled' && automation.precheck ? await ctx.runPrecheck() : null
+  } catch (error) {
+    if (!(error instanceof ScheduledLocalAutomationDeferredError)) {
+      throw error
+    }
     return runs.updateRun({
       runId: run.id,
-      status: 'skipped_precheck',
+      status: 'pending',
       workspaceId: automation.workspaceId,
-      precheckResult,
-      error: formatAutomationPrecheckFailure(precheckResult)
+      error: null
     })
   }
   if (run.trigger === 'scheduled' && ctx.canLaunchScheduledLocal?.() === false) {
@@ -54,6 +58,15 @@ export async function runHeadlessAutomationDispatch(
       workspaceId: automation.workspaceId,
       precheckResult,
       error: null
+    })
+  }
+  if (precheckResult && !didAutomationPrecheckPass(precheckResult)) {
+    return runs.updateRun({
+      runId: run.id,
+      status: 'skipped_precheck',
+      workspaceId: automation.workspaceId,
+      precheckResult,
+      error: formatAutomationPrecheckFailure(precheckResult)
     })
   }
   let launch: HeadlessAutomationDispatchLaunch

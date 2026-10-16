@@ -199,6 +199,7 @@ export class AutomationService {
     }
     return await runAutomationPrecheck({
       precheck: automation.precheck,
+      shouldContinue: this.localScheduleReady ?? undefined,
       target:
         automation.executionTargetType === 'ssh'
           ? { type: 'ssh', cwd: target.cwd, connectionId: automation.executionTargetId }
