@@ -1,11 +1,11 @@
+import { performance as nodePerformance } from 'node:perf_hooks'
 import { writeStartupDiagnosticLine } from '../startup/startup-diagnostics'
 
 export const MAIN_THREAD_DIAGNOSTICS_ENV = 'ORCA_MAIN_THREAD_DIAGNOSTICS'
 
-// Why: 25ms mirrors event-loop-stall-probe — a timer that fires late by N ms
-// proves the main thread was blocked for N ms, which is the direct in-process
-// measurement of the macOS "Performance Diagnostics" main-thread warnings
-// reported in issue #7576.
+// Why: a late 25ms timer detects a responsiveness gap. Scheduler delay can
+// also make it late, so pair it with event-loop utilization and CPU time to
+// distinguish main-thread work or waits from a delayed wake-up.
 const TICK_MS = 25
 const REPORT_EVERY_MS = 5_000
 
@@ -163,6 +163,7 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
   let gapsOver50Ms = 0
   let gapsOver250Ms = 0
   let cpu = process.cpuUsage()
+  let eventLoop = nodePerformance.eventLoopUtilization()
   const timer = setInterval(() => {
     const now = performance.now()
     const gap = now - last - TICK_MS
@@ -183,6 +184,8 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
     const spawns = drainSubprocessSpawnStats()
     const usage = process.cpuUsage(cpu)
     cpu = process.cpuUsage()
+    const eventLoopDelta = nodePerformance.eventLoopUtilization(eventLoop)
+    eventLoop = nodePerformance.eventLoopUtilization()
     const report = {
       at: new Date().toISOString(),
       pid: process.pid,
@@ -192,6 +195,9 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
       gapsOver250Ms,
       spawnCount: Object.values(spawns).reduce((sum, s) => sum + s.count, 0),
       cpuMs: Math.round((usage.user + usage.system) / 1000),
+      eventLoopActiveMs: Math.round(eventLoopDelta.active),
+      eventLoopIdleMs: Math.round(eventLoopDelta.idle),
+      eventLoopUtilization: Math.round(eventLoopDelta.utilization * 1_000) / 1_000,
       rssBytes: process.memoryUsage().rss,
       spawns,
       ...options.extraStats?.()

@@ -129,6 +129,9 @@ describe('startMainThreadChurnProbe', () => {
       at: expect.any(String),
       pid: process.pid,
       cpuMs: expect.any(Number),
+      eventLoopActiveMs: expect.any(Number),
+      eventLoopIdleMs: expect.any(Number),
+      eventLoopUtilization: expect.any(Number),
       rssBytes: expect.any(Number),
       spawns: { icacls: { count: 1, blockMsTotal: 40, blockMsMax: 40 } }
     })
