@@ -21,7 +21,10 @@ import {
 import { buildHeadlessAutomationWorktreeCreateArgs } from './headless-workspace-create'
 import { createRuntimeAutomationRunTerminalObserver } from './runtime-terminal-run-observer'
 import { agentHookServer } from '../agent-hooks/server'
-import { recordAutomationProviderSessionOwnership } from './chat-ownership'
+import {
+  recordAutomationChatOwnership,
+  recordAutomationProviderSessionOwnership
+} from './chat-ownership'
 import { lowerLocalAutomationProcessPriority } from './local-automation-process-priority'
 
 const MAX_REMEMBERED_LAUNCHES = 256
@@ -141,6 +144,11 @@ export function createRuntimeAutomationService(input: {
               }
             }
             await lowerLocalAutomationProcessPriority(terminalPtyId)
+            recordAutomationChatOwnership(
+              store,
+              { ...run, terminalSessionId, terminalPaneKey },
+              agentHookServer.getProviderSessionIdentities()
+            )
             if (terminalPaneKey) {
               launchedHandles.set(terminalPaneKey, terminalHandle)
               if (launchedHandles.size > MAX_REMEMBERED_LAUNCHES) {

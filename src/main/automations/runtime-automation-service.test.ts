@@ -50,6 +50,14 @@ describe('desktop background dispatch authority', () => {
 
 describe('headless automation dispatch', () => {
   it('hands the launched run to its watcher instead of awaiting one tui-idle wait itself', async () => {
+    const updateSettings = vi.fn()
+    const store = {
+      listAutomations: () => [
+        { id: 'automation', executionTargetType: 'local', agentId: 'goose' }
+      ],
+      getSettings: () => ({ chatSidebar: {} }),
+      updateSettings
+    }
     const runtime = {
       setAutomationService: vi.fn(),
       notifyAutomationsChanged: vi.fn(),
@@ -67,8 +75,8 @@ describe('headless automation dispatch', () => {
       getAgentStatusRowsForPane: vi.fn(() => [])
     }
     createRuntimeAutomationService({
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mocked service never reads the store.
-      store: {} as never,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the dispatcher reads only these mocked ownership methods.
+      store: store as never,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the dispatcher reads only the members faked above.
       runtime: runtime as never,
       headless: true
@@ -83,13 +91,21 @@ describe('headless automation dispatch', () => {
         agentId: 'goose'
       } as never,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the title is read.
-      run: { title: 'Nightly' } as never,
+      run: { id: 'run', automationId: 'automation', title: 'Nightly' } as never,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unused for an existing workspace.
       target: {} as never
     })
 
     expect(launch.completion).toBeUndefined()
     expect(launch.terminalPaneKey).toBe('tab-1:pane-1')
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatSidebar: expect.objectContaining({
+          automationChats: expect.arrayContaining(['["local","tab-1:pane-1"]'])
+        })
+      }),
+      { notifyListeners: true }
+    )
     expect(runtime.launchAgentTerminal).toHaveBeenCalledWith('id:wt-1', {
       agent: 'goose',
       prompt: undefined,
@@ -123,8 +139,8 @@ describe('headless automation dispatch with extra agent args', () => {
       getAgentStatusRowsForPane: vi.fn(() => [])
     }
     createRuntimeAutomationService({
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mocked service never reads the store.
-      store: {} as never,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ownership exits before reading other store methods without a host.
+      store: { listAutomations: () => [] } as never,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the dispatcher reads only the members faked above.
       runtime: runtime as never,
       headless: true

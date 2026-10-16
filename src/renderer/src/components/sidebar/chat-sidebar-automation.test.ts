@@ -5,6 +5,28 @@ import { chatFallbackId, chatSessionKey } from './chat-sidebar-types'
 import { chatState, chatTab, chatSession, chatWorktree } from './chat-sidebar-test-fixtures'
 
 describe('automation runs in Chats', () => {
+  it('never lists a workspace created by an automation before the provider hook arrives', () => {
+    const automatedWorktree = {
+      ...chatWorktree,
+      automationProvenance: {
+        kind: 'created-by-automation' as const,
+        automationId: 'automation',
+        automationNameSnapshot: 'Nightly review',
+        automationRunId: 'run',
+        automationRunTitleSnapshot: 'Nightly review run',
+        createdAt: 1,
+        executionTargetType: 'local' as const,
+        executionTargetId: 'local',
+        projectId: 'repo'
+      }
+    }
+    const state = chatState({
+      worktreesByRepo: { repo: [automatedWorktree] },
+      tabsByWorktree: { [automatedWorktree.id]: [chatTab('scheduled')] }
+    })
+    expect(buildChatSidebarRows(state, [], 5_000)).toEqual([])
+  })
+
   it('hides a scheduled tab without hiding a manual sibling in the same workspace', () => {
     const state = chatState({
       tabsByWorktree: { [chatWorktree.id]: [chatTab('scheduled'), chatTab('manual')] }
