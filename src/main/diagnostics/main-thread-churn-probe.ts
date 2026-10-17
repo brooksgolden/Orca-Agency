@@ -1,4 +1,5 @@
 import { performance as nodePerformance } from 'node:perf_hooks'
+import { freemem } from 'node:os'
 import { writeStartupDiagnosticLine } from '../startup/startup-diagnostics'
 
 export const MAIN_THREAD_DIAGNOSTICS_ENV = 'ORCA_MAIN_THREAD_DIAGNOSTICS'
@@ -206,6 +207,7 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
         ? Math.round(eventLoopDelta.utilization * 1_000) / 1_000
         : null,
       rssBytes: process.memoryUsage().rss,
+      freePhysicalBytes: freemem(),
       spawns,
       ...options.extraStats?.()
     }

@@ -1,4 +1,5 @@
 import { recordRendererCrashBreadcrumb } from './crash-breadcrumb-recorder'
+import { getTerminalOutputQueuePressure } from './pane-manager/pane-terminal-output-queue-registry'
 
 const TICK_MS = 100
 const REPORT_GAP_MS = 1_000
@@ -40,7 +41,8 @@ export function installTerminalRendererGapProbe(): () => void {
     recordRendererCrashBreadcrumb('terminal_renderer_gap', {
       at: new Date().toISOString(),
       gapMs: Math.round(gapMs),
-      terminalPaneCount
+      terminalPaneCount,
+      ...getTerminalOutputQueuePressure()
     })
   }, TICK_MS)
   return () => window.clearInterval(timer)

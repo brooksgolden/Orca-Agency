@@ -126,6 +126,32 @@ export const ALWAYS_REFRESH_FOREGROUND_SYNCHRONOUSLY = (): boolean => true
 
 export const queuedByTerminal = new Map<TerminalOutputTarget, QueueEntry>()
 setTerminalOutputDebugQueueReader(() => queuedByTerminal.values())
+
+export function getTerminalOutputQueuePressure(): {
+  queuedTerminalCount: number
+  queuedChars: number
+  highPriorityTerminalCount: number
+  heldForegroundTerminalCount: number
+} {
+  let queuedChars = 0
+  let highPriorityTerminalCount = 0
+  let heldForegroundTerminalCount = 0
+  for (const entry of queuedByTerminal.values()) {
+    queuedChars += entry.queuedChars
+    if (entry.highPriority) {
+      highPriorityTerminalCount++
+    }
+    if (entry.foregroundHold) {
+      heldForegroundTerminalCount++
+    }
+  }
+  return {
+    queuedTerminalCount: queuedByTerminal.size,
+    queuedChars,
+    highPriorityTerminalCount,
+    heldForegroundTerminalCount
+  }
+}
 const backlogRecoveryByTerminal = new WeakMap<
   TerminalOutputTarget,
   TerminalBacklogRecoveryRequest

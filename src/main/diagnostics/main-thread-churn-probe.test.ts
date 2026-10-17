@@ -131,6 +131,7 @@ describe('startMainThreadChurnProbe', () => {
       cpuMs: expect.any(Number),
       eventLoopMetricsAvailable: expect.any(Boolean),
       rssBytes: expect.any(Number),
+      freePhysicalBytes: expect.any(Number),
       spawns: { icacls: { count: 1, blockMsTotal: 40, blockMsMax: 40 } }
     })
     const report = JSON.parse(line.replace('[main-thread] ', ''))

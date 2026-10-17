@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installTerminalRendererGapProbe } from './terminal-renderer-gap-probe'
 
 const recordBreadcrumb = vi.hoisted(() => vi.fn())
+const queuePressure = vi.hoisted(() => vi.fn())
 vi.mock('./crash-breadcrumb-recorder', () => ({
   recordRendererCrashBreadcrumb: recordBreadcrumb
+}))
+vi.mock('./pane-manager/pane-terminal-output-queue-registry', () => ({
+  getTerminalOutputQueuePressure: queuePressure
 }))
 
 describe('terminal renderer gap probe', () => {
@@ -33,6 +37,12 @@ describe('terminal renderer gap probe', () => {
       querySelectorAll: () => Array.from({ length: terminalCount })
     })
     recordBreadcrumb.mockClear()
+    queuePressure.mockReturnValue({
+      queuedTerminalCount: 3,
+      queuedChars: 42_000,
+      highPriorityTerminalCount: 2,
+      heldForegroundTerminalCount: 1
+    })
   })
 
   afterEach(() => {
@@ -47,7 +57,14 @@ describe('terminal renderer gap probe', () => {
     tick(1_400)
     expect(recordBreadcrumb).toHaveBeenCalledWith(
       'terminal_renderer_gap',
-      expect.objectContaining({ gapMs: 1_300, terminalPaneCount: 2 })
+      expect.objectContaining({
+        gapMs: 1_300,
+        terminalPaneCount: 2,
+        queuedTerminalCount: 3,
+        queuedChars: 42_000,
+        highPriorityTerminalCount: 2,
+        heldForegroundTerminalCount: 1
+      })
     )
     dispose()
     tick(2_000)
