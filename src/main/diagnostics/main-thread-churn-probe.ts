@@ -186,6 +186,10 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
     cpu = process.cpuUsage()
     const eventLoopDelta = nodePerformance.eventLoopUtilization(eventLoop)
     eventLoop = nodePerformance.eventLoopUtilization()
+    // Electron's main process can return all zeroes here even while timers
+    // and the event-loop delay histogram are active. Do not report a false
+    // zero utilization as evidence that the main thread was idle.
+    const eventLoopMetricsAvailable = eventLoopDelta.active !== 0 || eventLoopDelta.idle !== 0
     const report = {
       at: new Date().toISOString(),
       pid: process.pid,
@@ -195,9 +199,12 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
       gapsOver250Ms,
       spawnCount: Object.values(spawns).reduce((sum, s) => sum + s.count, 0),
       cpuMs: Math.round((usage.user + usage.system) / 1000),
-      eventLoopActiveMs: Math.round(eventLoopDelta.active),
-      eventLoopIdleMs: Math.round(eventLoopDelta.idle),
-      eventLoopUtilization: Math.round(eventLoopDelta.utilization * 1_000) / 1_000,
+      eventLoopMetricsAvailable,
+      eventLoopActiveMs: eventLoopMetricsAvailable ? Math.round(eventLoopDelta.active) : null,
+      eventLoopIdleMs: eventLoopMetricsAvailable ? Math.round(eventLoopDelta.idle) : null,
+      eventLoopUtilization: eventLoopMetricsAvailable
+        ? Math.round(eventLoopDelta.utilization * 1_000) / 1_000
+        : null,
       rssBytes: process.memoryUsage().rss,
       spawns,
       ...options.extraStats?.()
