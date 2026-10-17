@@ -21,6 +21,7 @@ import { formatTerminalPasteExecutionError } from './terminal-paste-errors'
 import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import { scheduleImagePasteWebglAtlasRecovery } from './terminal-webgl-atlas-recovery'
 import { pasteTerminalClipboard } from './terminal-clipboard-paste'
+import { captureTerminalPasteLatency } from './terminal-paste-latency-capture'
 import { resolveProtectedMultilinePasteOptionsForPane } from './terminal-agent-paste-bracketing'
 import { resolveTerminalInputHostPlatform } from './terminal-input-host-platform'
 import type { ReadClipboardTextOptions } from '../../../../shared/clipboard-text'
@@ -84,8 +85,10 @@ export function createTerminalPanePasteExecution(
     source: TerminalPasteSource,
     activeElementAtDispatch: Element | null,
     text: string,
-    options?: TerminalPasteTextOptions
+    options?: TerminalPasteTextOptions,
+    requestedAtMs = performance.now()
   ): Promise<void> => {
+    const clipboardReadyAtMs = performance.now()
     const connectionId = getConnectionId(worktreeId) ?? null
     const transport = paneTransportsRef.current.get(pane.id)
     const ptyId = transport?.getPtyId() ?? null
@@ -113,22 +116,40 @@ export function createTerminalPanePasteExecution(
       windowsInputRecordNewline: options?.windowsInputRecordNewline,
       terminalBracketedPasteMode: pane.terminal.modes.bracketedPasteMode
     })
-    const execution = await executeTerminalPastePlan(plan, {
-      pasteText: (pasteText, pasteOptions) =>
-        pasteTerminalText(pane.terminal, pasteText, pasteOptions),
-      writePty: (data, signal) => writeTerminalPastePtyInput(transport, data, 'driving', signal),
-      isTargetCurrent: () => {
-        if (!isPanePasteTargetMounted(pane, transport, ptyId)) {
-          return false
-        }
-        return isTerminalPanePasteFocusCurrent({
-          requireSameFocusedElement: keyboardOwnedPaste,
-          activeElementAtDispatch,
-          paneContainer: pane.container
-        })
-      },
-      canContinue: () => isPanePasteTargetMounted(pane, transport, ptyId)
-    })
+    const latencyCapture =
+      shortcutPlatform === 'win32' &&
+      plan.mode !== 'reject' &&
+      source !== 'programmatic' &&
+      !options?.recoverImagePasteWebglAtlas
+        ? captureTerminalPasteLatency(pane.terminal, plan, {
+            requestedAtMs,
+            clipboardReadyAtMs,
+            plannedAtMs: performance.now()
+          })
+        : null
+    let execution: Awaited<ReturnType<typeof executeTerminalPastePlan>>
+    try {
+      execution = await executeTerminalPastePlan(plan, {
+        pasteText: (pasteText, pasteOptions) =>
+          pasteTerminalText(pane.terminal, pasteText, pasteOptions),
+        writePty: (data, signal) => writeTerminalPastePtyInput(transport, data, 'driving', signal),
+        isTargetCurrent: () => {
+          if (!isPanePasteTargetMounted(pane, transport, ptyId)) {
+            return false
+          }
+          return isTerminalPanePasteFocusCurrent({
+            requireSameFocusedElement: keyboardOwnedPaste,
+            activeElementAtDispatch,
+            paneContainer: pane.container
+          })
+        },
+        canContinue: () => isPanePasteTargetMounted(pane, transport, ptyId)
+      })
+    } catch (error) {
+      latencyCapture?.cancel()
+      throw error
+    }
+    latencyCapture?.complete(execution)
     if (execution.status !== 'pasted') {
       setTerminalError(formatTerminalPasteExecutionError(execution.reason))
       return
@@ -151,6 +172,7 @@ export function createTerminalPanePasteExecution(
     const state = useAppStore.getState()
     const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
     const activeElementAtDispatch = document.activeElement
+    const requestedAtMs = performance.now()
     void pasteTerminalClipboard({
       readClipboardText,
       saveClipboardImageAsTempFile: window.api.ui.saveClipboardImageAsTempFile,
@@ -159,7 +181,7 @@ export function createTerminalPanePasteExecution(
       forceBracketedMultilineTextPaste,
       protectedMultilineTextPasteOptions: resolveProtectedMultilineOptions(pane),
       pasteText: (text, options) =>
-        executePanePasteText(pane, source, activeElementAtDispatch, text, options),
+        executePanePasteText(pane, source, activeElementAtDispatch, text, options, requestedAtMs),
       onTextPasteError: () =>
         setTerminalError('Paste failed: clipboard text is too large for a safe terminal paste.'),
       onImagePasteError: (error) => setTerminalError(formatClipboardImagePasteError(error))

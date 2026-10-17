@@ -50,6 +50,7 @@ const DUPLICATE_TAB_OWNER_BREADCRUMB = 'terminal_tab_id_owned_by_multiple_worktr
 const PARK_VERDICT_CHURN_BREADCRUMB = 'terminal_park_verdict_churn'
 const REACT_COMMIT_CASCADE_BREADCRUMB = 'react_commit_cascade'
 const REPLAY_GUARD_WEDGED_BREADCRUMB = 'terminal_replay_guard_wedged_release'
+const TERMINAL_PASTE_SLOW_BREADCRUMB = 'terminal_paste_slow'
 const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   'renderer_error',
   'renderer_unhandled_rejection',
@@ -58,6 +59,7 @@ const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   PARK_VERDICT_CHURN_BREADCRUMB,
   REACT_COMMIT_CASCADE_BREADCRUMB,
   REPLAY_GUARD_WEDGED_BREADCRUMB,
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
   TERMINAL_WEBGL_DIAGNOSTIC_BREADCRUMB
 ])
 const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
@@ -70,12 +72,18 @@ const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
 // mounted pane within ~60ms. Windows crash F0BKR84AHEH lost 26-90% of its
 // 30-entry ring to two such bursts. `suppressedSinceLast` keeps the pane count
 // — the only signal these carry — in one slot.
-const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set(['terminal_safe_fit_retry_exhausted'])
+const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set([
+  'terminal_safe_fit_retry_exhausted',
+  TERMINAL_PASTE_SLOW_BREADCRUMB
+])
 // Why: the 30-slot ring is the scarce sink; the durable span stream is not. For
 // bounded-rate pane telemetry whose multiplicity is the whole signal, spans are the
 // only place a burst survives the restart that clears the ring, so coalesce the ring
 // but keep every event's span.
-const PER_EVENT_TRACED_COALESCED_BREADCRUMB_NAMES = new Set([REPLAY_GUARD_WEDGED_BREADCRUMB])
+const PER_EVENT_TRACED_COALESCED_BREADCRUMB_NAMES = new Set([
+  REPLAY_GUARD_WEDGED_BREADCRUMB,
+  TERMINAL_PASTE_SLOW_BREADCRUMB
+])
 
 function rendererBreadcrumbCoalesceKey(
   name: string,

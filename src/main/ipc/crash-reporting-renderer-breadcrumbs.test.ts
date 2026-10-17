@@ -236,6 +236,21 @@ describe('renderer breadcrumb IPC routing', () => {
     expect(spanEndMock).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps every slow paste in the durable trace while bounding crash ring entries', () => {
+    recordCoalescedCrashBreadcrumbMock
+      .mockReturnValueOnce({ suppressedSinceLast: 0 })
+      .mockReturnValue(undefined)
+    emitRendererBreadcrumb({ name: 'terminal_paste_slow', data: { firstPaintDelayMs: 700 } })
+    emitRendererBreadcrumb({ name: 'terminal_paste_slow', data: { firstPaintDelayMs: 900 } })
+
+    expect(recordCoalescedCrashBreadcrumbMock).toHaveBeenCalledTimes(2)
+    for (const call of recordCoalescedCrashBreadcrumbMock.mock.calls) {
+      expect(call[0].coalesceKey).toBe('terminal_paste_slow')
+    }
+    expect(startSpanMock).toHaveBeenCalledTimes(2)
+    expect(spanEndMock).toHaveBeenCalledTimes(2)
+  })
+
   it('includes the suppressed count when durable tracing resumes', () => {
     recordCoalescedCrashBreadcrumbMock.mockReturnValueOnce({ suppressedSinceLast: 999 })
 
