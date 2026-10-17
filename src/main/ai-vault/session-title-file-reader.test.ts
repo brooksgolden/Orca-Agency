@@ -101,6 +101,25 @@ describe('readAiVaultSessionTitlesFromFiles', () => {
     })
   })
 
+  it('passes title cancellation into the transcript parser', async () => {
+    const path = await transcriptPath()
+    const controller = new AbortController()
+    parseAgentSessionFileCached.mockResolvedValue(null)
+
+    await readAiVaultSessionTitlesFromFiles(
+      [{ agent: 'codex', sessionId: 'session-1', transcriptPath: path }],
+      { signal: controller.signal }
+    )
+
+    expect(parseAgentSessionFileCached).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'codex' }),
+      process.platform,
+      undefined,
+      undefined,
+      controller.signal
+    )
+  })
+
   it('rejects a transcript whose parsed identity does not match the request', async () => {
     const path = await transcriptPath()
     parseAgentSessionFileCached.mockResolvedValue({

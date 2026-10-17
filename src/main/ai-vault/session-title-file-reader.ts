@@ -47,7 +47,10 @@ async function readOneTitle(
         },
         codexHome: null
       },
-      process.platform
+      process.platform,
+      undefined,
+      undefined,
+      signal
     )
     if (
       signal?.aborted ||
