@@ -27,14 +27,16 @@ export function useTabStripWheelScroll(
     },
     [onScroll, tabStripRef]
   )
-  const attachSurface = useCallback(
-    (node: HTMLDivElement | null): void => {
-      surfaceRef.current?.removeEventListener('wheel', onWheel)
-      surfaceRef.current = node
-      node?.addEventListener('wheel', onWheel, { passive: false })
-    },
-    [onWheel]
-  )
-  useEffect(() => () => surfaceRef.current?.removeEventListener('wheel', onWheel), [onWheel])
+  const attachSurface = useCallback((node: HTMLDivElement | null): void => {
+    surfaceRef.current = node
+  }, [])
+  useEffect(() => {
+    const node = surfaceRef.current
+    if (!node) {
+      return
+    }
+    node.addEventListener('wheel', onWheel, { passive: false })
+    return () => node.removeEventListener('wheel', onWheel)
+  }, [onWheel])
   return attachSurface
 }
