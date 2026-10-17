@@ -176,6 +176,97 @@ describe('readAiVaultSessionTitlesFromFiles', () => {
     expect(parseAgentSessionFileCached).not.toHaveBeenCalled()
   })
 
+  it('reads a Codex tab title from the prefix without parsing a large transcript', async () => {
+    const path = await transcriptPath()
+    await writeFile(
+      path,
+      [
+        JSON.stringify({ type: 'session_meta', payload: { id: 'large-session', cwd: '/repo' } }),
+        JSON.stringify({
+          type: 'event_msg',
+          payload: { type: 'user_message', message: 'Repair terminal paste latency' }
+        }),
+        ' '.repeat(5 * 1024 * 1024)
+      ].join('\n')
+    )
+
+    await expect(
+      readAiVaultSessionTitlesFromFiles([
+        { agent: 'codex', sessionId: 'large-session', transcriptPath: path, titleOnly: true }
+      ])
+    ).resolves.toEqual({
+      titles: [
+        { agent: 'codex', sessionId: 'large-session', title: 'Repair terminal paste latency' }
+      ]
+    })
+    expect(parseAgentSessionFileCached).not.toHaveBeenCalled()
+  })
+
+  it('finds a paginated Codex title after a multi-megabyte context prefix', async () => {
+    const path = await transcriptPath()
+    await writeFile(
+      path,
+      [
+        JSON.stringify({
+          type: 'session_meta',
+          payload: { id: 'paginated-session', cwd: '/repo', history_mode: 'paginated' }
+        }),
+        JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Model-only copy' }]
+          }
+        }),
+        ' '.repeat(2 * 1024 * 1024),
+        JSON.stringify({
+          type: 'event_msg',
+          payload: {
+            type: 'item_completed',
+            item: {
+              type: 'UserMessage',
+              content: [{ type: 'text', text: 'Visible paginated prompt' }]
+            }
+          }
+        })
+      ].join('\n')
+    )
+
+    await expect(
+      readAiVaultSessionTitlesFromFiles([
+        { agent: 'codex', sessionId: 'paginated-session', transcriptPath: path, titleOnly: true }
+      ])
+    ).resolves.toEqual({
+      titles: [
+        { agent: 'codex', sessionId: 'paginated-session', title: 'Visible paginated prompt' }
+      ]
+    })
+    expect(parseAgentSessionFileCached).not.toHaveBeenCalled()
+  })
+
+  it('does not chase a first prompt beyond the Codex tab-title read limit', async () => {
+    const path = await transcriptPath()
+    await writeFile(
+      path,
+      [
+        JSON.stringify({ type: 'session_meta', payload: { id: 'large-session', cwd: '/repo' } }),
+        ' '.repeat(5 * 1024 * 1024),
+        JSON.stringify({
+          type: 'event_msg',
+          payload: { type: 'user_message', message: 'Prompt past the bounded prefix' }
+        })
+      ].join('\n')
+    )
+
+    await expect(
+      readAiVaultSessionTitlesFromFiles([
+        { agent: 'codex', sessionId: 'large-session', transcriptPath: path, titleOnly: true }
+      ])
+    ).resolves.toEqual({ titles: [] })
+    expect(parseAgentSessionFileCached).not.toHaveBeenCalled()
+  })
+
   it('still reads the transcript when Claude headless classification is requested', async () => {
     const path = await transcriptPath()
     const cache = {
