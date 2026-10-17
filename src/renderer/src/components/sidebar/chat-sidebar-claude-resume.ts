@@ -31,15 +31,19 @@ export function resumedClaudeSession(
   reportedTranscriptPath: string | undefined
 ): AiVaultSession | null {
   const prefix = launcher?.resumedSessionIdPrefix
-  const directory = launcher && claudeTranscriptDirectory(launcher.filePath)
   if (
     launcher?.agent !== 'claude' ||
     !reportedTranscriptPath ||
-    !sameTranscriptPath(launcher.filePath, reportedTranscriptPath) ||
     !prefix ||
-    !directory ||
     isAiVaultSessionResumableContent(launcher)
   ) {
+    return null
+  }
+  if (!sameTranscriptPath(launcher.filePath, reportedTranscriptPath)) {
+    return null
+  }
+  const directory = claudeTranscriptDirectory(launcher.filePath)
+  if (!directory) {
     return null
   }
   const matches = [...sessions.values()].filter(
@@ -67,13 +71,7 @@ export function savedClaudeResume(args: {
   const matches = Object.entries(args.settings?.sessions ?? {}).flatMap(([key, entry]) => {
     const proof = entry.resumeLauncher
     const snapshot = entry.snapshot
-    const path = args.launcherTranscriptPath ?? proof?.transcriptPath
-    const directory = typeof path === 'string' ? claudeTranscriptDirectory(path) : null
     if (
-      !path ||
-      (args.launcher &&
-        (isAiVaultSessionResumableContent(args.launcher) ||
-          !sameTranscriptPath(args.launcher.filePath, path))) ||
       !proof ||
       proof.agent !== 'claude' ||
       typeof proof.sessionId !== 'string' ||
@@ -83,7 +81,6 @@ export function savedClaudeResume(args: {
       typeof proof.targetSessionIdPrefix !== 'string' ||
       !/^[0-9a-f]{8}$/.test(proof.targetSessionIdPrefix) ||
       proof.sessionId !== args.launcherSessionId ||
-      !sameTranscriptPath(proof.transcriptPath, path) ||
       proof.tabId !== args.tabId ||
       proof.paneKey !== args.paneKey ||
       entry.worktreeId !== args.worktreeId ||
@@ -94,10 +91,22 @@ export function savedClaudeResume(args: {
       typeof snapshot.filePath !== 'string' ||
       !claudeSessionMatchesPrefix(snapshot.sessionId, proof.targetSessionIdPrefix) ||
       (args.launcher && args.launcher.resumedSessionIdPrefix !== proof.targetSessionIdPrefix) ||
-      key !== chatSessionKey(args.hostId, 'claude', snapshot.sessionId) ||
-      !directory ||
-      claudeTranscriptDirectory(snapshot.filePath) !== directory
+      key !== chatSessionKey(args.hostId, 'claude', snapshot.sessionId)
     ) {
+      return []
+    }
+    const path = args.launcherTranscriptPath ?? proof.transcriptPath
+    if (
+      !path ||
+      (args.launcher &&
+        (isAiVaultSessionResumableContent(args.launcher) ||
+          !sameTranscriptPath(args.launcher.filePath, path))) ||
+      !sameTranscriptPath(proof.transcriptPath, path)
+    ) {
+      return []
+    }
+    const directory = claudeTranscriptDirectory(path)
+    if (!directory || claudeTranscriptDirectory(snapshot.filePath) !== directory) {
       return []
     }
     const session = args.sessions.get(key)
