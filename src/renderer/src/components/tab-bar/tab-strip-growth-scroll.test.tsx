@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTabStripOverflowNavigation } from './tab-strip-overflow-navigation'
+import { TabStripScrollIndicator } from './TabStripScrollIndicator'
 
 const TAB_WIDTH = 100
 const VIEWPORT_WIDTH = 300
@@ -104,26 +105,34 @@ function Strip({
   })
   subscribeToStripResize = navigation.subscribeToStripResize
   return (
-    <div
-      data-strip=""
-      data-dock={navigation.activeTabDockSide ?? undefined}
-      ref={navigation.tabStripRef}
-    >
-      {tabs.map((id) => (
-        <div
-          key={id}
-          data-tab-id={id}
-          data-tab-strip-slot={id}
-          data-active-tab-dock={id === active && !activeHostedRow ? '' : undefined}
-        />
-      ))}
-      {hostedRows.map((id) => (
-        <div
-          key={id}
-          data-tab-strip-slot={id}
-          data-active-tab-dock={id === activeHostedRow ? '' : undefined}
-        />
-      ))}
+    <div data-surface="" ref={navigation.attachWheelSurface}>
+      <div
+        data-strip=""
+        data-dock={navigation.activeTabDockSide ?? undefined}
+        ref={navigation.tabStripRef}
+      >
+        {tabs.map((id) => (
+          <div
+            key={id}
+            data-tab-id={id}
+            data-tab-strip-slot={id}
+            data-active-tab-dock={id === active && !activeHostedRow ? '' : undefined}
+          />
+        ))}
+        {hostedRows.map((id) => (
+          <div
+            key={id}
+            data-tab-strip-slot={id}
+            data-active-tab-dock={id === activeHostedRow ? '' : undefined}
+          />
+        ))}
+      </div>
+      <TabStripScrollIndicator
+        hasOverflow={navigation.tabStripOverflowState.hasOverflow}
+        scrollContainerRef={navigation.tabStripRef}
+        subscribeToStripResize={navigation.subscribeToStripResize}
+      />
+      <div data-header-blank="" />
     </div>
   )
 }
@@ -321,6 +330,70 @@ describe('tab strip while scrolling', () => {
       strip.dispatchEvent(new Event('scroll'))
     })
     expect(stripRenderCount).toBe(rendersBefore)
+  })
+
+  it('scrolls toward earlier tabs with the wheel over the header outside the strip', () => {
+    const { container, strip } = mountScrolled('J', 700)
+    const blank = container.querySelector<HTMLElement>('[data-header-blank]')!
+    fireEvent.wheel(blank, { deltaY: -120 })
+    expect(strip.scrollLeft).toBe(580)
+  })
+
+  it('scrolls toward later tabs with the wheel over a tab', () => {
+    const { strip } = mountScrolled('E', 200)
+    fireEvent.wheel(strip.querySelector<HTMLElement>('[data-tab-id="C"]')!, { deltaY: 120 })
+    expect(strip.scrollLeft).toBe(320)
+  })
+
+  it('uses horizontal trackpad movement without adding vertical movement twice', () => {
+    const { strip } = mountScrolled('E', 200)
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 70,
+      deltaY: 25
+    })
+    strip.dispatchEvent(event)
+    expect(strip.scrollLeft).toBe(270)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('scrolls once when the wheel is over the scrollbar overlay', () => {
+    const { container, strip } = mountScrolled('E', 200)
+    const indicator = container.querySelector<HTMLElement>(
+      '[data-testid="tab-strip-scroll-indicator"]'
+    )!
+    fireEvent.wheel(indicator, { deltaY: 120 })
+    expect(strip.scrollLeft).toBe(320)
+  })
+
+  it('keeps a wheel position when a background tab opens before the scroll event', () => {
+    const { container, strip, rerender } = mountScrolled('J', 700)
+    fireEvent.wheel(container.querySelector<HTMLElement>('[data-header-blank]')!, {
+      deltaY: -120
+    })
+    expect(strip.scrollLeft).toBe(580)
+    rerender(<Strip tabs={[...TABS, 'N']} active="J" />)
+    expect(strip.scrollLeft).toBe(580)
+  })
+
+  it('leaves Ctrl+wheel for the browser', () => {
+    const { container, strip } = mountScrolled('E', 200)
+    const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 120 })
+    // Happy DOM's WheelEvent does not implement the inherited ctrlKey property.
+    Object.defineProperty(event, 'ctrlKey', { value: true })
+    container.querySelector<HTMLElement>('[data-header-blank]')!.dispatchEvent(event)
+    expect(strip.scrollLeft).toBe(200)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('leaves wheel input alone when all tabs fit', () => {
+    const view = render(<Strip tabs={['A', 'B']} active="A" />)
+    const strip = view.container.querySelector<HTMLElement>('[data-strip]')!
+    const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 120 })
+    view.container.querySelector<HTMLElement>('[data-header-blank]')!.dispatchEvent(event)
+    expect(strip.scrollLeft).toBe(0)
+    expect(event.defaultPrevented).toBe(false)
   })
 
   it('tells resize subscribers when tabs change the strip without a scroll', async () => {

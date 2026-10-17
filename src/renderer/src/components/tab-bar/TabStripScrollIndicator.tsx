@@ -175,16 +175,6 @@ export function TabStripScrollIndicator({
     })
   }
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
-    const scrollContainer = scrollContainerRef?.current
-    if (!scrollContainer || disabled) {
-      return
-    }
-    // Why: forward wheel events to tab container so scrolling over the indicator scrolls the strip.
-    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
-    scrollContainer.scrollLeft += delta
-  }
-
   if (!hasOverflow) {
     return null
   }
@@ -210,7 +200,6 @@ export function TabStripScrollIndicator({
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
       onPointerDown={handleTrackPointerDown}
-      onWheel={handleWheel}
       // Why: decorative rail — keyboard/AT users scroll the strip with the adjacent labelled scroll buttons.
       aria-hidden
     >

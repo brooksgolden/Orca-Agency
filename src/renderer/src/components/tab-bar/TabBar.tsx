@@ -86,14 +86,16 @@ function TabBarInner(props: TabBarProps): React.JSX.Element {
     ].join('|'),
     worktreeId
   })
+  const { attachWheelSurface } = tabStripNavigation
   const attachFileDropOwner = useEditorGroupFileDropOwner({ worktreeId, groupId })
   const { clearPendingNewTabMenuFocusOnUnmount } = createMenu
   const surfaceRef = useCallback(
     (node: HTMLDivElement | null) => {
       clearPendingNewTabMenuFocusOnUnmount(node)
       attachFileDropOwner(node)
+      attachWheelSurface(node)
     },
-    [attachFileDropOwner, clearPendingNewTabMenuFocusOnUnmount]
+    [attachFileDropOwner, attachWheelSurface, clearPendingNewTabMenuFocusOnUnmount]
   )
   const tabStripDragScroll = useTabStripDragScrollHandlers(tabStripNavigation.scrollTabStrip, {
     start: tabStripNavigation.tabStripOverflowState.canScrollStart,

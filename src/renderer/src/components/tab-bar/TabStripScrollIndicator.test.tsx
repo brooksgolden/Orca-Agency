@@ -98,7 +98,7 @@ describe('TabStripScrollIndicator', () => {
     expect(indicator.className).toContain('h-[3px]')
   })
 
-  it('does not forward wheel events when disabled', () => {
+  it('leaves wheel events for the parent tab bar when disabled', () => {
     const scrollContainer = document.createElement('div')
     scrollContainer.scrollLeft = 0
     const scrollContainerRef = createRef<HTMLElement>()
@@ -116,7 +116,7 @@ describe('TabStripScrollIndicator', () => {
     expect(scrollContainer.scrollLeft).toBe(0)
   })
 
-  it('forwards wheel events to scrollContainer', () => {
+  it('leaves wheel events for the parent tab bar', () => {
     const scrollContainer = document.createElement('div')
     scrollContainer.scrollLeft = 0
     const scrollContainerRef = createRef<HTMLElement>()
@@ -128,7 +128,7 @@ describe('TabStripScrollIndicator', () => {
     const indicator = getByTestId('tab-strip-scroll-indicator')
     fireEvent.wheel(indicator, { deltaX: 40, deltaY: 0 })
 
-    expect(scrollContainer.scrollLeft).toBe(40)
+    expect(scrollContainer.scrollLeft).toBe(0)
   })
 
   it('handles track click and smooth scrolls container', () => {
