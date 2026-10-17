@@ -51,6 +51,7 @@ const PARK_VERDICT_CHURN_BREADCRUMB = 'terminal_park_verdict_churn'
 const REACT_COMMIT_CASCADE_BREADCRUMB = 'react_commit_cascade'
 const REPLAY_GUARD_WEDGED_BREADCRUMB = 'terminal_replay_guard_wedged_release'
 const TERMINAL_PASTE_SLOW_BREADCRUMB = 'terminal_paste_slow'
+const TERMINAL_RENDERER_GAP_BREADCRUMB = 'terminal_renderer_gap'
 const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   'renderer_error',
   'renderer_unhandled_rejection',
@@ -60,6 +61,7 @@ const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   REACT_COMMIT_CASCADE_BREADCRUMB,
   REPLAY_GUARD_WEDGED_BREADCRUMB,
   TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
   TERMINAL_WEBGL_DIAGNOSTIC_BREADCRUMB
 ])
 const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
@@ -74,7 +76,8 @@ const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
 // — the only signal these carry — in one slot.
 const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set([
   'terminal_safe_fit_retry_exhausted',
-  TERMINAL_PASTE_SLOW_BREADCRUMB
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB
 ])
 // Why: the 30-slot ring is the scarce sink; the durable span stream is not. For
 // bounded-rate pane telemetry whose multiplicity is the whole signal, spans are the
@@ -82,7 +85,8 @@ const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set([
 // but keep every event's span.
 const PER_EVENT_TRACED_COALESCED_BREADCRUMB_NAMES = new Set([
   REPLAY_GUARD_WEDGED_BREADCRUMB,
-  TERMINAL_PASTE_SLOW_BREADCRUMB
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB
 ])
 
 function rendererBreadcrumbCoalesceKey(

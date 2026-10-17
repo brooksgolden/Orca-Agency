@@ -25,11 +25,14 @@ import { primeTerminalWebglAddon } from './lib/pane-manager/pane-webgl-renderer'
 import { SkillWarningPreviewLauncher } from './components/skills/SkillWarningPreviewLauncher'
 import { installBrowserClientPageRenderer } from './components/browser-pane/browser-client-page-renderer-installation'
 import { installOsFileDropCancellationGuard } from './lib/os-file-drop-cancellation-guard'
+import { installTerminalRendererGapProbe } from './lib/terminal-renderer-gap-probe'
 
 const disposeOsFileDropGuard = installOsFileDropCancellationGuard()
 import.meta.hot?.dispose(disposeOsFileDropGuard)
 recordRendererCrashBreadcrumb('renderer_bootstrap_started', { dev: import.meta.env.DEV })
 installRendererCrashDiagnostics()
+const disposeTerminalRendererGapProbe = installTerminalRendererGapProbe()
+import.meta.hot?.dispose(disposeTerminalRendererGapProbe)
 installTypingLatencyDiagnostic()
 installAutomationHostDiagnostic()
 

@@ -251,6 +251,21 @@ describe('renderer breadcrumb IPC routing', () => {
     expect(spanEndMock).toHaveBeenCalledTimes(2)
   })
 
+  it('preserves each foreground renderer gap in the trace while coalescing the crash ring', () => {
+    recordCoalescedCrashBreadcrumbMock
+      .mockReturnValueOnce({ suppressedSinceLast: 0 })
+      .mockReturnValue(undefined)
+    emitRendererBreadcrumb({ name: 'terminal_renderer_gap', data: { gapMs: 1_250 } })
+    emitRendererBreadcrumb({ name: 'terminal_renderer_gap', data: { gapMs: 2_750 } })
+
+    expect(recordCoalescedCrashBreadcrumbMock).toHaveBeenCalledTimes(2)
+    for (const call of recordCoalescedCrashBreadcrumbMock.mock.calls) {
+      expect(call[0].coalesceKey).toBe('terminal_renderer_gap')
+    }
+    expect(startSpanMock).toHaveBeenCalledTimes(2)
+    expect(spanEndMock).toHaveBeenCalledTimes(2)
+  })
+
   it('includes the suppressed count when durable tracing resumes', () => {
     recordCoalescedCrashBreadcrumbMock.mockReturnValueOnce({ suppressedSinceLast: 999 })
 
