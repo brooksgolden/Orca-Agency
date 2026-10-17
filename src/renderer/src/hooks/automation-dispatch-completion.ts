@@ -25,7 +25,7 @@ export function createAutomationDispatchCompletion(args: {
   precheckResult: AutomationPrecheckResult | null
   markDispatchResult: MarkDispatchResult
   releaseTerminalOwnership: () => void
-  finalizeTerminalOwnership: () => boolean
+  finalizeTerminalOwnership: () => Promise<boolean>
 }) {
   const outputSnapshotBuffer = createAutomationRunOutputSnapshotBuffer()
   let latestAssistantMessage: string | null = null
@@ -67,7 +67,7 @@ export function createAutomationDispatchCompletion(args: {
       args.releaseTerminalOwnership()
       throw error
     }
-    if (args.finalizeTerminalOwnership()) {
+    if (await args.finalizeTerminalOwnership()) {
       await clearRetiredRunTerminalIdentity()
     }
   }
@@ -135,7 +135,7 @@ export function createAutomationDispatchCompletion(args: {
       throw error
     }
     if (code === 0) {
-      if (args.finalizeTerminalOwnership()) {
+      if (await args.finalizeTerminalOwnership()) {
         await clearRetiredRunTerminalIdentity()
       }
     } else {

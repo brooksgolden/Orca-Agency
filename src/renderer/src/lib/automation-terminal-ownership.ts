@@ -3,6 +3,7 @@ import type { AppState } from '@/store/types'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { singlePaneLayoutSnapshot } from '@/store/slices/terminal-helpers'
+import { isTerminalTabPresent } from '@/store/slices/terminal-tab-retirement'
 import { readLastTerminalInputAt } from './terminal-input-activity-coalescing'
 
 export type AutomationTerminalOwnershipStore = {
@@ -11,7 +12,7 @@ export type AutomationTerminalOwnershipStore = {
 }
 
 export type AutomationTerminalOwnership = {
-  finalize: () => boolean
+  finalize: () => Promise<boolean>
   release: () => void
 }
 
@@ -23,6 +24,7 @@ type CreateAutomationTerminalOwnershipArgs = {
   ptyId: string
   tabCreatedAt: number
   runtimeKind: 'desktop' | 'environment'
+  stopPty?: (ptyId: string) => Promise<unknown>
 }
 
 function isOwnedTabIdentityCurrent(
@@ -104,33 +106,47 @@ export function createAutomationTerminalOwnership(
 
   return {
     release,
-    finalize: () => {
+    finalize: async () => {
       if (consumed) {
         return false
       }
       // Why: completion and exit can race; consume before any identity check so
       // only the first successful-result path can retire this exact session.
       consumed = true
-      unsubscribe()
       observeTakeover()
-      if (args.runtimeKind !== 'desktop' || args.ptyId.startsWith('remote:') || userTookOver) {
-        return false
-      }
-      const state = args.store.getState()
-      if (!isOwnedTabIdentityCurrent(state, args)) {
-        return false
-      }
       try {
-        // Why: closeTab centrally owns provider shutdown and pane removal; a
-        // direct kill here would create a second teardown authority.
-        state.closeTab(args.tabId, { recordInteraction: false, reason: 'cleanup' })
+        if (args.runtimeKind !== 'desktop' || args.ptyId.startsWith('remote:') || userTookOver) {
+          return false
+        }
+        const state = args.store.getState()
+        if (!isOwnedTabIdentityCurrent(state, args)) {
+          return false
+        }
+        // The pane's PTY binding may already be gone by the time the agent reports
+        // completion. Stop the immutable launch PTY before removing its tab and
+        // dropping the run's only retryable terminal identity.
+        await (args.stopPty ?? ((ptyId) => window.api.pty.kill(ptyId)))(args.ptyId)
+        observeTakeover()
+        const current = args.store.getState()
+        if (!isTerminalTabPresent(current, args.tabId)) {
+          return true
+        }
+        if (userTookOver || !isOwnedTabIdentityCurrent(current, args)) {
+          return false
+        }
+        current.closeTab(args.tabId, {
+          recordInteraction: false,
+          reason: 'cleanup'
+        })
+        return true
       } catch (error) {
-        // Why: a throwing close leaves the terminal alive; report not-closed so
-        // the run keeps its (still-valid) terminal identity and no stale clear runs.
+        // Keep the run's terminal identity when shutdown failed so the surviving
+        // process remains discoverable and can be stopped through the run.
         console.error('[automations] Failed to close owned automation terminal:', error)
         return false
+      } finally {
+        unsubscribe()
       }
-      return true
     }
   }
 }

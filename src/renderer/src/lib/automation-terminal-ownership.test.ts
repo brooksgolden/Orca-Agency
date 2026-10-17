@@ -82,6 +82,7 @@ function own(
     ptyId: PTY_ID,
     tabCreatedAt: CREATED_AT,
     runtimeKind: 'desktop',
+    stopPty: vi.fn().mockResolvedValue(undefined),
     ...overrides
   })
 }
@@ -89,43 +90,109 @@ function own(
 describe('automation terminal ownership', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('closes the exact fresh desktop tab once after the PTY exit binding is cleared', () => {
+  it('stops the exact launch PTY before closing even when its live binding is cleared', async () => {
     const { closeTab, store, update } = createStore()
-    const ownership = own(store)
+    const stopPty = vi.fn().mockResolvedValue(undefined)
+    const ownership = own(store, { stopPty })
     update({
       ptyIdsByTabId: { [TAB_ID]: [] },
       tabsByWorktree: {
         [WORKTREE_ID]: [{ ...store.getState().tabsByWorktree[WORKTREE_ID]![0]!, ptyId: null }]
+      },
+      terminalLayoutsByTabId: {
+        [TAB_ID]: {
+          ...store.getState().terminalLayoutsByTabId[TAB_ID]!,
+          ptyIdsByLeafId: {}
+        }
       }
     })
 
-    expect(ownership.finalize()).toBe(true)
-    expect(ownership.finalize()).toBe(false)
+    expect(await ownership.finalize()).toBe(true)
+    expect(await ownership.finalize()).toBe(false)
+    expect(stopPty).toHaveBeenCalledExactlyOnceWith(PTY_ID)
     expect(closeTab).toHaveBeenCalledTimes(1)
+    expect(stopPty.mock.invocationCallOrder[0]).toBeLessThan(closeTab.mock.invocationCallOrder[0]!)
     expect(closeTab).toHaveBeenCalledWith(TAB_ID, {
       recordInteraction: false,
       reason: 'cleanup'
     })
   })
 
-  it('preserves a tab activated after launch even when focus later moves away', () => {
+  it('retains the tab and run identity when stopping the PTY fails', async () => {
+    const { closeTab, store } = createStore()
+    const stopPty = vi.fn().mockRejectedValue(new Error('daemon unavailable'))
+    const ownership = own(store, { stopPty })
+
+    expect(await ownership.finalize()).toBe(false)
+    expect(closeTab).not.toHaveBeenCalled()
+  })
+
+  it('does not remove a tab taken over while terminal shutdown is pending', async () => {
+    const { closeTab, store, update } = createStore()
+    let finishStop!: () => void
+    const stopPty = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStop = resolve
+        })
+    )
+    const ownership = own(store, { stopPty })
+    const finishing = ownership.finalize()
+    update({ lastTerminalInputAtByPaneKey: { [PANE_KEY]: 200 } })
+    finishStop()
+
+    expect(await finishing).toBe(false)
+    expect(closeTab).not.toHaveBeenCalled()
+  })
+
+  it('remembers a brief activation while terminal shutdown is pending', async () => {
+    const { closeTab, store, update } = createStore()
+    let finishStop!: () => void
+    const stopPty = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStop = resolve
+        })
+    )
+    const ownership = own(store, { stopPty })
+    const finishing = ownership.finalize()
+    update({ activeWorktreeId: WORKTREE_ID, activeTabId: TAB_ID })
+    update({ activeWorktreeId: 'other-worktree', activeTabId: 'other-tab' })
+    finishStop()
+
+    expect(await finishing).toBe(false)
+    expect(closeTab).not.toHaveBeenCalled()
+  })
+
+  it('clears run identity when PTY exit already removed the tab during shutdown', async () => {
+    const { closeTab, store, update } = createStore()
+    const stopPty = vi.fn().mockImplementation(async () => {
+      update({ tabsByWorktree: { [WORKTREE_ID]: [] } })
+    })
+    const ownership = own(store, { stopPty })
+
+    expect(await ownership.finalize()).toBe(true)
+    expect(closeTab).not.toHaveBeenCalled()
+  })
+
+  it('preserves a tab activated after launch even when focus later moves away', async () => {
     const { closeTab, store, update } = createStore()
     const ownership = own(store)
 
     update({ activeWorktreeId: WORKTREE_ID, activeTabId: TAB_ID })
     update({ activeWorktreeId: 'other-worktree', activeTabId: 'other-tab' })
 
-    expect(ownership.finalize()).toBe(false)
+    expect(await ownership.finalize()).toBe(false)
     expect(closeTab).not.toHaveBeenCalled()
   })
 
-  it('preserves a tab that received user input after launch', () => {
+  it('preserves a tab that received user input after launch', async () => {
     const { closeTab, store, update } = createStore()
     const ownership = own(store)
 
     update({ lastTerminalInputAtByPaneKey: { [PANE_KEY]: 200 } })
 
-    expect(ownership.finalize()).toBe(false)
+    expect(await ownership.finalize()).toBe(false)
     expect(closeTab).not.toHaveBeenCalled()
   })
 
@@ -139,7 +206,7 @@ describe('automation terminal ownership', () => {
       'pane layout',
       { tabsByWorktree: null, ptyIdsByTabId: undefined, layoutPty: 'pty-replacement' }
     ]
-  ])('refuses a replacement identity in the %s binding', (_label, drift) => {
+  ])('refuses a replacement identity in the %s binding', async (_label, drift) => {
     const { closeTab, getState, store, update } = createStore()
     const ownership = own(store)
     const tab = getState().tabsByWorktree[WORKTREE_ID]![0]!
@@ -160,11 +227,11 @@ describe('automation terminal ownership', () => {
         : {})
     })
 
-    expect(ownership.finalize()).toBe(false)
+    expect(await ownership.finalize()).toBe(false)
     expect(closeTab).not.toHaveBeenCalled()
   })
 
-  it('refuses a tab recreated with the same id', () => {
+  it('refuses a tab recreated with the same id', async () => {
     const { closeTab, getState, store, update } = createStore()
     const ownership = own(store)
     update({
@@ -175,28 +242,28 @@ describe('automation terminal ownership', () => {
       }
     })
 
-    expect(ownership.finalize()).toBe(false)
+    expect(await ownership.finalize()).toBe(false)
     expect(closeTab).not.toHaveBeenCalled()
   })
 
   it.each([
     ['remote runtime', { runtimeKind: 'environment' as const }],
     ['remote PTY identity', { ptyId: 'remote:env-1@@terminal-1' }]
-  ])('never owns a %s terminal', (_label, overrides) => {
+  ])('never owns a %s terminal', async (_label, overrides) => {
     const { closeTab, store } = createStore()
     const ownership = own(store, overrides)
 
-    expect(ownership.finalize()).toBe(false)
+    expect(await ownership.finalize()).toBe(false)
     expect(closeTab).not.toHaveBeenCalled()
   })
 
-  it('release consumes ownership without closing the terminal', () => {
+  it('release consumes ownership without closing the terminal', async () => {
     const { closeTab, store } = createStore()
     const ownership = own(store)
 
     ownership.release()
 
-    expect(ownership.finalize()).toBe(false)
+    expect(await ownership.finalize()).toBe(false)
     expect(closeTab).not.toHaveBeenCalled()
   })
 })

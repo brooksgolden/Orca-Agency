@@ -52,10 +52,10 @@ export async function handleAutomationDispatchRequest({
     terminalOwnership = null
     ownership?.release()
   }
-  const finalizeTerminalOwnership = (): boolean => {
+  const finalizeTerminalOwnership = async (): Promise<boolean> => {
     const ownership = terminalOwnership
     terminalOwnership = null
-    return ownership?.finalize() ?? false
+    return (await ownership?.finalize()) ?? false
   }
 
   if (!resolved.repo) {

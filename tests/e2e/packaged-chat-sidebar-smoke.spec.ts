@@ -373,6 +373,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       )
     ).toBe(true)
   } catch (error) {
+    console.error('Packaged chat sidebar smoke failed:', error)
     try {
       const page = await app.firstWindow()
       await page.screenshot({
