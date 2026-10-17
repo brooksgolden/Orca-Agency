@@ -131,7 +131,7 @@ test('packaged file links and folder workspace splits retain their workspace', a
       }
       return ids
     }, folders)
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await page.waitForFunction(() => Boolean(window.api))
     const row = (id: string) => page.locator(`[role="option"][data-worktree-id="folder:${id}"]`)
 
@@ -241,7 +241,7 @@ test('packaged file links and folder workspace splits retain their workspace', a
         sourcePosition: { x: 80, y: 16 },
         targetPosition: { x: 8, y: Math.floor(bounds!.height / 2) }
       })
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await page.waitForFunction(() => Boolean(window.api))
     await row(ids[0]).locator('[data-worktree-card-surface]').click()
     await expect(page.locator('[data-workspace-split="true"]')).toBeVisible()
