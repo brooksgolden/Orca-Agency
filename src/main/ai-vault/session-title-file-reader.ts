@@ -23,6 +23,12 @@ async function readOneTitle(
   if (signal?.aborted) {
     return null
   }
+  if (request.titleOnly) {
+    const cached = cache?.get(request)
+    if (cached?.title.trim()) {
+      return { agent: cached.agent, sessionId: cached.sessionId, title: cached.title }
+    }
+  }
   const transcriptPath = request.transcriptPath?.trim()
   if (!transcriptPath) {
     const cached = cache?.get(request)

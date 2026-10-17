@@ -155,6 +155,59 @@ describe('readAiVaultSessionTitlesFromFiles', () => {
     expect(cache.set).not.toHaveBeenCalled()
   })
 
+  it('reuses a scanned title for tab decoration without reopening a transcript', async () => {
+    const path = await transcriptPath()
+    const cached = {
+      agent: 'claude' as const,
+      sessionId: 'session-1',
+      title: 'Scanned conversation',
+      isHeadless: false
+    }
+    const cache = { get: vi.fn(() => cached), set: vi.fn() }
+
+    await expect(
+      readAiVaultSessionTitlesFromFiles(
+        [{ agent: 'claude', sessionId: 'session-1', transcriptPath: path, titleOnly: true }],
+        { cache }
+      )
+    ).resolves.toEqual({
+      titles: [{ agent: 'claude', sessionId: 'session-1', title: 'Scanned conversation' }]
+    })
+    expect(parseAgentSessionFileCached).not.toHaveBeenCalled()
+  })
+
+  it('still reads the transcript when Claude headless classification is requested', async () => {
+    const path = await transcriptPath()
+    const cache = {
+      get: vi.fn(() => ({
+        agent: 'claude' as const,
+        sessionId: 'session-1',
+        title: 'Old scan'
+      })),
+      set: vi.fn()
+    }
+    parseAgentSessionFileCached.mockResolvedValue({
+      agent: 'claude',
+      sessionId: 'session-1',
+      title: 'Current transcript',
+      messageCount: 1,
+      previewMessages: [],
+      isHeadless: true
+    })
+
+    await expect(
+      readAiVaultSessionTitlesFromFiles(
+        [{ agent: 'claude', sessionId: 'session-1', transcriptPath: path }],
+        { cache }
+      )
+    ).resolves.toEqual({
+      titles: [
+        { agent: 'claude', sessionId: 'session-1', title: 'Current transcript', isHeadless: true }
+      ]
+    })
+    expect(parseAgentSessionFileCached).toHaveBeenCalledTimes(1)
+  })
+
   it('caps exact transcript reads at 64 identities', async () => {
     const path = await transcriptPath()
     parseAgentSessionFileCached.mockResolvedValue({
