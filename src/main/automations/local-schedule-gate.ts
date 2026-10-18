@@ -64,7 +64,7 @@ export async function prepareScheduledAutomation(input: {
       status: changedWhileWaiting ? 'skipped_unavailable' : 'skipped_missed',
       error: changedWhileWaiting
         ? 'This automation changed while its local run was waiting for resources.'
-        : 'This run waited 24 hours for the local computer to become idle and was skipped.'
+        : 'This run waited 24 hours for the computer to be idle with enough local resources and was skipped.'
     })
     const currentOccurrence = store.getLatestAutomationOccurrence(automation, now)
     if (currentOccurrence === null || currentOccurrence <= deferred.scheduledFor) {

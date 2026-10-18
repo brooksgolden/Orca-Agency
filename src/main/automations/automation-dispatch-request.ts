@@ -13,6 +13,13 @@ import { NO_DISPATCH_HOST, sendRendererDispatch } from './dispatch-refusal'
 
 export type AutomationRendererChannel = Pick<WebContents, 'isDestroyed' | 'send'>
 
+export function availableAutomationRenderer(
+  renderer: AutomationRendererChannel | null,
+  ready: boolean
+): AutomationRendererChannel | null {
+  return renderer && !renderer.isDestroyed() && ready ? renderer : null
+}
+
 export class AutomationDispatchCancelledError extends Error {}
 
 type DispatchContext = Pick<

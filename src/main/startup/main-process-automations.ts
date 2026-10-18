@@ -1,8 +1,22 @@
 import type { AutomationService } from '../automations/service'
 import { createRuntimeAutomationService } from '../automations/runtime-automation-service'
 import { powerMonitor } from 'electron'
-import { freemem } from 'node:os'
+import { freemem, totalmem } from 'node:os'
 import { mainProcessState as state } from './main-process-state'
+
+const GIB = 1024 ** 3
+
+export function localScheduleFreeMemoryFloor(
+  totalBytes: number,
+  platform: NodeJS.Platform
+): number {
+  if (platform !== 'win32' && platform !== 'linux') {
+    // macOS raw free pages undercount reclaimable memory.
+    return 0
+  }
+  const cap = platform === 'win32' ? 6 * GIB : 4 * GIB
+  return Math.min(cap, Math.max(2 * GIB, Math.floor(totalBytes / 4)))
+}
 
 export function initializeMainProcessAutomations(): AutomationService {
   const store = state.store
@@ -25,8 +39,10 @@ export function initializeMainProcessAutomations(): AutomationService {
       ? {
           localScheduleReady: () =>
             powerMonitor.getSystemIdleTime() >= 600 &&
-            freemem() >= 4 * 1024 ** 3 &&
-            !runtime.hasMobileTerminalSubscribers()
+            freemem() >= localScheduleFreeMemoryFloor(totalmem(), process.platform) &&
+            !runtime.hasMobileTerminalSubscribers(),
+          localSchedulePrecheckMayContinue: () =>
+            powerMonitor.getSystemIdleTime() >= 600 && !runtime.hasMobileTerminalSubscribers()
         }
       : {})
   })

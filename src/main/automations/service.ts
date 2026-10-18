@@ -1,5 +1,6 @@
 import {
   AutomationDispatchCancelledError,
+  availableAutomationRenderer,
   requestAutomationDispatch,
   type AutomationRendererChannel
 } from './automation-dispatch-request'
@@ -36,10 +37,7 @@ import type {
 } from '../../shared/runtime-client-events'
 import { prepareScheduledAutomation } from './local-schedule-gate'
 
-const DEFAULT_TICK_MS = 60 * 1000
-
 export class AutomationService {
-  private readonly store: Store
   private readonly tickMs: number
   private timer: ReturnType<typeof setInterval> | null = null
   private webContents: AutomationRendererChannel | null = null
@@ -52,6 +50,7 @@ export class AutomationService {
   private readonly allowRemoteHostScheduling: boolean
   private readonly headlessDispatcher: HeadlessAutomationDispatcher | null
   private readonly localScheduleReady: (() => boolean) | null
+  private readonly precheckMayContinue: (() => boolean) | null
   /** Set on a headless host: closes completed, unused run terminals now; resolves how many. */
   releaseFinishedRunTerminals: (() => Promise<number>) | null = null
   private readonly publish: PublishAutomationsChanged | null
@@ -63,7 +62,7 @@ export class AutomationService {
   externalProbePriority: (<T>(run: () => T) => T) | null = null
 
   constructor(
-    store: Store,
+    private readonly store: Store,
     opts: {
       tickMs?: number
       claudeUsage?: ClaudeUsageStore
@@ -72,17 +71,18 @@ export class AutomationService {
       headlessDispatcher?: HeadlessAutomationDispatcher
       /** Desktop-only resource gate; manual Run now remains an explicit user action. */
       localScheduleReady?: () => boolean
+      precheckMayContinue?: () => boolean
       terminalObserver?: AutomationRunTerminalObserver
       onAutomationsChanged?: PublishAutomationsChanged
     } = {}
   ) {
-    this.store = store
-    this.tickMs = opts.tickMs ?? DEFAULT_TICK_MS
+    this.tickMs = opts.tickMs ?? 60 * 1000
     this.claudeUsage = opts.claudeUsage ?? null
     this.codexUsage = opts.codexUsage ?? null
     this.allowRemoteHostScheduling = opts.allowRemoteHostScheduling ?? false
     this.headlessDispatcher = opts.headlessDispatcher ?? null
     this.localScheduleReady = opts.localScheduleReady ?? null
+    this.precheckMayContinue = opts.precheckMayContinue ?? this.localScheduleReady
     this.publish = opts.onAutomationsChanged ?? null
     this.runs = createAutomationRunWriter(store, this.publish)
     this.completionWatcher = opts.terminalObserver
@@ -199,7 +199,7 @@ export class AutomationService {
     }
     return await runAutomationPrecheck({
       precheck: automation.precheck,
-      shouldContinue: this.localScheduleReady ?? undefined,
+      shouldContinue: this.precheckMayContinue ?? undefined,
       target:
         automation.executionTargetType === 'ssh'
           ? { type: 'ssh', cwd: target.cwd, connectionId: automation.executionTargetId }
@@ -286,7 +286,9 @@ export class AutomationService {
     // */5 automation would otherwise write ~288 identical rows a day — past
     // retention, which would evict the automation's real history.
     const target = this.resolveTarget(automation)
-    const canDispatch = this.canDispatchToRenderer() || Boolean(this.headlessDispatcher)
+    const canDispatch =
+      !!this.headlessDispatcher ||
+      !!availableAutomationRenderer(this.webContents, this.rendererReady)
     const refusal = describeScheduledRefusal({ target, canDispatch })
     if (refusal && (await this.runs.repeatSkip(automation.id, refusal, scheduledFor))) {
       await this.runs.advanceNextRun(automation.id, now)
@@ -310,11 +312,6 @@ export class AutomationService {
     })
   }
 
-  private canDispatchToRenderer(): boolean {
-    const webContents = this.webContents
-    return Boolean(webContents && !webContents.isDestroyed() && this.rendererReady)
-  }
-
   private requestDispatch(
     automation: Automation,
     run: AutomationRun,
@@ -326,7 +323,7 @@ export class AutomationService {
         store: this.store,
         runs: this.runs,
         isActive: () => !this.stopped && generation === this.dispatchGeneration,
-        getRenderer: () => (this.canDispatchToRenderer() ? this.webContents : null),
+        getRenderer: () => availableAutomationRenderer(this.webContents, this.rendererReady),
         headlessDispatcher: this.headlessDispatcher,
         localScheduleReady: this.localScheduleReady,
         resolveTarget: (current) => this.resolveTarget(current),

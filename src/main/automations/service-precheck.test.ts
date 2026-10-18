@@ -117,12 +117,18 @@ describe('AutomationService prechecks', () => {
       completedAt: Date.now()
     }
     runAutomationPrecheckMock.mockResolvedValue(precheckResult)
-    const service = new AutomationService(store, { tickMs: 60_000 })
+    const precheckMayContinue = () => true
+    const service = new AutomationService(store, {
+      tickMs: 60_000,
+      localScheduleReady: () => false,
+      precheckMayContinue
+    })
 
     const result = await service.runPrecheck(automation.id, run.id)
 
     expect(result).toEqual(precheckResult)
     expect(runAutomationPrecheckMock).toHaveBeenCalledWith({
+      shouldContinue: precheckMayContinue,
       precheck: {
         command: 'test -f ready',
         timeoutSeconds: 30

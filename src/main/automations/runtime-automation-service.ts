@@ -40,6 +40,7 @@ export function createRuntimeAutomationService(input: {
   /** Desktop runs can use background dispatch without claiming remote-host schedules. */
   dispatchHeadlessly?: boolean
   localScheduleReady?: () => boolean
+  localSchedulePrecheckMayContinue?: () => boolean
 }): AutomationService {
   const { store, runtime, claudeUsage, codexUsage } = input
   // The handle each headless launch returned, so its watcher never depends on a pane-key lookup.
@@ -65,6 +66,7 @@ export function createRuntimeAutomationService(input: {
     onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
     allowRemoteHostScheduling: input.headless,
     localScheduleReady: input.localScheduleReady,
+    precheckMayContinue: input.localSchedulePrecheckMayContinue,
     headlessDispatcher:
       input.headless || input.dispatchHeadlessly
         ? async ({ automation, run, target }) => {

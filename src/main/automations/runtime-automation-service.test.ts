@@ -3,10 +3,11 @@ import type { HeadlessAutomationDispatcher } from './headless-dispatch'
 import type { AutomationRunTerminalObserver } from './run-completion-watcher'
 
 const captured = vi.hoisted(
-  (): { dispatcher: unknown; observer: unknown; remoteScheduling: unknown } => ({
+  (): { dispatcher: unknown; observer: unknown; remoteScheduling: unknown; precheck: unknown } => ({
     dispatcher: null,
     observer: null,
-    remoteScheduling: null
+    remoteScheduling: null,
+    precheck: null
   })
 )
 
@@ -20,11 +21,13 @@ vi.mock('./service', () => ({
         headlessDispatcher?: unknown
         terminalObserver?: unknown
         allowRemoteHostScheduling?: unknown
+        precheckMayContinue?: unknown
       }
     ) {
       captured.dispatcher = opts.headlessDispatcher
       captured.observer = opts.terminalObserver
       captured.remoteScheduling = opts.allowRemoteHostScheduling
+      captured.precheck = opts.precheckMayContinue
     }
   }
 }))
@@ -34,17 +37,20 @@ import { createRuntimeAutomationService } from './runtime-automation-service'
 describe('desktop background dispatch authority', () => {
   it('keeps remote schedules on the server while dispatching local runs headlessly', () => {
     const runtime = { setAutomationService: vi.fn(), notifyAutomationsChanged: vi.fn() }
+    const precheckMayContinue = () => true
     createRuntimeAutomationService({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mocked service does not read the store.
       store: {} as never,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: construction invokes only these runtime methods.
       runtime: runtime as never,
       headless: false,
-      dispatchHeadlessly: true
+      dispatchHeadlessly: true,
+      localSchedulePrecheckMayContinue: precheckMayContinue
     })
 
     expect(captured.dispatcher).toBeTypeOf('function')
     expect(captured.remoteScheduling).toBe(false)
+    expect(captured.precheck).toBe(precheckMayContinue)
   })
 })
 
@@ -52,9 +58,7 @@ describe('headless automation dispatch', () => {
   it('hands the launched run to its watcher instead of awaiting one tui-idle wait itself', async () => {
     const updateSettings = vi.fn()
     const store = {
-      listAutomations: () => [
-        { id: 'automation', executionTargetType: 'local', agentId: 'goose' }
-      ],
+      listAutomations: () => [{ id: 'automation', executionTargetType: 'local', agentId: 'goose' }],
       getSettings: () => ({ chatSidebar: {} }),
       updateSettings
     }
