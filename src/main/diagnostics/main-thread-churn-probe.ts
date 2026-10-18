@@ -3,6 +3,16 @@ import { freemem } from 'node:os'
 import { writeStartupDiagnosticLine } from '../startup/startup-diagnostics'
 
 export const MAIN_THREAD_DIAGNOSTICS_ENV = 'ORCA_MAIN_THREAD_DIAGNOSTICS'
+let persistentCaptureEnabled = false
+let diagnosticLineWriter: (line: string) => void = writeStartupDiagnosticLine
+
+export function setPersistentMainThreadDiagnosticsEnabled(enabled: boolean): void {
+  persistentCaptureEnabled = enabled
+}
+
+export function setMainThreadDiagnosticLineWriter(writer?: (line: string) => void): void {
+  diagnosticLineWriter = writer ?? writeStartupDiagnosticLine
+}
 
 // Why: a late 25ms timer detects a responsiveness gap. Scheduler delay can
 // also make it late, so pair it with event-loop utilization and CPU time to
@@ -12,6 +22,7 @@ const REPORT_EVERY_MS = 5_000
 
 export function isMainThreadDiagnosticsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return (
+    persistentCaptureEnabled ||
     env[MAIN_THREAD_DIAGNOSTICS_ENV] === '1' ||
     process.argv.includes('--orca-main-thread-diagnostics')
   )
@@ -135,7 +146,7 @@ export function writeMainThreadDiagnosticMarker(marker: string): void {
   if (!isMainThreadDiagnosticsEnabled()) {
     return
   }
-  writeStartupDiagnosticLine(
+  diagnosticLineWriter(
     `[main-thread] ${JSON.stringify({ marker, t: Math.round(performance.now()) })}`
   )
 }
@@ -214,7 +225,7 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
     windowMaxGapMs = 0
     gapsOver50Ms = 0
     gapsOver250Ms = 0
-    ;(options.writeLine ?? writeStartupDiagnosticLine)(`[main-thread] ${JSON.stringify(report)}`)
+    ;(options.writeLine ?? diagnosticLineWriter)(`[main-thread] ${JSON.stringify(report)}`)
   }, TICK_MS)
   timer.unref?.()
 }

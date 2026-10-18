@@ -13,10 +13,15 @@ import {
   drainSubprocessSpawnStats,
   isMainThreadDiagnosticsEnabled,
   recordSubprocessSpawn,
+  setMainThreadDiagnosticLineWriter,
+  setPersistentMainThreadDiagnosticsEnabled,
+  writeMainThreadDiagnosticMarker,
   startMainThreadChurnProbe
 } from './main-thread-churn-probe'
 
 afterEach(() => {
+  setPersistentMainThreadDiagnosticsEnabled(false)
+  setMainThreadDiagnosticLineWriter()
   vi.unstubAllEnvs()
   drainSubprocessSpawnStats()
 })
@@ -77,6 +82,28 @@ describe('classifySubprocessCommand', () => {
 })
 
 describe('recordSubprocessSpawn', () => {
+  it('enables a persistent main-process capture without exporting it to child environments', () => {
+    vi.stubEnv(MAIN_THREAD_DIAGNOSTICS_ENV, '')
+    setPersistentMainThreadDiagnosticsEnabled(true)
+    expect(isMainThreadDiagnosticsEnabled()).toBe(true)
+    expect(process.env[MAIN_THREAD_DIAGNOSTICS_ENV]).toBe('')
+    setPersistentMainThreadDiagnosticsEnabled(false)
+    expect(isMainThreadDiagnosticsEnabled()).toBe(false)
+  })
+
+  it('sends markers to the selected file sink when persistent capture is enabled', () => {
+    vi.stubEnv(MAIN_THREAD_DIAGNOSTICS_ENV, '')
+    setPersistentMainThreadDiagnosticsEnabled(true)
+    const sink = vi.fn()
+    setMainThreadDiagnosticLineWriter(sink)
+    writeStartupDiagnosticLineMock.mockClear()
+
+    writeMainThreadDiagnosticMarker('updater-check-attempt')
+
+    expect(String(sink.mock.calls[0]?.[0])).toContain('updater-check-attempt')
+    expect(writeStartupDiagnosticLineMock).not.toHaveBeenCalled()
+  })
+
   it('enables only the explicitly launched process without changing the inherited environment', () => {
     vi.stubEnv(MAIN_THREAD_DIAGNOSTICS_ENV, '')
     const originalArgv = process.argv
