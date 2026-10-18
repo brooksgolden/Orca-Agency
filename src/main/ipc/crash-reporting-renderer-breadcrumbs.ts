@@ -52,6 +52,94 @@ const REACT_COMMIT_CASCADE_BREADCRUMB = 'react_commit_cascade'
 const REPLAY_GUARD_WEDGED_BREADCRUMB = 'terminal_replay_guard_wedged_release'
 const TERMINAL_PASTE_SLOW_BREADCRUMB = 'terminal_paste_slow'
 const TERMINAL_RENDERER_GAP_BREADCRUMB = 'terminal_renderer_gap'
+const TERMINAL_OUTPUT_BACKLOG_DROPPED_BREADCRUMB = 'terminal_output_backlog_dropped'
+const TERMINAL_PASTE_LABELS: Record<string, readonly string[]> = {
+  source: [
+    'keyboard',
+    'paste-event',
+    'app-menu',
+    'context-menu',
+    'right-click',
+    'middle-click',
+    'programmatic'
+  ],
+  mode: ['direct', 'chunked', 'bracketed-terminal', 'windows-input-record', 'reject'],
+  runtime: ['local', 'wsl', 'ssh', 'remote-runtime'],
+  status: ['pasted', 'rejected', 'cancelled', 'pending']
+}
+const TERMINAL_LATENCY_METRICS: Record<string, readonly string[]> = {
+  [TERMINAL_PASTE_SLOW_BREADCRUMB]: [
+    'bytes',
+    'lines',
+    'clipboardMs',
+    'planningMs',
+    'writeMs',
+    'dispatchDelayMs',
+    'parseAfterDispatchMs',
+    'firstPaintDelayMs',
+    'lastPaintDelayMs',
+    'parsedBatches',
+    'renderBatches'
+  ],
+  [TERMINAL_RENDERER_GAP_BREADCRUMB]: [
+    'gapMs',
+    'terminalPaneCount',
+    'queuedTerminalCount',
+    'queuedChars',
+    'highPriorityTerminalCount',
+    'heldForegroundTerminalCount'
+  ],
+  [TERMINAL_OUTPUT_BACKLOG_DROPPED_BREADCRUMB]: ['foreground', 'droppedChars', 'capChars']
+}
+let terminalLatencyCapture: ((line: string) => void) | undefined
+
+export function setTerminalLatencyCapture(capture?: (line: string) => void): void {
+  terminalLatencyCapture = capture
+}
+
+function recordTerminalLatency(
+  name: string,
+  data: CrashReportBreadcrumbData | undefined,
+  origin?: string
+): void {
+  if (!Object.hasOwn(TERMINAL_LATENCY_METRICS, name)) {
+    return
+  }
+  const keys = TERMINAL_LATENCY_METRICS[name]
+  if (!terminalLatencyCapture) {
+    return
+  }
+  const metrics: Record<string, number | boolean> = {}
+  for (const key of keys) {
+    const value = data?.[key]
+    if (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) {
+      metrics[key] = value
+    }
+  }
+  const labels: Record<string, string> = {}
+  if (name === TERMINAL_PASTE_SLOW_BREADCRUMB) {
+    for (const [key, allowed] of Object.entries(TERMINAL_PASTE_LABELS)) {
+      const value = data?.[key]
+      if (typeof value === 'string' && allowed.includes(value)) {
+        labels[key] = value
+      }
+    }
+  }
+  const rendererAt = data?.at
+  terminalLatencyCapture(
+    JSON.stringify({
+      at: new Date().toISOString(),
+      name,
+      ...(origin ? { origin } : {}),
+      ...(typeof rendererAt === 'string' &&
+      /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(rendererAt)
+        ? { rendererAt }
+        : {}),
+      ...(Object.keys(labels).length ? { labels } : {}),
+      metrics
+    })
+  )
+}
 const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   'renderer_error',
   'renderer_unhandled_rejection',
@@ -199,6 +287,7 @@ export function recordRendererBreadcrumbFromRenderer(
     return
   }
   const data = sanitizeRendererBreadcrumbData(args.data)
+  recordTerminalLatency(args.name, data, origin)
   if (COALESCED_RENDERER_BREADCRUMB_NAMES.has(args.name)) {
     const coalesceKey = rendererBreadcrumbCoalesceKey(args.name, data)
     if (!coalesceKey) {

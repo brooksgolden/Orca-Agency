@@ -63,6 +63,7 @@ vi.mock('../observability/tracer', () => ({
 }))
 
 import { registerCrashReportingHandlers } from './crash-reporting'
+import { setTerminalLatencyCapture } from './crash-reporting-renderer-breadcrumbs'
 
 function registerHandlersWithStubStore(): void {
   registerCrashReportingHandlers({
@@ -85,6 +86,7 @@ function emitRendererBreadcrumb(args: unknown, senderId?: number): void {
 
 describe('renderer breadcrumb IPC routing', () => {
   beforeEach(() => {
+    setTerminalLatencyCapture(undefined)
     listeners.clear()
     recordCoalescedCrashBreadcrumbMock.mockReset()
     recordCoalescedCrashBreadcrumbMock.mockReturnValue({ suppressedSinceLast: 0 })
@@ -92,6 +94,94 @@ describe('renderer breadcrumb IPC routing', () => {
     startSpanMock.mockClear()
     spanEndMock.mockClear()
     registerHandlersWithStubStore()
+  })
+
+  it('persists every slow terminal event with metrics only, even when the crash ring coalesces it', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb(
+      {
+        name: 'terminal_renderer_gap',
+        data: { gapMs: 1_250, queuedChars: 512, message: 'private terminal text' }
+      },
+      42
+    )
+    emitRendererBreadcrumb({ name: 'terminal_renderer_gap', data: { gapMs: 2_750 } }, 42)
+    emitRendererBreadcrumb({ name: 'renderer_error', data: { message: 'private error' } }, 42)
+
+    expect(capture).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_renderer_gap',
+      origin: 'renderer:42',
+      metrics: { gapMs: 1_250, queuedChars: 512 }
+    })
+    expect(JSON.parse(capture.mock.calls[1][0])).toMatchObject({
+      name: 'terminal_renderer_gap',
+      metrics: { gapMs: 2_750 }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private terminal text')
+    expect(capture.mock.calls[0][0]).not.toContain('private error')
+  })
+
+  it('keeps fixed paste labels and event time without retaining terminal content', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_paste_slow',
+      data: {
+        at: '2026-10-18T20:00:00.000Z',
+        source: 'keyboard',
+        mode: 'windows-input-record',
+        runtime: 'local',
+        status: 'pending',
+        dispatchDelayMs: -1,
+        firstPaintDelayMs: 800,
+        message: 'private terminal text'
+      }
+    })
+
+    const row = JSON.parse(capture.mock.calls[0][0])
+    expect(row).toMatchObject({
+      name: 'terminal_paste_slow',
+      rendererAt: '2026-10-18T20:00:00.000Z',
+      labels: {
+        source: 'keyboard',
+        mode: 'windows-input-record',
+        runtime: 'local',
+        status: 'pending'
+      },
+      metrics: { dispatchDelayMs: -1, firstPaintDelayMs: 800 }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private terminal text')
+  })
+
+  it('drops unexpected paste labels and noncanonical timestamps', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_paste_slow',
+      data: { source: 'private clipboard text', at: 'private timestamp', writeMs: 600 }
+    })
+
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({ metrics: { writeMs: 600 } })
+    expect(capture.mock.calls[0][0]).not.toContain('private clipboard text')
+    expect(capture.mock.calls[0][0]).not.toContain('private timestamp')
+  })
+
+  it('records dropped output backlog and ignores unrelated event names', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({ name: 'constructor', data: { message: 'not a latency event' } })
+    emitRendererBreadcrumb({
+      name: 'terminal_output_backlog_dropped',
+      data: { foreground: true, droppedChars: 4096, capChars: 2048 }
+    })
+
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_output_backlog_dropped',
+      metrics: { foreground: true, droppedChars: 4096, capChars: 2048 }
+    })
   })
 
   it('sanitizes and coalesces renderer error breadcrumbs', () => {
