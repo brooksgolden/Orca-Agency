@@ -1,18 +1,32 @@
 import { constants, setPriority } from 'node:os'
-import { listRegisteredPtys } from '../memory/pty-registry'
+import { getRegisteredPtyProcessStartTime, listRegisteredPtys } from '../memory/pty-registry'
 import {
-  isWindowsProcessTableAvailable,
+  isWindowsProcessStartTimeAvailable,
+  readWindowsProcessCreationTime,
   readWindowsProcessIdentityTableFresh
 } from '../windows/windows-process-table'
 import type { WindowsProcessIdentityRow } from '../windows/windows-process-table'
 
 export function automationProcessTreePids(
   rootPid: number,
-  rows: readonly Pick<WindowsProcessIdentityRow, 'pid' | 'ppid'>[]
+  rootCreatedAtMs: number,
+  rows: readonly Pick<WindowsProcessIdentityRow, 'pid' | 'ppid' | 'creationTimeMs'>[]
 ): number[] {
+  const byPid = new Map(rows.map((row) => [row.pid, row]))
+  if (byPid.get(rootPid)?.creationTimeMs !== rootCreatedAtMs) {
+    return []
+  }
   const children = new Map<number, number[]>()
   for (const row of rows) {
     const siblings = children.get(row.ppid) ?? []
+    const parentCreatedAtMs = byPid.get(row.ppid)?.creationTimeMs
+    if (
+      typeof row.creationTimeMs !== 'number' ||
+      typeof parentCreatedAtMs !== 'number' ||
+      row.creationTimeMs < parentCreatedAtMs
+    ) {
+      continue
+    }
     siblings.push(row.pid)
     children.set(row.ppid, siblings)
   }
@@ -40,24 +54,37 @@ export async function lowerLocalAutomationProcessPriority(ptyId: string | null):
   if (!rootPid) {
     return
   }
-  const lower = (pid: number): void => {
+  // PID-only ancestry is unsafe: a child keeps its former parent's PID after
+  // exit, and Windows can recycle that PID for an unrelated Orca process.
+  if (!isWindowsProcessStartTimeAvailable()) {
+    return
+  }
+  const rootCreatedAtMs = getRegisteredPtyProcessStartTime(ptyId, rootPid)
+  if (rootCreatedAtMs === null) {
+    return
+  }
+  const lower = (pid: number, createdAtMs: number): void => {
+    if (readWindowsProcessCreationTime(pid) !== createdAtMs) {
+      return
+    }
     try {
       setPriority(pid, constants.priority.PRIORITY_LOW)
     } catch {
       // A process can exit between the snapshot and the priority change.
     }
   }
-  lower(rootPid)
-  if (!isWindowsProcessTableAvailable()) {
-    return
-  }
+  lower(rootPid, rootCreatedAtMs)
   try {
     const rows = await readWindowsProcessIdentityTableFresh()
-    for (const pid of automationProcessTreePids(rootPid, rows)) {
-      lower(pid)
+    const createdAtByPid = new Map(rows.map((row) => [row.pid, row.creationTimeMs]))
+    for (const pid of automationProcessTreePids(rootPid, rootCreatedAtMs, rows)) {
+      const createdAtMs = createdAtByPid.get(pid)
+      if (typeof createdAtMs === 'number') {
+        lower(pid, createdAtMs)
+      }
     }
   } catch {
-    // The terminal root still runs at low priority if process inventory is unavailable.
+    // The proven terminal root still runs at low priority if process inventory is unavailable.
   }
 }
 

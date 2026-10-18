@@ -3,21 +3,63 @@ import {
   automationProcessTreePids,
   scheduleLocalAutomationPriorityFollowups
 } from './local-automation-process-priority'
+import {
+  getRegisteredPtyProcessStartTime,
+  registerPty,
+  unregisterPty
+} from '../memory/pty-registry'
+import {
+  isWindowsProcessStartTimeAvailable,
+  readWindowsProcessCreationTime
+} from '../windows/windows-process-table'
 
 afterEach(() => vi.useRealTimers())
 
 describe('local automation process priority', () => {
   it('includes only the automation terminal descendants', () => {
     expect(
-      automationProcessTreePids(100, [
-        { pid: 101, ppid: 100 },
-        { pid: 102, ppid: 101 },
-        { pid: 103, ppid: 100 },
-        { pid: 201, ppid: 200 },
-        { pid: 202, ppid: 201 }
+      automationProcessTreePids(100, 1_000, [
+        { pid: 100, ppid: 1, creationTimeMs: 1_000 },
+        { pid: 101, ppid: 100, creationTimeMs: 1_100 },
+        { pid: 102, ppid: 101, creationTimeMs: 1_200 },
+        { pid: 103, ppid: 100, creationTimeMs: 1_300 },
+        { pid: 201, ppid: 200, creationTimeMs: 1_200 },
+        { pid: 202, ppid: 201, creationTimeMs: 1_300 }
       ]).sort((a, b) => a - b)
     ).toEqual([101, 102, 103])
   })
+
+  it('rejects stale parent PIDs and every branch without creation times', () => {
+    const rows = [
+      { pid: 100, ppid: 1, creationTimeMs: 2_000 },
+      { pid: 101, ppid: 100, creationTimeMs: 2_100 },
+      { pid: 102, ppid: 101, creationTimeMs: 2_200 },
+      // A terminated process left 100 as this child's ppid. PID 100 was reused.
+      { pid: 201, ppid: 100, creationTimeMs: 1_500 },
+      { pid: 202, ppid: 201, creationTimeMs: 1_600 },
+      { pid: 301, ppid: 100 },
+      { pid: 302, ppid: 301, creationTimeMs: 2_300 }
+    ]
+    expect(automationProcessTreePids(100, 2_000, rows)).toEqual([101, 102])
+    expect(automationProcessTreePids(100, 1_000, rows)).toEqual([])
+  })
+
+  it.skipIf(process.platform !== 'win32' || !isWindowsProcessStartTimeAvailable())(
+    'anchors a registered PTY to the process start time and removes it on teardown',
+    () => {
+      const ptyId = 'priority-root-test'
+      registerPty({ ptyId, worktreeId: null, sessionId: null, paneKey: null, pid: process.pid })
+      try {
+        expect(getRegisteredPtyProcessStartTime(ptyId, process.pid)).toBe(
+          readWindowsProcessCreationTime(process.pid)
+        )
+        expect(getRegisteredPtyProcessStartTime(ptyId, process.pid + 1)).toBeNull()
+      } finally {
+        unregisterPty(ptyId)
+      }
+      expect(getRegisteredPtyProcessStartTime(ptyId, process.pid)).toBeNull()
+    }
+  )
 
   it.skipIf(process.platform !== 'win32')(
     'stops follow-up priority changes when a pane gets a new PTY',
