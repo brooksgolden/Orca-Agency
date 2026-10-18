@@ -2,6 +2,7 @@ import {
   collectWorkspaceIds,
   findWorkspaceSplitGroup,
   placeWorkspaceAtEdge,
+  removeWorkspaceFromSplit,
   type WorkspaceLayoutNode,
   type WorkspaceSplitGroup
 } from './workspace-split-layout'
@@ -19,6 +20,35 @@ const pair = (
   second: WorkspaceLayoutNode | undefined
 ): WorkspaceLayoutNode | undefined =>
   first && second ? { type: 'split', direction, first, second, ratio: 0.5 } : (first ?? second)
+
+function placeInWholeQuadrantHalf(
+  layout: WorkspaceLayoutNode,
+  source: string,
+  quadrant: WorkspaceQuadrant
+): WorkspaceLayoutNode | null {
+  if (layout.type !== 'split') {
+    return null
+  }
+  const horizontal = layout.direction === 'horizontal'
+  const side = horizontal
+    ? quadrant.endsWith('left')
+      ? 'first'
+      : 'second'
+    : quadrant.startsWith('top')
+      ? 'first'
+      : 'second'
+  const selected = layout[side]
+  const crossDirection = horizontal ? 'vertical' : 'horizontal'
+  const before = horizontal ? quadrant.startsWith('top') : quadrant.endsWith('left')
+  return {
+    ...layout,
+    [side]: pair(
+      crossDirection,
+      before ? leaf(source) : selected,
+      before ? selected : leaf(source)
+    )!
+  }
+}
 
 function centers(
   node: WorkspaceLayoutNode,
@@ -102,6 +132,13 @@ export function placeWorkspacePane(
       placement.quadrant.endsWith('right') ? 'right' : 'left',
       newGroupId
     )
+  }
+  if (members.length >= 4) {
+    const base = removeWorkspaceFromSplit(groups, source).find((item) => item.id === group.id)
+    const preserved = base && placeInWholeQuadrantHalf(base.layout, source, placement.quadrant)
+    if (preserved) {
+      return moved.map((item) => (item.id === group.id ? { ...item, layout: preserved } : item))
+    }
   }
   const original = centers(destination.layout)
   const bins = new Map<WorkspaceQuadrant, string[]>(quadrants.map((quadrant) => [quadrant, []]))
