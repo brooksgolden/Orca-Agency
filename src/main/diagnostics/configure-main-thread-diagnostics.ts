@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { BrowserWindow, powerMonitor } from 'electron'
 import {
   isMainThreadDiagnosticsEnabled,
   recordSubprocessSpawn,
@@ -12,6 +13,41 @@ import { createTerminalLatencyFileCapture } from './terminal-latency-file-captur
 import { setSpawnObserver } from '../../shared/child-process/spawn-observer'
 import { settledDiffCache } from '../git/source-control/git-read-cache-invalidation'
 import { setTerminalLatencyCapture } from '../ipc/crash-reporting-renderer-breadcrumbs'
+
+function readMainThreadFocusContext(): {
+  focusedWindowAtReport: boolean | null
+  visibleWindowAtReport: boolean | null
+  minimizedWindowAtReport: boolean | null
+  windowCountAtReport: number | null
+  systemIdleSecondsAtReport: number | null
+} {
+  let focusedWindowAtReport: boolean | null = null
+  let visibleWindowAtReport: boolean | null = null
+  let minimizedWindowAtReport: boolean | null = null
+  let windowCountAtReport: number | null = null
+  let systemIdleSecondsAtReport: number | null = null
+  try {
+    const windows = BrowserWindow.getAllWindows()
+    windowCountAtReport = windows.length
+    focusedWindowAtReport = BrowserWindow.getFocusedWindow() !== null
+    visibleWindowAtReport = windows.some((window) => window.isVisible())
+    minimizedWindowAtReport = windows.some((window) => window.isMinimized())
+  } catch {
+    // The probe can outlive window teardown. Unknown is safer than "background".
+  }
+  try {
+    systemIdleSecondsAtReport = powerMonitor.getSystemIdleTime()
+  } catch {
+    // Some startup and shutdown states cannot read the system idle clock.
+  }
+  return {
+    focusedWindowAtReport,
+    visibleWindowAtReport,
+    minimizedWindowAtReport,
+    windowCountAtReport,
+    systemIdleSecondsAtReport
+  }
+}
 
 export function configureMainThreadDiagnostics(userDataPath: string): void {
   const diagnosticsDir = join(userDataPath, 'diagnostics')
@@ -31,7 +67,10 @@ export function configureMainThreadDiagnostics(userDataPath: string): void {
     setSpawnObserver(recordSubprocessSpawn)
   }
   startMainThreadChurnProbe({
-    extraStats: () => ({ diffCache: settledDiffCache.stats() }),
+    extraStats: () => ({
+      diffCache: settledDiffCache.stats(),
+      ...readMainThreadFocusContext()
+    }),
     writeLine
   })
 }

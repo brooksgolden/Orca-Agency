@@ -10,8 +10,18 @@ const mocks = vi.hoisted(() => ({
   latencyCapture: vi.fn(),
   setLatencyCapture: vi.fn(),
   record: vi.fn(),
+  getFocusedWindow: vi.fn<() => object | null>(() => null),
+  getAllWindows: vi.fn<() => { isVisible(): boolean; isMinimized(): boolean }[]>(() => []),
+  getSystemIdleTime: vi.fn(() => 0),
   persistentEnabled: false,
   setLineWriter: vi.fn()
+}))
+vi.mock('electron', () => ({
+  BrowserWindow: {
+    getFocusedWindow: mocks.getFocusedWindow,
+    getAllWindows: mocks.getAllWindows
+  },
+  powerMonitor: { getSystemIdleTime: mocks.getSystemIdleTime }
 }))
 vi.mock('./main-thread-churn-probe', () => ({
   setPersistentMainThreadDiagnosticsEnabled: (enabled: boolean) => {
@@ -72,6 +82,49 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   expect(mocks.observer).toHaveBeenCalledWith(mocks.record)
   expect(mocks.probe).toHaveBeenCalledWith(expect.objectContaining({ writeLine: sink }))
   expect(mocks.setLatencyCapture).toHaveBeenCalledWith(latencySink)
+  mocks.getFocusedWindow.mockReturnValueOnce({})
+  mocks.getAllWindows.mockReturnValueOnce([{ isVisible: () => true, isMinimized: () => false }])
+  mocks.getSystemIdleTime.mockReturnValueOnce(42)
+  const probeOptions = mocks.probe.mock.calls.at(-1)?.[0]
+  expect(probeOptions?.extraStats()).toEqual({
+    diffCache: { hits: 3 },
+    focusedWindowAtReport: true,
+    visibleWindowAtReport: true,
+    minimizedWindowAtReport: false,
+    windowCountAtReport: 1,
+    systemIdleSecondsAtReport: 42
+  })
+  expect(probeOptions?.extraStats()).toEqual({
+    diffCache: { hits: 3 },
+    focusedWindowAtReport: false,
+    visibleWindowAtReport: false,
+    minimizedWindowAtReport: false,
+    windowCountAtReport: 0,
+    systemIdleSecondsAtReport: 0
+  })
+  mocks.getAllWindows.mockReturnValueOnce([{ isVisible: () => false, isMinimized: () => true }])
+  expect(probeOptions?.extraStats()).toEqual({
+    diffCache: { hits: 3 },
+    focusedWindowAtReport: false,
+    visibleWindowAtReport: false,
+    minimizedWindowAtReport: true,
+    windowCountAtReport: 1,
+    systemIdleSecondsAtReport: 0
+  })
+  mocks.getAllWindows.mockImplementationOnce(() => {
+    throw new Error('window teardown')
+  })
+  mocks.getSystemIdleTime.mockImplementationOnce(() => {
+    throw new Error('idle clock unavailable')
+  })
+  expect(probeOptions?.extraStats()).toEqual({
+    diffCache: { hits: 3 },
+    focusedWindowAtReport: null,
+    visibleWindowAtReport: null,
+    minimizedWindowAtReport: null,
+    windowCountAtReport: null,
+    systemIdleSecondsAtReport: null
+  })
 })
 
 it('enables automatic file capture from the explicit launch option', () => {
