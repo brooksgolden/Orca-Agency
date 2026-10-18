@@ -305,13 +305,17 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     await expect(pane(ids[0]).locator(`[data-tab-id="${crossFolderTabId}"]`)).toBeVisible()
     await expect(pane(ids[2]).locator('[data-tab-id]')).toHaveCount(2)
     await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(2)
-    const afterCrossFolder = await page.evaluate(async () => {
-      await window.api.session.flush()
-      return window.api.session.get()
-    })
-    expect(
-      afterCrossFolder.tabsByWorktree[ids[0]].find((tab) => tab.id === crossFolderTabId)?.startupCwd
-    ).toBe(folders[2])
+    // The renderer writes session patches after a 150 ms debounce. A main-process flush alone
+    // cannot force a renderer timer to fire, so wait for the durable moved-tab record.
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(async () => {
+          await window.api.session.flush()
+          return window.api.session.get()
+        })
+        return saved.tabsByWorktree[ids[0]]?.find((tab) => tab.id === crossFolderTabId)?.startupCwd
+      })
+      .toBe(folders[2])
     const sourceBounds = (await sourceTab.boundingBox())!
     targetBounds = (await pane(ids[0])
       .locator(`[data-tab-id="${crossFolderTabId}"]`)
@@ -330,14 +334,18 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     await expect(pane(ids[0]).locator(`[data-tab-id="${terminalIds[3]}"]`)).toBeVisible()
     await expect(pane(ids[3])).toHaveCount(0)
     await captureDragLayout(app, page, testInfo.outputPath('same-folder-tab-insertion.png'))
-    const final = await page.evaluate(async () => {
-      await window.api.session.flush()
-      return window.api.session.get()
-    })
-    expect(final.tabsByWorktree[ids[0]].map((tab) => tab.id).sort()).toEqual(
-      [terminalIds[0], crossFolderTabId, terminalIds[3]].sort()
-    )
-    expect(final.tabsByWorktree[ids[3]] ?? []).toEqual([])
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(async () => {
+          await window.api.session.flush()
+          return window.api.session.get()
+        })
+        return {
+          target: saved.tabsByWorktree[ids[0]]?.map((tab) => tab.id).sort(),
+          source: saved.tabsByWorktree[ids[3]] ?? []
+        }
+      })
+      .toEqual({ target: [terminalIds[0], crossFolderTabId, terminalIds[3]].sort(), source: [] })
     await targetTab.click()
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(3)
@@ -362,12 +370,18 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     await expect
       .poll(async () => (await page.evaluate(() => window.api.pty.listSessions())).length)
       .toBe(initialPtyIds.length + 2)
-    const created = await page.evaluate(async () => {
-      await window.api.session.flush()
-      return window.api.session.get()
-    })
-    expect(created.tabsByWorktree[ids[0]].map((tab) => tab.id)).toContain(addedTabId)
-    expect(created.terminalLayoutsByTabId[addedTabId].root?.type).toBe('split')
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(async () => {
+          await window.api.session.flush()
+          return window.api.session.get()
+        })
+        return {
+          tabSaved: saved.tabsByWorktree[ids[0]]?.some((tab) => tab.id === addedTabId),
+          layoutType: saved.terminalLayoutsByTabId[addedTabId]?.root?.type
+        }
+      })
+      .toEqual({ tabSaved: true, layoutType: 'split' })
     const createdPtyIds = (await page.evaluate(() => window.api.pty.listSessions()))
       .map((item) => item.id)
       .sort()
