@@ -116,23 +116,37 @@ export function createTerminalPanePasteExecution(
       windowsInputRecordNewline: options?.windowsInputRecordNewline,
       terminalBracketedPasteMode: pane.terminal.modes.bracketedPasteMode
     })
-    const latencyCapture =
-      shortcutPlatform === 'win32' &&
-      plan.mode !== 'reject' &&
-      source !== 'programmatic' &&
-      !options?.recoverImagePasteWebglAtlas
-        ? captureTerminalPasteLatency(pane.terminal, plan, {
-            requestedAtMs,
-            clipboardReadyAtMs,
-            plannedAtMs: performance.now()
-          })
-        : null
+    const plannedAtMs = performance.now()
+    const latencyCapture: { current: ReturnType<typeof captureTerminalPasteLatency> } = {
+      current: null
+    }
     let execution: Awaited<ReturnType<typeof executeTerminalPastePlan>>
     try {
       execution = await executeTerminalPastePlan(plan, {
-        pasteText: (pasteText, pasteOptions) =>
-          pasteTerminalText(pane.terminal, pasteText, pasteOptions),
-        writePty: (data, signal) => writeTerminalPastePtyInput(transport, data, 'driving', signal),
+        onTransactionStart: () => {
+          if (
+            shortcutPlatform === 'win32' &&
+            plan.mode !== 'reject' &&
+            source !== 'programmatic' &&
+            !options?.recoverImagePasteWebglAtlas
+          ) {
+            latencyCapture.current = captureTerminalPasteLatency(pane.terminal, plan, {
+              requestedAtMs,
+              clipboardReadyAtMs,
+              plannedAtMs
+            })
+          }
+        },
+        onTransactionEnd: (result) => latencyCapture.current?.complete(result),
+        onTransactionError: () => latencyCapture.current?.cancel(),
+        pasteText: (pasteText, pasteOptions) => {
+          latencyCapture.current?.markDispatched()
+          return pasteTerminalText(pane.terminal, pasteText, pasteOptions)
+        },
+        writePty: (data, signal) => {
+          latencyCapture.current?.markDispatched()
+          return writeTerminalPastePtyInput(transport, data, 'driving', signal)
+        },
         isTargetCurrent: () => {
           if (!isPanePasteTargetMounted(pane, transport, ptyId)) {
             return false
@@ -146,10 +160,9 @@ export function createTerminalPanePasteExecution(
         canContinue: () => isPanePasteTargetMounted(pane, transport, ptyId)
       })
     } catch (error) {
-      latencyCapture?.cancel()
+      latencyCapture.current?.cancel()
       throw error
     }
-    latencyCapture?.complete(execution)
     if (execution.status !== 'pasted') {
       setTerminalError(formatTerminalPasteExecutionError(execution.reason))
       return

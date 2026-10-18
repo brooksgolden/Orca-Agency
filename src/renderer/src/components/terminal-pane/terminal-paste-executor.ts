@@ -16,6 +16,9 @@ import type {
 } from './terminal-paste-model'
 
 type ExecuteTerminalPastePlanArgs = {
+  onTransactionStart?: () => void
+  onTransactionEnd?: (result: TerminalPasteExecutionResult) => void
+  onTransactionError?: () => void
   pasteText: (text: string, options?: TerminalPasteTextOptions) => void | Promise<void>
   writePty?: (data: string, signal?: AbortSignal) => boolean | Promise<boolean>
   isTargetCurrent?: () => boolean
@@ -29,14 +32,22 @@ export async function executeTerminalPastePlan(
   plan: TerminalPastePlan,
   args: ExecuteTerminalPastePlanArgs
 ): Promise<TerminalPasteExecutionResult> {
-  return await runTerminalPtyInputTransaction(plan.target.ptyId, () =>
-    executeTerminalPastePlanNow(plan, args)
-  )
+  return await runTerminalPtyInputTransaction(plan.target.ptyId, async () => {
+    try {
+      const result = await executeTerminalPastePlanNow(plan, args)
+      args.onTransactionEnd?.(result)
+      return result
+    } catch (error) {
+      args.onTransactionError?.()
+      throw error
+    }
+  })
 }
 
 async function executeTerminalPastePlanNow(
   plan: TerminalPastePlan,
   {
+    onTransactionStart,
     pasteText,
     writePty,
     isTargetCurrent,
@@ -47,6 +58,7 @@ async function executeTerminalPastePlanNow(
   }: ExecuteTerminalPastePlanArgs
 ): Promise<TerminalPasteExecutionResult> {
   const startedAtMs = now()
+  onTransactionStart?.()
   const finish = (
     status: TerminalPasteExecutionResult['status'],
     chunksWritten: number,

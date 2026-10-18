@@ -8,7 +8,21 @@ const mocks = vi.hoisted(() => {
     agentStatusByPaneKey: Record<string, AgentStatusEntry>
     paneForegroundAgentByPaneKey: Record<string, PaneForegroundAgentEntry>
   } = { agentStatusByPaneKey: {}, paneForegroundAgentByPaneKey: {} }
-  return { state, recordInput: vi.fn() }
+  const markDispatched = vi.fn()
+  const completeCapture = vi.fn()
+  const cancelCapture = vi.fn()
+  return {
+    state,
+    recordInput: vi.fn(),
+    markDispatched,
+    completeCapture,
+    cancelCapture,
+    captureLatency: vi.fn(() => ({
+      markDispatched,
+      complete: completeCapture,
+      cancel: cancelCapture
+    }))
+  }
 })
 
 vi.mock('@/store', () => ({ useAppStore: { getState: () => mocks.state } }))
@@ -22,6 +36,9 @@ vi.mock('./terminal-paste-target-state', () => ({
 }))
 vi.mock('./terminal-input-activity', () => ({
   recordTerminalUserInputForLeaf: mocks.recordInput
+}))
+vi.mock('./terminal-paste-latency-capture', () => ({
+  captureTerminalPasteLatency: mocks.captureLatency
 }))
 
 const tabId = 'tab-1'
@@ -63,7 +80,7 @@ function setup(agentType: AgentStatusEntry['agentType'] | null, shellOverride = 
     getLocalSessionMetadata: () => ({ cwd: 'C:/Users/brook/dev/claude/General', shellOverride }),
     getConnectionId: () => null,
     isConnected: () => true,
-    sendInput: vi.fn(() => true)
+    sendInput: vi.fn((): boolean | Promise<boolean> => true)
   }
   const controller = {
     forceBracketedMultilineTextPaste: true,
@@ -73,7 +90,7 @@ function setup(agentType: AgentStatusEntry['agentType'] | null, shellOverride = 
     tabId,
     worktreeId: 'folder:general'
   }
-  return { terminal, controller }
+  return { terminal, pane, transport, controller }
 }
 
 async function flushPaste(): Promise<void> {
@@ -91,10 +108,66 @@ function pasteFromTestPane(controller: ReturnType<typeof setup>['controller']): 
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  mocks.recordInput.mockClear()
+  vi.clearAllMocks()
 })
 
 describe('keyboard clipboard paste into a Windows terminal', () => {
+  it('marks dispatch before sending a large paste directly to the PTY', async () => {
+    const { pane, terminal, transport, controller } = setup(null)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fixture supplies every pane field read by the paste execution.
+    const execution = createTerminalPanePasteExecution(controller as never, 'win32')
+
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fixture supplies every pane field read by the paste execution.
+    await execution.executePanePasteText(pane as never, 'keyboard', null, 'a'.repeat(64 * 1024 + 1))
+
+    expect(mocks.captureLatency).toHaveBeenCalledWith(
+      terminal,
+      expect.objectContaining({ mode: 'chunked' }),
+      expect.any(Object)
+    )
+    expect(mocks.markDispatched).toHaveBeenCalled()
+    expect(transport.sendInput).toHaveBeenCalled()
+    expect(mocks.markDispatched.mock.invocationCallOrder[0]).toBeLessThan(
+      transport.sendInput.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('cancels a failed paste capture before the next queued pane paste starts', async () => {
+    const { pane, transport, controller } = setup(null)
+    let firstWriteStarted!: () => void
+    let rejectFirstWrite!: (error: Error) => void
+    const firstWrite = new Promise<void>((resolve) => {
+      firstWriteStarted = resolve
+    })
+    transport.sendInput.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((_resolve, reject) => {
+          rejectFirstWrite = reject
+          firstWriteStarted()
+        })
+    )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fixture supplies only the controller fields read by the paste execution.
+    const execution = createTerminalPanePasteExecution(controller as never, 'win32')
+    const largeText = 'a'.repeat(64 * 1024 + 1)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fixture supplies every pane field read by the paste execution.
+    const first = execution.executePanePasteText(pane as never, 'keyboard', null, largeText)
+    const firstFailed = first.then(
+      () => false,
+      () => true
+    )
+    await firstWrite
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fixture supplies every pane field read by the paste execution.
+    const second = execution.executePanePasteText(pane as never, 'keyboard', null, largeText)
+    rejectFirstWrite(new Error('write failed'))
+
+    expect(await firstFailed).toBe(true)
+    await second
+    expect(mocks.captureLatency).toHaveBeenCalledTimes(2)
+    expect(mocks.cancelCapture.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.captureLatency.mock.invocationCallOrder[1]
+    )
+  })
+
   it('uses modified Enter for a multiline Codex draft without submitting it', async () => {
     const { terminal, controller } = setup('codex')
     vi.stubGlobal('window', {
@@ -108,6 +181,13 @@ describe('keyboard clipboard paste into a Windows terminal', () => {
     await flushPaste()
 
     expect(terminal.input).toHaveBeenCalledWith('one\x1b\rtwo')
+    expect(mocks.completeCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'pasted' })
+    )
+    expect(mocks.markDispatched).toHaveBeenCalledOnce()
+    expect(mocks.markDispatched.mock.invocationCallOrder[0]).toBeLessThan(
+      terminal.input.mock.invocationCallOrder[0]
+    )
     expect(terminal.paste).not.toHaveBeenCalled()
     expect(controller.setTerminalError).not.toHaveBeenCalled()
   })

@@ -74,7 +74,7 @@ describe('bounded terminal paste latency capture', () => {
     })
     expect(capture).not.toBeNull()
     advance(20)
-    emit('data')
+    capture?.markDispatched()
     advance(20)
     emit('parsed')
     advance(20)
@@ -94,7 +94,7 @@ describe('bounded terminal paste latency capture', () => {
       plannedAtMs: 10
     })
     advance(30)
-    emit('data')
+    capture?.markDispatched()
     advance(20)
     emit('parsed')
     advance(650)
@@ -129,7 +129,7 @@ describe('bounded terminal paste latency capture', () => {
       plannedAtMs: 10
     })
     advance(20)
-    emit('data')
+    capture?.markDispatched()
     advance(20)
     emit('parsed')
     advance(20)
@@ -143,6 +143,115 @@ describe('bounded terminal paste latency capture', () => {
 
     expect(recordBreadcrumb).not.toHaveBeenCalled()
     expect(listenerCount()).toBe(0)
+  })
+
+  it('does not attribute pre-dispatch output and paint to the paste', () => {
+    const { terminal, emit } = terminalFixture()
+    const capture = captureTerminalPasteLatency(terminal, plan, {
+      requestedAtMs: 0,
+      clipboardReadyAtMs: 5,
+      plannedAtMs: 10
+    })
+    advance(10)
+    emit('parsed')
+    emit('render')
+    advance(20)
+    capture?.markDispatched()
+    advance(20)
+    emit('render')
+    advance(650)
+    emit('parsed')
+    advance(30)
+    emit('render')
+    capture?.complete({ status: 'pasted', chunksWritten: 1, durationMs: 50, diagnostic: '' })
+    advance(5_000)
+
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_paste_slow',
+      expect.objectContaining({
+        dispatchDelayMs: 30,
+        parseAfterDispatchMs: 670,
+        firstPaintDelayMs: 730,
+        parsedBatches: 1,
+        renderBatches: 1
+      })
+    )
+  })
+
+  it('measures chunked PTY writes without relying on a later onData event', () => {
+    const { terminal, emit } = terminalFixture()
+    const capture = captureTerminalPasteLatency(
+      terminal,
+      { ...plan, mode: 'chunked' },
+      {
+        requestedAtMs: 0,
+        clipboardReadyAtMs: 5,
+        plannedAtMs: 10
+      }
+    )
+    advance(10)
+    emit('parsed')
+    emit('render')
+    advance(20)
+    emit('data')
+    capture?.markDispatched()
+    advance(30)
+    emit('parsed')
+    advance(650)
+    emit('render')
+    capture?.complete({ status: 'pasted', chunksWritten: 2, durationMs: 50, diagnostic: '' })
+    advance(5_000)
+
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_paste_slow',
+      expect.objectContaining({
+        mode: 'chunked',
+        dispatchDelayMs: 30,
+        parseAfterDispatchMs: 30,
+        firstPaintDelayMs: 710,
+        parsedBatches: 1,
+        renderBatches: 1
+      })
+    )
+  })
+
+  it('does not mistake a later keystroke for an unstarted chunked paste', () => {
+    const { terminal, emit } = terminalFixture()
+    const capture = captureTerminalPasteLatency(
+      terminal,
+      { ...plan, mode: 'chunked' },
+      {
+        requestedAtMs: 0,
+        clipboardReadyAtMs: 5,
+        plannedAtMs: 10
+      }
+    )
+    advance(600)
+    emit('data')
+    advance(20)
+    emit('parsed')
+    advance(20)
+    emit('render')
+    capture?.complete({ status: 'cancelled', chunksWritten: 0, durationMs: 50, diagnostic: '' })
+    advance(5_000)
+
+    expect(recordBreadcrumb).not.toHaveBeenCalled()
+  })
+
+  it('records a completed paste when a queued paste starts its observation', () => {
+    const { terminal } = terminalFixture()
+    const times = { requestedAtMs: 0, clipboardReadyAtMs: 5, plannedAtMs: 10 }
+    const first = captureTerminalPasteLatency(terminal, plan, times)
+    advance(20)
+    first?.markDispatched()
+    advance(600)
+    first?.complete({ status: 'pasted', chunksWritten: 1, durationMs: 600, diagnostic: '' })
+    captureTerminalPasteLatency(terminal, plan, times)?.cancel()
+
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_paste_slow',
+      expect.objectContaining({ status: 'pasted', writeMs: 600 })
+    )
   })
 
   it('stops after a stalled paste even if execution never completes', () => {

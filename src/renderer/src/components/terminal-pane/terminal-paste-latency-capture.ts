@@ -3,7 +3,6 @@ import { recordRendererCrashBreadcrumb } from '@/lib/crash-breadcrumb-recorder'
 
 type Disposable = { dispose: () => void }
 type PasteLatencyTerminal = {
-  onData?: (listener: () => void) => Disposable
   onWriteParsed?: (listener: () => void) => Disposable
   onRender?: (listener: () => void) => Disposable
 }
@@ -18,14 +17,21 @@ export function captureTerminalPasteLatency(
   plan: TerminalPastePlan,
   times: { requestedAtMs: number; clipboardReadyAtMs: number; plannedAtMs: number }
 ): {
+  markDispatched: () => void
   complete: (result: TerminalPasteExecutionResult) => void
   cancel: () => void
 } | null {
-  if (!terminal.onData || !terminal.onWriteParsed || !terminal.onRender) {
+  if (!terminal.onWriteParsed || !terminal.onRender) {
     return null
   }
   active.get(terminal)?.()
 
+  const source = plan.payload.source
+  const mode = plan.mode
+  const runtime = plan.target.runtime.kind
+  const paneId = plan.target.paneId
+  const bytes = plan.payload.byteLength
+  const lines = plan.payload.lineCount
   const startedAtMs = performance.now()
   const disposables: Disposable[] = []
   let firstDispatchAtMs: number | null = null
@@ -62,7 +68,9 @@ export function captureTerminalPasteLatency(
     const dispatchDelayMs =
       firstDispatchAtMs === null ? null : firstDispatchAtMs - times.requestedAtMs
     const parseDelayMs =
-      firstParseAtMs === null ? null : firstParseAtMs - (firstDispatchAtMs ?? startedAtMs)
+      firstParseAtMs === null || firstDispatchAtMs === null
+        ? null
+        : firstParseAtMs - firstDispatchAtMs
     const firstPaintDelayMs =
       firstRenderAtMs === null ? null : firstRenderAtMs - times.requestedAtMs
     const lastPaintDelayMs = lastRenderAtMs === null ? null : lastRenderAtMs - times.requestedAtMs
@@ -76,12 +84,12 @@ export function captureTerminalPasteLatency(
     recordRendererCrashBreadcrumb('terminal_paste_slow', {
       at: new Date().toISOString(),
       attribution: 'temporal',
-      source: plan.payload.source,
-      mode: plan.mode,
-      runtime: plan.target.runtime.kind,
-      paneId: plan.target.paneId,
-      bytes: plan.payload.byteLength,
-      lines: plan.payload.lineCount,
+      source,
+      mode,
+      runtime,
+      paneId,
+      bytes,
+      lines,
       status: result?.status ?? 'pending',
       clipboardMs: rounded(times.clipboardReadyAtMs - times.requestedAtMs),
       planningMs: rounded(times.plannedAtMs - times.clipboardReadyAtMs),
@@ -107,18 +115,23 @@ export function captureTerminalPasteLatency(
   }
 
   disposables.push(
-    terminal.onData(() => {
-      firstDispatchAtMs ??= performance.now()
-    })
-  )
-  disposables.push(
     terminal.onWriteParsed(() => {
+      // A busy agent can parse its own output before this paste reaches the PTY.
+      // That output cannot establish a paste-to-parser latency.
+      if (firstDispatchAtMs === null) {
+        return
+      }
       firstParseAtMs ??= performance.now()
       parsedBatches++
     })
   )
   disposables.push(
     terminal.onRender(() => {
+      // Likewise, paints queued before the first post-dispatch parse are unrelated
+      // temporal evidence. Preserve only the ordered dispatch -> parse -> paint path.
+      if (firstParseAtMs === null) {
+        return
+      }
       const at = performance.now()
       firstRenderAtMs ??= at
       lastRenderAtMs = at
@@ -129,6 +142,9 @@ export function captureTerminalPasteLatency(
   active.set(terminal, stop)
 
   return {
+    markDispatched: () => {
+      firstDispatchAtMs ??= performance.now()
+    },
     complete: (execution) => {
       result = execution
       scheduleStop()
