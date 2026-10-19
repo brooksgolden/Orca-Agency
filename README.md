@@ -2,11 +2,11 @@
 
 ## Your AI chats, organized for agency work
 
-Keep Claude and Codex conversations together across client folders. See which chats share a pane, which run side by side, and where your attention is needed.
+Keep Claude and Codex conversations together across client folders. See which chats share a pane, which run side by side, and where your attention is needed without fishing through tabs.
 
 **[Download the latest release](https://github.com/brooksgolden/Orca-Agency/releases/latest)** · [What's new](https://github.com/brooksgolden/Orca-Agency/releases) · [Upstream Orca](https://github.com/stablyai/orca)
 
-The current 1.4.1045 download is for **Windows ARM64**. The [earlier Windows x64 build](https://github.com/brooksgolden/Orca-Agency/releases/tag/v1.4.1008) remains available.
+The current 1.4.1055 download is for **Windows ARM64**. The [earlier Windows x64 build](https://github.com/brooksgolden/Orca-Agency/releases/tag/v1.4.1008) remains available.
 
 ![Orca Agency demo workspace with four panes and an organized Claude and Codex chat sidebar](media/workspace-overview.png)
 
@@ -24,7 +24,7 @@ The current 1.4.1045 download is for **Windows ARM64**. The [earlier Windows x64
 | **Native Windows ARM64**<br><br>A native build for Windows on ARM, including the terminal runtime. The local speech component is omitted. Native architecture is supported; terminal slowdowns remain under investigation. | <img src="media/native-arm64.svg" alt="Native ARM64 Windows app and terminal runtime" width="480"><br><sub>Architecture diagram.</sub> |
 | **Navigate with your mouse**<br><br>Mouse side buttons follow the same **Back and Forward history** as the toolbar arrows. Return to the previous view, then move forward again. | <img src="media/mouse-workspace-history.png" alt="Mouse side buttons labeled Back and Forward for workspace history" width="480"> |
 
-## Small touches that keep work flowing
+## Small touches that keep the pod moving
 
 - **One name everywhere:** Rename a chat in the sidebar and its tab follows.
 - **Open the file an agent mentions:** Relative file links resolve against the chat's workspace, with safeguards for ambiguous matches.
@@ -40,5 +40,3 @@ Upstream stable changes are integrated with the Agency additions through Codex i
 Use the [release page](https://github.com/brooksgolden/Orca-Agency/releases/latest) for available packages, architecture, installation instructions and verification results. Mac and Linux release binaries are not yet verified for this fork. Intermittent terminal stalls and activity indicator discrepancies remain known issues.
 
 Orca Agency is an independent, unofficial fork of [Orca](https://github.com/stablyai/orca). It retains the upstream MIT license, with no OpenAI or Anthropic affiliation. See the [upstream README](README.upstream.md), [update process](docs/agency/weekly-updates.md) and [license](LICENSE).
-
-<sub>Mouse photo: William Hook, CC BY-SA 2.0. Labels and layout added by Orca Agency. See the <a href="media/mouse-photo-attribution.md">media attribution</a>.</sub>
