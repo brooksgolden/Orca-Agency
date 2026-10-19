@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   getAllWindows: vi.fn<() => { isVisible(): boolean; isMinimized(): boolean }[]>(() => []),
   getSystemIdleTime: vi.fn(() => 0),
   listRegisteredPtys: vi.fn<() => { ptyId: string }[]>(() => []),
+  getSystemMemoryDetails: vi.fn(() => ({
+    systemMemoryFreeMB: 9000,
+    systemMemorySwapFreeMB: 12000,
+    systemMemorySwapTotalMB: 64000
+  })),
   persistentEnabled: false,
   setLineWriter: vi.fn()
 }))
@@ -48,12 +53,17 @@ vi.mock('../git/source-control/git-read-cache-invalidation', () => ({
   settledDiffCache: { stats: () => ({ hits: 3 }) }
 }))
 vi.mock('../memory/pty-registry', () => ({ listRegisteredPtys: mocks.listRegisteredPtys }))
+vi.mock('../crash-reporting/system-memory-details', () => ({
+  getSystemMemoryDetails: mocks.getSystemMemoryDetails
+}))
 import { configureMainThreadDiagnostics } from './configure-main-thread-diagnostics'
 
 const originalArgv = process.argv
+const originalPlatform = process.platform
 let temporaryProfile: string | null = null
 afterEach(() => {
   process.argv = originalArgv
+  Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
   if (temporaryProfile) {
     rmSync(temporaryProfile, { recursive: true, force: true })
     temporaryProfile = null
@@ -64,6 +74,7 @@ afterEach(() => {
 })
 
 it('keeps file capture enabled after a normal relaunch when the profile marker exists', () => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
   temporaryProfile = mkdtempSync(join(tmpdir(), 'orca-main-thread-capture-'))
   const diagnosticsDir = join(temporaryProfile, 'diagnostics')
   mkdirSync(diagnosticsDir)
@@ -92,6 +103,9 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
     registeredLocalPtyCount: 2,
+    availablePhysicalMB: 9000,
+    availableCommitMB: 12000,
+    commitLimitMB: 64000,
     focusedWindowAtReport: true,
     visibleWindowAtReport: true,
     minimizedWindowAtReport: false,
@@ -101,6 +115,9 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
     registeredLocalPtyCount: 0,
+    availablePhysicalMB: 9000,
+    availableCommitMB: 12000,
+    commitLimitMB: 64000,
     focusedWindowAtReport: false,
     visibleWindowAtReport: false,
     minimizedWindowAtReport: false,
@@ -111,6 +128,9 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
     registeredLocalPtyCount: 0,
+    availablePhysicalMB: 9000,
+    availableCommitMB: 12000,
+    commitLimitMB: 64000,
     focusedWindowAtReport: false,
     visibleWindowAtReport: false,
     minimizedWindowAtReport: true,
@@ -126,11 +146,36 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
     registeredLocalPtyCount: 0,
+    availablePhysicalMB: 9000,
+    availableCommitMB: 12000,
+    commitLimitMB: 64000,
     focusedWindowAtReport: null,
     visibleWindowAtReport: null,
     minimizedWindowAtReport: null,
     windowCountAtReport: null,
     systemIdleSecondsAtReport: null
+  })
+})
+
+it('omits Windows memory fields on other platforms and tolerates a failed Windows read', () => {
+  process.argv = originalArgv.filter((x) => x !== '--orca-main-thread-diagnostics')
+  vi.stubEnv('ORCA_MAIN_THREAD_DIAGNOSTICS', '')
+  configureMainThreadDiagnostics('/profile')
+  const probeOptions = mocks.probe.mock.calls.at(-1)?.[0]
+
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
+  mocks.getSystemMemoryDetails.mockClear()
+  expect(probeOptions?.extraStats()).not.toHaveProperty('availablePhysicalMB')
+  expect(mocks.getSystemMemoryDetails).not.toHaveBeenCalled()
+
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+  mocks.getSystemMemoryDetails.mockImplementationOnce(() => {
+    throw new Error('memory probe unavailable')
+  })
+  expect(probeOptions?.extraStats()).toMatchObject({
+    availablePhysicalMB: null,
+    availableCommitMB: null,
+    commitLimitMB: null
   })
 })
 

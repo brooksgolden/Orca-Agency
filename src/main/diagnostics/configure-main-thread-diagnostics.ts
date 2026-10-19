@@ -14,6 +14,7 @@ import { setSpawnObserver } from '../../shared/child-process/spawn-observer'
 import { settledDiffCache } from '../git/source-control/git-read-cache-invalidation'
 import { setTerminalLatencyCapture } from '../ipc/crash-reporting-renderer-breadcrumbs'
 import { listRegisteredPtys } from '../memory/pty-registry'
+import { getSystemMemoryDetails } from '../crash-reporting/system-memory-details'
 
 function readMainThreadFocusContext(): {
   focusedWindowAtReport: boolean | null
@@ -50,6 +51,25 @@ function readMainThreadFocusContext(): {
   }
 }
 
+function readWindowsMemoryContext(): Record<string, number | null> {
+  if (process.platform !== 'win32') {
+    return {}
+  }
+  try {
+    const memory = getSystemMemoryDetails('win32')
+    const numericOrNull = (value: unknown): number | null =>
+      typeof value === 'number' && Number.isFinite(value) ? value : null
+    return {
+      availablePhysicalMB: numericOrNull(memory.systemMemoryFreeMB),
+      availableCommitMB: numericOrNull(memory.systemMemorySwapFreeMB),
+      commitLimitMB: numericOrNull(memory.systemMemorySwapTotalMB)
+    }
+  } catch {
+    // An OS read failure must not interrupt the main-thread probe.
+    return { availablePhysicalMB: null, availableCommitMB: null, commitLimitMB: null }
+  }
+}
+
 export function configureMainThreadDiagnostics(userDataPath: string): void {
   const diagnosticsDir = join(userDataPath, 'diagnostics')
   const persistentCapture = existsSync(join(diagnosticsDir, 'main-thread.enabled'))
@@ -71,6 +91,9 @@ export function configureMainThreadDiagnostics(userDataPath: string): void {
     extraStats: () => ({
       diffCache: settledDiffCache.stats(),
       registeredLocalPtyCount: listRegisteredPtys().length,
+      // Windows swapFree is available commit, not physical memory. Neither
+      // reading alone proves paging, so record both beside PTY and gap counts.
+      ...readWindowsMemoryContext(),
       ...readMainThreadFocusContext()
     }),
     writeLine
