@@ -402,6 +402,21 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
       { x: lastTabBounds.x + 30, y: lastTabBounds.y + 16 },
       { x: firstTabBounds.x + 4, y: firstTabBounds.y + 16 }
     )
+    const releasePoint = { x: firstTabBounds.x + 4, y: firstTabBounds.y + 16 }
+    const dragProbe = await page.evaluate((point) => {
+      const top = document.elementFromPoint(point.x, point.y)
+      const strip = top?.closest<HTMLElement>('[data-tab-group-strip-id]')
+      const tab = top?.closest<HTMLElement>('[data-tab-id]')
+      return {
+        top: top?.tagName ?? null,
+        stripGroupId: strip?.dataset.tabGroupStripId ?? null,
+        stripWorktreeId: strip?.dataset.worktreeId ?? null,
+        tabId: tab?.dataset.tabId ?? null,
+        unifiedTabId: tab?.dataset.unifiedTabId ?? null,
+        insertionCount: document.querySelectorAll('[data-workspace-tab-insertion]').length
+      }
+    }, releasePoint)
+    console.log('TAB_REORDER_PROBE:', JSON.stringify({ dragProbe, firstTabBounds, lastTabBounds }))
     await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
     await page.mouse.up()
     const reordered = [beforeReorder.at(-1), ...beforeReorder.slice(0, -1)]
