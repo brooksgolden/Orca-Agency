@@ -216,6 +216,7 @@ module.exports = {
     '!config{,/**/*}',
     // Release archives and other build staging are not runtime resources.
     '!.build{,/**/*}',
+    '!builds{,/**/*}',
     '!docs{,/**/*}',
     '!mobile{,/**/*}',
     '!native{,/**/*}',
