@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getFocusedWindow: vi.fn<() => object | null>(() => null),
   getAllWindows: vi.fn<() => { isVisible(): boolean; isMinimized(): boolean }[]>(() => []),
   getSystemIdleTime: vi.fn(() => 0),
+  listRegisteredPtys: vi.fn<() => { ptyId: string }[]>(() => []),
   persistentEnabled: false,
   setLineWriter: vi.fn()
 }))
@@ -46,6 +47,7 @@ vi.mock('../../shared/child-process/spawn-observer', () => ({ setSpawnObserver: 
 vi.mock('../git/source-control/git-read-cache-invalidation', () => ({
   settledDiffCache: { stats: () => ({ hits: 3 }) }
 }))
+vi.mock('../memory/pty-registry', () => ({ listRegisteredPtys: mocks.listRegisteredPtys }))
 import { configureMainThreadDiagnostics } from './configure-main-thread-diagnostics'
 
 const originalArgv = process.argv
@@ -85,9 +87,11 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   mocks.getFocusedWindow.mockReturnValueOnce({})
   mocks.getAllWindows.mockReturnValueOnce([{ isVisible: () => true, isMinimized: () => false }])
   mocks.getSystemIdleTime.mockReturnValueOnce(42)
+  mocks.listRegisteredPtys.mockReturnValueOnce([{ ptyId: 'older' }, { ptyId: 'current' }])
   const probeOptions = mocks.probe.mock.calls.at(-1)?.[0]
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
+    registeredLocalPtyCount: 2,
     focusedWindowAtReport: true,
     visibleWindowAtReport: true,
     minimizedWindowAtReport: false,
@@ -96,6 +100,7 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   })
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
+    registeredLocalPtyCount: 0,
     focusedWindowAtReport: false,
     visibleWindowAtReport: false,
     minimizedWindowAtReport: false,
@@ -105,6 +110,7 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   mocks.getAllWindows.mockReturnValueOnce([{ isVisible: () => false, isMinimized: () => true }])
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
+    registeredLocalPtyCount: 0,
     focusedWindowAtReport: false,
     visibleWindowAtReport: false,
     minimizedWindowAtReport: true,
@@ -119,6 +125,7 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   })
   expect(probeOptions?.extraStats()).toEqual({
     diffCache: { hits: 3 },
+    registeredLocalPtyCount: 0,
     focusedWindowAtReport: null,
     visibleWindowAtReport: null,
     minimizedWindowAtReport: null,

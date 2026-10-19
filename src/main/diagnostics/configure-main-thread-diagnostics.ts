@@ -13,6 +13,7 @@ import { createTerminalLatencyFileCapture } from './terminal-latency-file-captur
 import { setSpawnObserver } from '../../shared/child-process/spawn-observer'
 import { settledDiffCache } from '../git/source-control/git-read-cache-invalidation'
 import { setTerminalLatencyCapture } from '../ipc/crash-reporting-renderer-breadcrumbs'
+import { listRegisteredPtys } from '../memory/pty-registry'
 
 function readMainThreadFocusContext(): {
   focusedWindowAtReport: boolean | null
@@ -69,6 +70,7 @@ export function configureMainThreadDiagnostics(userDataPath: string): void {
   startMainThreadChurnProbe({
     extraStats: () => ({
       diffCache: settledDiffCache.stats(),
+      registeredLocalPtyCount: listRegisteredPtys().length,
       ...readMainThreadFocusContext()
     }),
     writeLine
