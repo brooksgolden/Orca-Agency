@@ -66,4 +66,21 @@ describe.skipIf(process.platform !== 'win32')('verified local automation priorit
     expect(mocks.setPriority).not.toHaveBeenCalled()
     expect(mocks.readWindowsProcessIdentityTableFresh).not.toHaveBeenCalled()
   })
+
+  it('does not lower descendants when the automation ends during the process scan', async () => {
+    let finishScan: ((rows: unknown[]) => void) | undefined
+    mocks.readWindowsProcessIdentityTableFresh.mockImplementationOnce(
+      () => new Promise((resolve) => (finishScan = resolve))
+    )
+    let ownsPty = true
+    const check = lowerLocalAutomationProcessPriority('automation-pty', () => ownsPty)
+    ownsPty = false
+    finishScan?.([
+      { pid: 100, ppid: 1, creationTimeMs: 1_000 },
+      { pid: 101, ppid: 100, creationTimeMs: 2_000 }
+    ])
+    await check
+
+    expect(mocks.setPriority).toHaveBeenCalledExactlyOnceWith(100, 10)
+  })
 })

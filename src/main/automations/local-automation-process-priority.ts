@@ -46,8 +46,21 @@ export function automationProcessTreePids(
 }
 
 /** Keep automation terminal work behind interactive Windows work, including spawned tools. */
-export async function lowerLocalAutomationProcessPriority(ptyId: string | null): Promise<void> {
+export async function lowerLocalAutomationProcessPriority(
+  ptyId: string | null,
+  stillOwnsPty?: () => boolean
+): Promise<void> {
   if (process.platform !== 'win32' || !ptyId) {
+    return
+  }
+  const ownsPty = (): boolean => {
+    try {
+      return stillOwnsPty?.() !== false
+    } catch {
+      return false
+    }
+  }
+  if (!ownsPty()) {
     return
   }
   const rootPid = listRegisteredPtys().find((pty) => pty.ptyId === ptyId)?.pid
@@ -76,6 +89,9 @@ export async function lowerLocalAutomationProcessPriority(ptyId: string | null):
   lower(rootPid, rootCreatedAtMs)
   try {
     const rows = await readWindowsProcessIdentityTableFresh()
+    if (!ownsPty()) {
+      return
+    }
     const createdAtByPid = new Map(rows.map((row) => [row.pid, row.creationTimeMs]))
     for (const pid of automationProcessTreePids(rootPid, rootCreatedAtMs, rows)) {
       const createdAtMs = createdAtByPid.get(pid)
@@ -88,25 +104,44 @@ export async function lowerLocalAutomationProcessPriority(ptyId: string | null):
   }
 }
 
-/** Agent subprocesses can start after the first process snapshot. Recheck startup only. */
+const ACTIVE_AUTOMATION_PRIORITY_RECHECK_MS = 30_000
+
+/** Retry missed scans and re-lower tools that reset their priority while the run owns its PTY. */
 export function scheduleLocalAutomationPriorityFollowups(
   ptyId: string | null,
   stillOwnsPty: () => boolean,
-  lower: (id: string) => Promise<void> = lowerLocalAutomationProcessPriority
+  lower: (
+    id: string,
+    stillOwnsPty?: () => boolean
+  ) => Promise<void> = lowerLocalAutomationProcessPriority
 ): void {
   if (process.platform !== 'win32' || !ptyId) {
     return
   }
-  for (const delayMs of [1_000, 10_000]) {
-    const timer = setTimeout(() => {
+  let scanInFlight = false
+  const schedule = (delayMs: number, nextDelayMs: number): void => {
+    const timer = setTimeout(async () => {
       try {
-        if (stillOwnsPty()) {
-          void lower(ptyId).catch(() => {})
+        if (!stillOwnsPty()) {
+          return
+        }
+        schedule(nextDelayMs, ACTIVE_AUTOMATION_PRIORITY_RECHECK_MS)
+        if (scanInFlight) {
+          return
+        }
+        scanInFlight = true
+        try {
+          await lower(ptyId, stillOwnsPty)
+        } catch {
+          // Retry a transient process-table failure on the next interval.
+        } finally {
+          scanInFlight = false
         }
       } catch {
-        // The runtime can close while a delayed check is pending.
+        // The run or runtime may close during a scan.
       }
     }, delayMs)
     timer.unref()
   }
+  schedule(1_000, 9_000)
 }

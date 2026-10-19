@@ -70,10 +70,10 @@ describe('local automation process priority', () => {
       scheduleLocalAutomationPriorityFollowups('original-pty', () => ownsPty, lower)
 
       await vi.advanceTimersByTimeAsync(1_000)
-      expect(lower).toHaveBeenCalledExactlyOnceWith('original-pty')
+      expect(lower).toHaveBeenCalledExactlyOnceWith('original-pty', expect.any(Function))
 
       ownsPty = false
-      await vi.advanceTimersByTimeAsync(9_000)
+      await vi.advanceTimersByTimeAsync(60_000)
       expect(lower).toHaveBeenCalledTimes(1)
     }
   )
@@ -85,9 +85,50 @@ describe('local automation process priority', () => {
       const lower = vi.fn(async () => {})
       scheduleLocalAutomationPriorityFollowups('automation-pty', () => true, lower)
 
-      await vi.advanceTimersByTimeAsync(10_000)
+      await vi.advanceTimersByTimeAsync(70_000)
+      expect(lower).toHaveBeenCalledTimes(4)
+      expect(lower).toHaveBeenNthCalledWith(1, 'automation-pty', expect.any(Function))
+      expect(lower).toHaveBeenNthCalledWith(2, 'automation-pty', expect.any(Function))
+      expect(lower).toHaveBeenNthCalledWith(3, 'automation-pty', expect.any(Function))
+      expect(lower).toHaveBeenNthCalledWith(4, 'automation-pty', expect.any(Function))
+    }
+  )
+
+  it.skipIf(process.platform !== 'win32')(
+    'does not overlap a slow process scan and keeps checking after a transient failure',
+    async () => {
+      vi.useFakeTimers()
+      let finishFirst: (() => void) | undefined
+      const lower = vi.fn()
+      lower.mockImplementationOnce(() => new Promise<void>((resolve) => (finishFirst = resolve)))
+      lower.mockRejectedValueOnce(new Error('temporary process table failure'))
+      lower.mockResolvedValue(undefined)
+      scheduleLocalAutomationPriorityFollowups('automation-pty', () => true, lower)
+
+      await vi.advanceTimersByTimeAsync(70_000)
+      expect(lower).toHaveBeenCalledTimes(1)
+      finishFirst?.()
+      await vi.advanceTimersByTimeAsync(30_000)
       expect(lower).toHaveBeenCalledTimes(2)
-      expect(lower).toHaveBeenNthCalledWith(2, 'automation-pty')
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(lower).toHaveBeenCalledTimes(3)
+    }
+  )
+
+  it.skipIf(process.platform !== 'win32')(
+    'stops after ownership is lost while a scan is in flight',
+    async () => {
+      vi.useFakeTimers()
+      let ownsPty = true
+      let finishScan: (() => void) | undefined
+      const lower = vi.fn(() => new Promise<void>((resolve) => (finishScan = resolve)))
+      scheduleLocalAutomationPriorityFollowups('automation-pty', () => ownsPty, lower)
+
+      await vi.advanceTimersByTimeAsync(1_000)
+      ownsPty = false
+      finishScan?.()
+      await vi.advanceTimersByTimeAsync(70_000)
+      expect(lower).toHaveBeenCalledExactlyOnceWith('automation-pty', expect.any(Function))
     }
   )
 })

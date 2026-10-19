@@ -10,6 +10,15 @@ const captured = vi.hoisted(
     precheck: null
   })
 )
+const priorityMocks = vi.hoisted(() => ({
+  lower: vi.fn(async () => {}),
+  schedule: vi.fn()
+}))
+
+vi.mock('./local-automation-process-priority', () => ({
+  lowerLocalAutomationProcessPriority: priorityMocks.lower,
+  scheduleLocalAutomationPriorityFollowups: priorityMocks.schedule
+}))
 
 vi.mock('./service', () => ({
   AutomationService: class {
@@ -123,6 +132,68 @@ describe('headless automation dispatch', () => {
     expect(observer.resolveRunTerminal({ terminalPaneKey: 'tab-1:pane-1' } as never)).toBe(
       'terminal-1'
     )
+  })
+})
+
+describe.skipIf(process.platform !== 'win32')('local automation priority ownership', () => {
+  it('checks the exact PTY and active run before each follow-up', async () => {
+    priorityMocks.schedule.mockClear()
+    let currentPtyId = 'pty-1'
+    let runStatus = 'dispatched'
+    const store = {
+      listAutomations: () => [{ id: 'automation', executionTargetType: 'local', agentId: 'codex' }],
+      listAutomationRuns: () => [{ id: 'run-1', status: runStatus }],
+      getSettings: () => ({ chatSidebar: {} }),
+      updateSettings: vi.fn()
+    }
+    const runtime = {
+      setAutomationService: vi.fn(),
+      notifyAutomationsChanged: vi.fn(),
+      launchAgentTerminal: vi.fn(async () => ({
+        handle: 'terminal-1',
+        tabId: 'tab-1',
+        paneKey: 'tab-1:pane-1',
+        ptyId: 'pty-1',
+        worktreeId: 'wt-1'
+      })),
+      showManagedWorktree: vi.fn(async () => ({ displayName: 'repo' })),
+      getTerminalPtyIdForHandle: vi.fn(() => currentPtyId),
+      getTerminalHandleForPaneKey: vi.fn(() => null),
+      getAgentStatusRowsForPane: vi.fn(() => [])
+    }
+    createRuntimeAutomationService({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: dispatcher reads only the mocked store methods.
+      store: store as never,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: dispatcher reads only the mocked runtime methods.
+      runtime: runtime as never,
+      headless: true
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: captured from the mocked service constructor.
+    const dispatcher = captured.dispatcher as HeadlessAutomationDispatcher
+    await dispatcher({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only these automation fields are read by the dispatcher.
+      automation: {
+        id: 'automation',
+        workspaceMode: 'existing',
+        workspaceId: 'wt-1',
+        agentId: 'codex',
+        executionTargetType: 'local'
+      } as never,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only run identity and title are read by the dispatcher.
+      run: { id: 'run-1', automationId: 'automation', title: 'Daily' } as never,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unused for an existing workspace.
+      target: {} as never
+    })
+
+    expect(priorityMocks.schedule).toHaveBeenCalledTimes(1)
+    const stillOwnsPty = priorityMocks.schedule.mock.calls[0]?.[1]
+    expect(stillOwnsPty).toBeTypeOf('function')
+    expect(stillOwnsPty()).toBe(true)
+    runStatus = 'completed'
+    expect(stillOwnsPty()).toBe(false)
+    runStatus = 'dispatched'
+    currentPtyId = 'pty-2'
+    expect(stillOwnsPty()).toBe(false)
   })
 })
 

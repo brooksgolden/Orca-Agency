@@ -160,7 +160,14 @@ export function createRuntimeAutomationService(input: {
             if (automation.executionTargetType === 'local' && terminalPtyId) {
               scheduleLocalAutomationPriorityFollowups(
                 terminalPtyId,
-                () => runtime.getTerminalPtyIdForHandle(terminalHandle) === terminalPtyId
+                () =>
+                  runtime.getTerminalPtyIdForHandle(terminalHandle) === terminalPtyId &&
+                  store
+                    .listAutomationRuns(automation.id)
+                    .some(
+                      (candidate) =>
+                        candidate.id === run.id && !isFinalAutomationRunStatus(candidate.status)
+                    )
               )
             }
             recordAutomationChatOwnership(
