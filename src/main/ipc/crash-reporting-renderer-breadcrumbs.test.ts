@@ -160,6 +160,70 @@ describe('renderer breadcrumb IPC routing', () => {
     expect(capture.mock.calls[0][0]).not.toContain('private terminal text')
   })
 
+  it('records input dispatch delay with a fixed event label and no input text', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_input_dispatch_delay',
+      data: {
+        kind: 'keydown',
+        delayMs: 1_200,
+        queuedChars: 64,
+        key: 'private key',
+        message: 'private terminal text'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_input_dispatch_delay',
+      labels: { kind: 'keydown' },
+      metrics: { delayMs: 1_200, queuedChars: 64 }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private')
+    emitRendererBreadcrumb({
+      name: 'terminal_input_dispatch_delay',
+      data: { kind: 'private key text', delayMs: 900 }
+    })
+    expect(JSON.parse(capture.mock.calls[1][0])).toEqual(
+      expect.objectContaining({ metrics: { delayMs: 900 } })
+    )
+    expect(capture.mock.calls[1][0]).not.toContain('private key text')
+    emitRendererBreadcrumb({
+      name: 'terminal_input_dispatch_delay',
+      data: { kind: 'input', delayMs: 400, text: 'private dictated words' }
+    })
+    expect(JSON.parse(capture.mock.calls[2][0]).labels).toEqual({ kind: 'input' })
+    expect(capture.mock.calls[2][0]).not.toContain('private dictated words')
+  })
+
+  it('records streamed input counts and output pressure without terminal text', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_input_stream',
+      data: {
+        events: 20,
+        codeUnits: 80,
+        multiUnitEvents: 18,
+        maxEventGapMs: 2_000,
+        maxForwardMs: 7,
+        queuedChars: 24,
+        text: 'private dictated words'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_input_stream',
+      metrics: {
+        events: 20,
+        codeUnits: 80,
+        multiUnitEvents: 18,
+        maxEventGapMs: 2_000,
+        maxForwardMs: 7,
+        queuedChars: 24
+      }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private dictated words')
+  })
+
   it('drops unexpected paste labels and noncanonical timestamps', () => {
     const capture = vi.fn()
     setTerminalLatencyCapture(capture)

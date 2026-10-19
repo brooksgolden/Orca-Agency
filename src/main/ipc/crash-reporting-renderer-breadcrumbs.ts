@@ -10,6 +10,14 @@ import {
 import { startSpan } from '../observability/tracer'
 import { TERMINAL_WEBGL_DIAGNOSTIC_BREADCRUMB } from '../../shared/terminal-webgl-diagnostics'
 import type { ProducerFlowTransition } from './pty-producer-flow-control'
+import {
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB,
+  recordTerminalLatency
+} from './crash-reporting-terminal-latency'
+export { setTerminalLatencyCapture } from './crash-reporting-terminal-latency'
 
 function sanitizeRendererBreadcrumbData(value: unknown): CrashReportBreadcrumbData | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -51,54 +59,8 @@ const DUPLICATE_TAB_OWNER_BREADCRUMB = 'terminal_tab_id_owned_by_multiple_worktr
 const PARK_VERDICT_CHURN_BREADCRUMB = 'terminal_park_verdict_churn'
 const REACT_COMMIT_CASCADE_BREADCRUMB = 'react_commit_cascade'
 const REPLAY_GUARD_WEDGED_BREADCRUMB = 'terminal_replay_guard_wedged_release'
-const TERMINAL_PASTE_SLOW_BREADCRUMB = 'terminal_paste_slow'
-const TERMINAL_RENDERER_GAP_BREADCRUMB = 'terminal_renderer_gap'
-const TERMINAL_OUTPUT_BACKLOG_DROPPED_BREADCRUMB = 'terminal_output_backlog_dropped'
-const TERMINAL_PASTE_LABELS: Record<string, readonly string[]> = {
-  source: [
-    'keyboard',
-    'paste-event',
-    'app-menu',
-    'context-menu',
-    'right-click',
-    'middle-click',
-    'programmatic'
-  ],
-  mode: ['direct', 'chunked', 'bracketed-terminal', 'windows-input-record', 'reject'],
-  runtime: ['local', 'wsl', 'ssh', 'remote-runtime'],
-  status: ['pasted', 'rejected', 'cancelled', 'pending']
-}
-const TERMINAL_LATENCY_METRICS: Record<string, readonly string[]> = {
-  [TERMINAL_PASTE_SLOW_BREADCRUMB]: [
-    'bytes',
-    'lines',
-    'clipboardMs',
-    'planningMs',
-    'writeMs',
-    'dispatchDelayMs',
-    'parseAfterDispatchMs',
-    'firstPaintDelayMs',
-    'lastPaintDelayMs',
-    'parsedBatches',
-    'renderBatches'
-  ],
-  [TERMINAL_RENDERER_GAP_BREADCRUMB]: [
-    'gapMs',
-    'terminalPaneCount',
-    'queuedTerminalCount',
-    'queuedChars',
-    'highPriorityTerminalCount',
-    'heldForegroundTerminalCount'
-  ],
-  [TERMINAL_OUTPUT_BACKLOG_DROPPED_BREADCRUMB]: ['foreground', 'droppedChars', 'capChars']
-}
-let terminalLatencyCapture: ((line: string) => void) | undefined
 let terminalProducerFlowCapture: ((line: string) => void) | undefined
 let terminalProducerFlowSequence = 0
-
-export function setTerminalLatencyCapture(capture?: (line: string) => void): void {
-  terminalLatencyCapture = capture
-}
 
 export function setTerminalProducerFlowCapture(capture?: (line: string) => void): void {
   terminalProducerFlowCapture = capture
@@ -137,49 +99,6 @@ export function recordTerminalProducerFlowTransition(
   )
 }
 
-function recordTerminalLatency(
-  name: string,
-  data: CrashReportBreadcrumbData | undefined,
-  origin?: string
-): void {
-  if (!Object.hasOwn(TERMINAL_LATENCY_METRICS, name)) {
-    return
-  }
-  const keys = TERMINAL_LATENCY_METRICS[name]
-  if (!terminalLatencyCapture) {
-    return
-  }
-  const metrics: Record<string, number | boolean> = {}
-  for (const key of keys) {
-    const value = data?.[key]
-    if (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) {
-      metrics[key] = value
-    }
-  }
-  const labels: Record<string, string> = {}
-  if (name === TERMINAL_PASTE_SLOW_BREADCRUMB) {
-    for (const [key, allowed] of Object.entries(TERMINAL_PASTE_LABELS)) {
-      const value = data?.[key]
-      if (typeof value === 'string' && allowed.includes(value)) {
-        labels[key] = value
-      }
-    }
-  }
-  const rendererAt = data?.at
-  terminalLatencyCapture(
-    JSON.stringify({
-      at: new Date().toISOString(),
-      name,
-      ...(origin ? { origin } : {}),
-      ...(typeof rendererAt === 'string' &&
-      /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(rendererAt)
-        ? { rendererAt }
-        : {}),
-      ...(Object.keys(labels).length ? { labels } : {}),
-      metrics
-    })
-  )
-}
 const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   'renderer_error',
   'renderer_unhandled_rejection',
@@ -190,6 +109,8 @@ const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   REPLAY_GUARD_WEDGED_BREADCRUMB,
   TERMINAL_PASTE_SLOW_BREADCRUMB,
   TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB,
   TERMINAL_WEBGL_DIAGNOSTIC_BREADCRUMB
 ])
 const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
@@ -205,7 +126,9 @@ const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
 const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set([
   'terminal_safe_fit_retry_exhausted',
   TERMINAL_PASTE_SLOW_BREADCRUMB,
-  TERMINAL_RENDERER_GAP_BREADCRUMB
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB
 ])
 // Why: the 30-slot ring is the scarce sink; the durable span stream is not. For
 // bounded-rate pane telemetry whose multiplicity is the whole signal, spans are the
@@ -214,7 +137,9 @@ const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set([
 const PER_EVENT_TRACED_COALESCED_BREADCRUMB_NAMES = new Set([
   REPLAY_GUARD_WEDGED_BREADCRUMB,
   TERMINAL_PASTE_SLOW_BREADCRUMB,
-  TERMINAL_RENDERER_GAP_BREADCRUMB
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB
 ])
 
 function rendererBreadcrumbCoalesceKey(

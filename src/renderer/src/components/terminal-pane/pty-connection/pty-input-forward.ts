@@ -1,5 +1,5 @@
 import type { ManagedPaneInternal } from '@/lib/pane-manager/pane-manager-types'
-import { subscribeToTerminalInputData } from '../terminal-user-input-signal'
+import { installPtyInputStreamSubscription } from './pty-input-stream-subscription'
 import { installTerminalImeCompositionRoute } from '../terminal-ime-composition-route'
 import { useAppStore } from '@/store'
 import { isTerminalQueryReply } from '../../../../../shared/terminal-query-reply'
@@ -167,21 +167,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       session.requestRecoveryForUndeliverableInput()
     }
   }
-  // Why bind once: provenance must survive deferPtyInput's later callback, and
-  // this is the per-keystroke hot path, so no closure allocation per onData event.
-  const forwardUserInput = (data: string): void => session.forwardPtyInput(data, true)
-  const forwardUnclassifiedInput = (data: string): void => session.forwardPtyInput(data, false)
-  session.onDataDisposable = subscribeToTerminalInputData(
-    session.pane.terminal,
-    (data, wasUserInput) => {
-      const forward = wasUserInput ? forwardUserInput : forwardUnclassifiedInput
-      if (session.deps.deferPtyInput) {
-        session.deps.deferPtyInput(session.pane.id, data, forward)
-        return
-      }
-      forward(data)
-    }
-  )
+  installPtyInputStreamSubscription(session)
   session.imeCompositionRouteDisposable = installTerminalImeCompositionRoute({
     terminalElement: session.pane.terminal.element,
     terminal: session.pane.terminal,
