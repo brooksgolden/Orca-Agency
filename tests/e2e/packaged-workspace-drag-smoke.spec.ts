@@ -392,6 +392,34 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
       (await page.evaluate(() => window.api.pty.listSessions())).map((item) => item.id).sort()
     ).toEqual(createdPtyIds)
     await captureDragLayout(app, page, testInfo.outputPath('create-after-tab-move.png'))
+    const beforeReorder = await pane(ids[0])
+      .locator('[data-tab-id]')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tab-id')))
+    const firstTabBounds = (await pane(ids[0]).locator('[data-tab-id]').first().boundingBox())!
+    const lastTabBounds = (await pane(ids[0]).locator('[data-tab-id]').last().boundingBox())!
+    await dragTo(
+      page,
+      { x: lastTabBounds.x + 30, y: lastTabBounds.y + 16 },
+      { x: firstTabBounds.x + 4, y: firstTabBounds.y + 16 }
+    )
+    await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
+    await page.mouse.up()
+    const reordered = [beforeReorder.at(-1), ...beforeReorder.slice(0, -1)]
+    await expect
+      .poll(() =>
+        pane(ids[0])
+          .locator('[data-tab-id]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tab-id')))
+      )
+      .toEqual(reordered)
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+    await expect
+      .poll(() =>
+        pane(ids[0])
+          .locator('[data-tab-id]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tab-id')))
+      )
+      .toEqual(reordered)
     expect(
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().every((window) => !window.isVisible())
