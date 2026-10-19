@@ -131,7 +131,11 @@ export function renderFloatingTerminalPanelSurface({
               onPointerCancel={handleDragEnd}
               onDoubleClick={handleTitlebarDoubleClick}
             >
-              <div className="flex h-full min-w-0 flex-1">
+              <div
+                className="flex h-full min-w-0 flex-1"
+                data-tab-group-strip-id={activeGroup?.id}
+                data-worktree-id={FLOATING_TERMINAL_WORKTREE_ID}
+              >
                 <TabBar
                   tabs={terminalItems}
                   activeTabId={

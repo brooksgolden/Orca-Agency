@@ -1,6 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { DragEndEvent, DragMoveEvent, DragOverEvent } from '@dnd-kit/core'
 import type { TabDragItemData } from './tab-drag-data'
+import { isTabDragData } from './tab-drag-data'
+import type { TabGroupStripHit } from './tab-group-strip-hit'
 
 // Why: when a tab is dragged over another tab's sortable rect, we compute
 // which side of the hovered tab the drop will land on (before vs. after).
@@ -9,6 +11,7 @@ import type { TabDragItemData } from './tab-drag-data'
 // slides tabs apart.
 export type HoveredTabInsertion = {
   groupId: string
+  unifiedTabId: string
   visibleTabId: string
   side: 'left' | 'right'
 }
@@ -43,9 +46,72 @@ export function resolveTabInsertion(
   const midpoint = event.over.rect.left + event.over.rect.width / 2
   return {
     groupId: overData.groupId,
+    unifiedTabId: overData.unifiedTabId,
     visibleTabId: overData.visibleTabId,
     side: center.x < midpoint ? 'left' : 'right'
   }
+}
+
+export function resolvePointerStripInsertion(
+  event: DragMoveEvent | DragOverEvent | DragEndEvent,
+  strip: TabGroupStripHit | null,
+  pointer: { x: number; y: number } | null,
+  tabOrder?: readonly string[]
+): HoveredTabInsertion | null {
+  const activeData = event.active.data.current
+  if (!strip || strip.blocked || !pointer || !isTabDragData(activeData)) {
+    return null
+  }
+  const target = strip.tabAtPointer ?? strip.nextTab ?? strip.lastTab
+  if (target) {
+    if (target.unifiedTabId === activeData.unifiedTabId) {
+      return null
+    }
+    const insertion: HoveredTabInsertion = {
+      groupId: strip.groupId,
+      unifiedTabId: target.unifiedTabId,
+      visibleTabId: target.visibleTabId,
+      side: strip.tabAtPointer
+        ? pointer.x < target.rect.left + target.rect.width / 2
+          ? 'left'
+          : 'right'
+        : strip.nextTab
+          ? 'left'
+          : 'right'
+    }
+    return isUnchangedInsertion(activeData, insertion, tabOrder) ? null : insertion
+  }
+  if (
+    !event.over ||
+    pointer.x < event.over.rect.left ||
+    pointer.x > event.over.rect.left + event.over.rect.width ||
+    pointer.y < event.over.rect.top ||
+    pointer.y > event.over.rect.top + event.over.rect.height
+  ) {
+    return null
+  }
+  const fallback = resolveTabInsertion(event, isTabDragData, () => pointer)
+  return fallback?.groupId === strip.groupId &&
+    !isUnchangedInsertion(activeData, fallback, tabOrder)
+    ? fallback
+    : null
+}
+
+function isUnchangedInsertion(
+  activeData: TabDragItemData,
+  insertion: HoveredTabInsertion,
+  tabOrder?: readonly string[]
+): boolean {
+  if (activeData.groupId !== insertion.groupId || !tabOrder) {
+    return false
+  }
+  const activeIndex = tabOrder.indexOf(activeData.unifiedTabId)
+  const targetIndex = tabOrder.indexOf(insertion.unifiedTabId)
+  if (activeIndex === -1 || targetIndex === -1) {
+    return false
+  }
+  const slot = targetIndex + (insertion.side === 'right' ? 1 : 0)
+  return slot === activeIndex || slot === activeIndex + 1
 }
 
 export function resolveTabIndicatorEdges(
@@ -76,27 +142,28 @@ function equal(a: HoveredTabInsertion | null, b: HoveredTabInsertion | null): bo
     a !== null &&
     b !== null &&
     a.groupId === b.groupId &&
+    a.unifiedTabId === b.unifiedTabId &&
     a.visibleTabId === b.visibleTabId &&
     a.side === b.side
   )
 }
 
-export function useHoveredTabInsertion(
-  isTabDragData: (value: unknown) => value is TabDragItemData,
-  getDragCenter: (event: DragMoveEvent | DragOverEvent) => { x: number; y: number } | null
-): {
+export function useHoveredTabInsertion(): {
   hoveredTabInsertion: HoveredTabInsertion | null
-  update: (event: DragMoveEvent | DragOverEvent) => void
+  current: () => HoveredTabInsertion | null
+  set: (next: HoveredTabInsertion | null) => void
   clear: () => void
 } {
   const [hoveredTabInsertion, setHoveredTabInsertion] = useState<HoveredTabInsertion | null>(null)
-  const update = useCallback(
-    (event: DragMoveEvent | DragOverEvent) => {
-      const next = resolveTabInsertion(event, isTabDragData, getDragCenter)
-      setHoveredTabInsertion((prev) => (equal(prev, next) ? prev : next))
-    },
-    [isTabDragData, getDragCenter]
-  )
-  const clear = useCallback(() => setHoveredTabInsertion(null), [])
-  return { hoveredTabInsertion, update, clear }
+  const currentInsertionRef = useRef<HoveredTabInsertion | null>(null)
+  const set = useCallback((next: HoveredTabInsertion | null) => {
+    currentInsertionRef.current = next
+    setHoveredTabInsertion((prev) => (equal(prev, next) ? prev : next))
+  }, [])
+  const clear = useCallback(() => {
+    currentInsertionRef.current = null
+    setHoveredTabInsertion(null)
+  }, [])
+  const current = useCallback(() => currentInsertionRef.current, [])
+  return { hoveredTabInsertion, current, set, clear }
 }

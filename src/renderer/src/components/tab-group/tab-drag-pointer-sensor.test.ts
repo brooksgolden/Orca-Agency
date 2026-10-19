@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { PointerSensorOptions, SensorProps } from '@dnd-kit/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getDragPointer } from './tab-drag-pointer'
 import { TabDragPointerSensor } from './tab-drag-pointer-sensor'
 
 function startSensor(options: PointerSensorOptions = {}) {
@@ -12,13 +13,14 @@ function startSensor(options: PointerSensorOptions = {}) {
     onMove: vi.fn(),
     onEnd: vi.fn()
   }
+  const activatorEvent = new PointerEvent('pointerdown', { clientX: 10, clientY: 10 })
   new TabDragPointerSensor({
     active: 'tab-1',
-    event: new PointerEvent('pointerdown', { clientX: 10, clientY: 10 }),
+    event: activatorEvent,
     options,
     ...callbacks
   } as unknown as SensorProps<PointerSensorOptions>)
-  return callbacks
+  return { ...callbacks, activatorEvent }
 }
 
 function movePointer(): void {
@@ -35,6 +37,25 @@ afterEach(() => {
 })
 
 describe('tab drag pointer sensor cancellation', () => {
+  it('uses raw pointer coordinates despite a scroll-adjusted dnd delta', () => {
+    const callbacks = startSensor()
+    movePointer()
+    const dragEvent = {
+      activatorEvent: callbacks.activatorEvent,
+      delta: { x: 300, y: 200 },
+      active: { rect: { current: { initial: null, translated: null } } }
+    }
+    expect(getDragPointer(dragEvent as unknown as Parameters<typeof getDragPointer>[0])).toEqual({
+      x: 100,
+      y: 50
+    })
+    document.dispatchEvent(new PointerEvent('pointerup', { clientX: 105, clientY: 55 }))
+    expect(getDragPointer(dragEvent as unknown as Parameters<typeof getDragPointer>[0])).toEqual({
+      x: 105,
+      y: 55
+    })
+  })
+
   it('cancels an active gesture on blur and stops subsequent moves and drops', () => {
     const callbacks = startSensor()
     expect(callbacks.onStart).toHaveBeenCalledOnce()

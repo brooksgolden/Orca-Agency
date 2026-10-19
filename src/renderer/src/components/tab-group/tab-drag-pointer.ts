@@ -5,11 +5,23 @@ type DragPointerEvent = Pick<
   'activatorEvent' | 'delta' | 'active'
 >
 
+const currentPointerByActivator = new WeakMap<object, { x: number; y: number }>()
+
+export function recordTabDragPointer(activator: object, pointer: { x: number; y: number }): void {
+  currentPointerByActivator.set(activator, pointer)
+}
+
 /** Pointer position during a tab drag. Why: sortable tabs stay visually anchored
  *  (no transform) while DragOverlay follows the cursor, so active.rect.translated
  *  never tracks the pointer and panel-edge split targets would stay wrong. */
 export function getDragPointer(event: DragPointerEvent): { x: number; y: number } | null {
   const activator = event.activatorEvent
+  if (activator && typeof activator === 'object') {
+    const recorded = currentPointerByActivator.get(activator)
+    if (recorded) {
+      return recorded
+    }
+  }
   if (
     activator &&
     typeof activator === 'object' &&

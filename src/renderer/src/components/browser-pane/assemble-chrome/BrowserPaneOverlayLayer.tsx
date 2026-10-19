@@ -31,6 +31,7 @@ const EMPTY_GROUPS: readonly TabGroup[] = []
 
 type BrowserOverlaySlotProps = {
   browserTab: BrowserTabState
+  worktreeId: string
   isWorktreeActive: boolean
   // Why: undefined = orphan tab (in browserTabs but not referenced by any group's unified-tab list); the fallback branch keeps these hidden.
   groupId: string | undefined
@@ -43,6 +44,7 @@ type BrowserOverlaySlotProps = {
 // Why: memoize each slot so unrelated worktree mutations don't cascade a re-render into every BrowserPane subtree.
 const BrowserOverlaySlot = memo(function BrowserOverlaySlot({
   browserTab,
+  worktreeId,
   isWorktreeActive,
   groupId,
   isActive,
@@ -102,6 +104,9 @@ const BrowserOverlaySlot = memo(function BrowserOverlaySlot({
       style={style}
       className="relative flex min-h-0 flex-1 flex-col"
       data-browser-overlay-tab-id={browserTab.id}
+      data-retained-pane-host=""
+      data-retained-pane-group-id={groupId}
+      data-retained-pane-worktree-id={worktreeId}
       onPointerDown={handleFocus}
       onFocusCapture={handleFocus}
     >
@@ -192,6 +197,7 @@ const BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer({
           <BrowserOverlaySlot
             key={browserTab.id}
             browserTab={browserTab}
+            worktreeId={worktreeId}
             isWorktreeActive={isWorktreeActive}
             groupId={assignment?.groupId}
             isActive={isActive}
@@ -254,6 +260,9 @@ function ClientHostedBrowserRowOverlaySlot({
       style={style}
       className="flex min-h-0 flex-col"
       data-client-hosted-browser-host-row-pane={selectedRow.browserPageId}
+      data-retained-pane-host=""
+      data-retained-pane-group-id={liveSelection?.groupId}
+      data-retained-pane-worktree-id={worktreeId}
     >
       <ClientHostedBrowserHostRowPane row={selectedRow} />
     </div>

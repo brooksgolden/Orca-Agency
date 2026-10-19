@@ -155,6 +155,7 @@ export default function BrowserTab({
     <div
       ref={setNodeRef}
       data-tab-id={tab.id}
+      data-unified-tab-id={dragData.unifiedTabId}
       data-active={isActive ? 'true' : 'false'}
       data-pinned={isPinned ? 'true' : 'false'}
       {...attributes}

@@ -20,12 +20,14 @@ const EMPTY_GROUPS: readonly TabGroup[] = []
 
 const StructuredAgentSessionOverlaySlot = memo(function StructuredAgentSessionOverlaySlot({
   tab,
+  worktreeId,
   groupId,
   isActive,
   isFocusedGroup,
   onFocusOwningGroup
 }: {
   tab: StructuredAgentSessionTab
+  worktreeId: string
   groupId: string | undefined
   isActive: boolean
   isFocusedGroup: boolean
@@ -41,6 +43,7 @@ const StructuredAgentSessionOverlaySlot = memo(function StructuredAgentSessionOv
   return (
     <RetainedPaneHost
       groupId={groupId}
+      worktreeId={worktreeId}
       isVisible={isActive}
       data-structured-agent-session-overlay-tab-id={tab.id}
       onFocusOwningGroup={onFocusOwningGroup}
@@ -94,6 +97,7 @@ const StructuredAgentSessionPaneOverlayLayer = memo(
           <StructuredAgentSessionOverlaySlot
             key={tab.id}
             tab={tab}
+            worktreeId={worktreeId}
             groupId={tab.groupId}
             isActive={Boolean(isWorktreeActive && groupActiveTabById.get(tab.groupId) === tab.id)}
             isFocusedGroup={Boolean(

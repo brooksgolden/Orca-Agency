@@ -111,7 +111,8 @@ export function useTabDragSplit({
   const tabDragActiveRef = useRef(false)
   const dragGeometryRef = useRef<TabGroupPanelGeometrySnapshot | null>(null)
   const clearDragStateRef = useRef<() => void>(() => {})
-  const tabInsertion = useHoveredTabInsertion(isTabDragData, getDragPointer)
+  const tabInsertion = useHoveredTabInsertion()
+  const currentTabInsertion = tabInsertion.current
   const {
     acquireWebviewDragPassthrough,
     installMissedEndFallback,
@@ -274,12 +275,20 @@ export function useTabDragSplit({
         event,
         worktreeId,
         dragGeometryRef,
+        hoveredTabInsertion: currentTabInsertion(),
         dropUnifiedTab,
         reorderUnifiedTabs,
         finishDrag
       })
     },
-    [dragGeometryRef, dropUnifiedTab, finishDrag, reorderUnifiedTabs, worktreeId]
+    [
+      currentTabInsertion,
+      dragGeometryRef,
+      dropUnifiedTab,
+      finishDrag,
+      reorderUnifiedTabs,
+      worktreeId
+    ]
   )
 
   // Why: dnd-kit fires onDragCancel (not onDragEnd) when the user presses

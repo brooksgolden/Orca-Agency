@@ -8,6 +8,7 @@ import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { Tab, TabGroup } from '../../../../shared/tab-types'
 import { useAppStore } from '../../store'
 import { useTabDragSplit, type TabDragItemData } from '../tab-group/useTabDragSplit'
+import { findTabGroupStripUnderPointer } from '../tab-group/tab-group-strip-hit'
 import { isFloatingTerminalDragTarget } from './floating-terminal-titlebar-drag-target'
 
 vi.mock('../browser-pane/host-guest/webview-registry', () => ({
@@ -110,6 +111,11 @@ function floatingTabOrder(): string[] {
 }
 
 beforeEach(() => {
+  const strip = document.createElement('div')
+  strip.dataset.tabGroupStripId = GROUP_ID
+  strip.dataset.worktreeId = FLOATING_TERMINAL_WORKTREE_ID
+  strip.getBoundingClientRect = () => new DOMRect(0, 0, 400, 36)
+  document.body.appendChild(strip)
   useAppStore.setState({
     // The floating workspace is never the active worktree; its tabs still reorder.
     activeWorktreeId: 'wt-main',
@@ -145,6 +151,45 @@ afterEach(() => {
 })
 
 describe('floating workspace tab reorder', () => {
+  it('finds blank titlebar strip space inside its outer drag button', () => {
+    const strip = document.querySelector<HTMLElement>('[data-tab-group-strip-id]')!
+    const titlebarButton = document.createElement('button')
+    const blank = document.createElement('div')
+    strip.replaceWith(titlebarButton)
+    titlebarButton.appendChild(strip)
+    strip.appendChild(blank)
+    const previous = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => blank
+    })
+    try {
+      expect(
+        findTabGroupStripUnderPointer(FLOATING_TERMINAL_WORKTREE_ID, { x: 250, y: 16 })?.groupId
+      ).toBe(GROUP_ID)
+    } finally {
+      if (previous) {
+        Object.defineProperty(document, 'elementFromPoint', previous)
+      } else {
+        Reflect.deleteProperty(document, 'elementFromPoint')
+      }
+    }
+  })
+
+  it('keeps the marked insertion when release loses the tab with a different display ID', () => {
+    const drag = renderFloatingDragHook()
+    const activeData = makeDragData('tab-c')
+    const move = makeDropEvent(activeData, makeDragData('tab-a'), 210)
+    act(() => drag.onDragStart(move as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(move as unknown as Parameters<typeof drag.onDragMove>[0]))
+    act(() =>
+      drag.onDragEnd(
+        makeDropEvent(activeData, null, 210) as unknown as Parameters<typeof drag.onDragEnd>[0]
+      )
+    )
+    expect(floatingTabOrder()).toEqual(['tab-c', 'tab-a', 'tab-b'])
+  })
+
   it('moves a tab after the hovered tab when released on its right half', () => {
     dropTab('tab-a', 'tab-c', 290)
     expect(floatingTabOrder()).toEqual(['tab-b', 'tab-c', 'tab-a'])

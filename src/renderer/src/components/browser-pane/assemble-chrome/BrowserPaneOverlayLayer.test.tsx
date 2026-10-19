@@ -190,6 +190,9 @@ describe('BrowserPaneOverlayLayer', () => {
   it('marks the active browser pane focused when its own group holds focus', () => {
     const markup = renderOverlay({ isWorktreeActive: true })
 
+    expect(markup).toContain('data-retained-pane-group-id="group-1"')
+    expect(markup).toContain('data-retained-pane-worktree-id="wt-1"')
+
     // browser-a is the active tab of group-1, and group-1 is the focused split.
     expect(markup).toContain(
       'data-browser-pane-id="browser-a" data-browser-pane-active="true" data-browser-find-shortcut-scope="focused"'
@@ -438,6 +441,9 @@ describe('BrowserPaneOverlayLayer', () => {
     })
 
     const view = render(<BrowserPaneOverlayLayer worktreeId="wt-1" isWorktreeActive />)
+    const hostRow = view.container.querySelector('[data-client-hosted-browser-host-row-pane]')
+    expect(hostRow?.getAttribute('data-retained-pane-group-id')).toBe('group-1')
+    expect(hostRow?.getAttribute('data-retained-pane-worktree-id')).toBe('wt-1')
 
     const ordered = [
       ...view.container.querySelectorAll(

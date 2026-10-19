@@ -105,6 +105,7 @@ describe('resolveTabInsertion', () => {
     const result = resolveTabInsertion(event, isTabDragData, () => ({ x: 120, y: 10 }))
     expect(result).toEqual({
       groupId: 'group-2',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'left'
     })
@@ -125,6 +126,7 @@ describe('resolveTabInsertion', () => {
     const result = resolveTabInsertion(event, isTabDragData, () => ({ x: 180, y: 10 }))
     expect(result).toEqual({
       groupId: 'group-2',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'right'
     })
@@ -143,6 +145,7 @@ describe('resolveTabInsertion', () => {
     })
     expect(resolveTabInsertion(event, isTabDragData, () => ({ x: 100, y: 10 }))).toEqual({
       groupId: 'group-1',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'right'
     })
@@ -161,6 +164,7 @@ describe('resolveTabInsertion', () => {
     })
     expect(resolveTabInsertion(event, isTabDragData, () => ({ x: 80, y: 10 }))).toEqual({
       groupId: 'group-2',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'left'
     })
@@ -175,6 +179,7 @@ describe('resolveTabIndicatorEdges', () => {
   it('marks one edge for a left-edge insertion slot', () => {
     const hovered: HoveredTabInsertion = {
       groupId: 'group-1',
+      unifiedTabId: 'tab-2',
       visibleTabId: 'tab-2',
       side: 'left'
     }
@@ -187,6 +192,7 @@ describe('resolveTabIndicatorEdges', () => {
   it('marks one edge for a right-edge insertion slot', () => {
     const hovered: HoveredTabInsertion = {
       groupId: 'group-1',
+      unifiedTabId: 'tab-2',
       visibleTabId: 'tab-2',
       side: 'right'
     }
@@ -200,6 +206,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['tab-1', 'tab-2'], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-1',
         visibleTabId: 'tab-1',
         side: 'left'
       })
@@ -208,6 +215,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['tab-1', 'tab-2'], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-2',
         visibleTabId: 'tab-2',
         side: 'right'
       })
@@ -222,6 +230,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges([], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-1',
         visibleTabId: 'tab-1',
         side: 'left'
       })
@@ -232,6 +241,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['tab-1', 'tab-2'], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-unknown',
         visibleTabId: 'tab-unknown',
         side: 'left'
       })
@@ -242,6 +252,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['only-tab'], {
         groupId: 'group-1',
+        unifiedTabId: 'only-tab',
         visibleTabId: 'only-tab',
         side: 'left'
       })
@@ -252,6 +263,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['only-tab'], {
         groupId: 'group-1',
+        unifiedTabId: 'only-tab',
         visibleTabId: 'only-tab',
         side: 'right'
       })

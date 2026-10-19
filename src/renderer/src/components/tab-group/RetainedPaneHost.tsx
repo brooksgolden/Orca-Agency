@@ -20,6 +20,7 @@ function shouldUseCssAnchorPositioning(): boolean {
 
 type RetainedPaneHostProps = {
   groupId: string | undefined
+  worktreeId?: string
   isVisible: boolean
   measureWhileHidden?: boolean
   fitTerminal?: boolean
@@ -31,6 +32,7 @@ type RetainedPaneHostProps = {
 
 export function RetainedPaneHost({
   groupId,
+  worktreeId,
   isVisible,
   measureWhileHidden = false,
   fitTerminal = false,
@@ -139,6 +141,8 @@ export function RetainedPaneHost({
       // Pane-local layers cannot compete with app notifications or escape their split rectangle.
       className="isolate z-10 min-h-0 min-w-0 overflow-hidden"
       data-retained-pane-host=""
+      data-retained-pane-group-id={groupId}
+      data-retained-pane-worktree-id={worktreeId}
       {...identity}
       inert={!isVisible}
       aria-hidden={!isVisible}

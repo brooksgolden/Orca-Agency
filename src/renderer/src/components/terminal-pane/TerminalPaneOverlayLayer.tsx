@@ -143,6 +143,7 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
             <RetainedPaneHost
               key={terminalTab.id}
               groupId={assignment?.groupId}
+              worktreeId={worktreeId}
               isVisible
               onFocusOwningGroup={focusOwningGroup}
             >

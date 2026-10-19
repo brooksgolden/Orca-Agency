@@ -103,6 +103,7 @@ export const TerminalOverlaySlot = memo(function TerminalOverlaySlot({
   return (
     <RetainedPaneHost
       groupId={groupId}
+      worktreeId={worktreeId}
       isVisible={isVisible}
       measureWhileHidden={shouldMeasureHiddenStartup}
       fitTerminal
