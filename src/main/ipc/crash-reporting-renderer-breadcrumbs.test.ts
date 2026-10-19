@@ -63,7 +63,11 @@ vi.mock('../observability/tracer', () => ({
 }))
 
 import { registerCrashReportingHandlers } from './crash-reporting'
-import { setTerminalLatencyCapture } from './crash-reporting-renderer-breadcrumbs'
+import {
+  recordTerminalProducerFlowTransition,
+  setTerminalLatencyCapture,
+  setTerminalProducerFlowCapture
+} from './crash-reporting-renderer-breadcrumbs'
 
 function registerHandlersWithStubStore(): void {
   registerCrashReportingHandlers({
@@ -87,6 +91,7 @@ function emitRendererBreadcrumb(args: unknown, senderId?: number): void {
 describe('renderer breadcrumb IPC routing', () => {
   beforeEach(() => {
     setTerminalLatencyCapture(undefined)
+    setTerminalProducerFlowCapture(undefined)
     listeners.clear()
     recordCoalescedCrashBreadcrumbMock.mockReset()
     recordCoalescedCrashBreadcrumbMock.mockReturnValue({ suppressedSinceLast: 0 })
@@ -182,6 +187,66 @@ describe('renderer breadcrumb IPC routing', () => {
       name: 'terminal_output_backlog_dropped',
       metrics: { foreground: true, droppedChars: 4096, capChars: 2048 }
     })
+  })
+
+  it('captures producer flow requests without PTY content or full handles', () => {
+    const capture = vi.fn()
+    setTerminalProducerFlowCapture(capture)
+    recordTerminalProducerFlowTransition(
+      {
+        event: 'reassert-request',
+        id: 'private-prefix-1234567890',
+        pendingChars: 300_000,
+        sinceInitialRequestMs: 9_000,
+        sinceLastRequestMs: 5_000,
+        trackedPausePtyCount: 2,
+        requestStatus: 'method-invoked-unconfirmed'
+      },
+      { scope: 'local', rendererInFlightChars: 100_000, msSinceLastRendererAck: 4_000 }
+    )
+
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_producer_flow',
+      event: 'reassert-request',
+      sequence: 1,
+      ptyIdSuffix: '1234567890',
+      scope: 'local',
+      pendingChars: 300_000,
+      rendererInFlightChars: 100_000,
+      msSinceLastRendererAck: 4_000,
+      sinceInitialRequestMs: 9_000,
+      sinceLastRequestMs: 5_000,
+      trackedPausePtyCount: 2,
+      requestStatus: 'method-invoked-unconfirmed'
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private-prefix')
+  })
+
+  it('keeps producer flow records separate from renderer latency and disables cleanly', () => {
+    const latency = vi.fn()
+    const flow = vi.fn()
+    const transition = {
+      event: 'pause-request' as const,
+      id: 'pty-1234567890',
+      pendingChars: 300_000,
+      sinceInitialRequestMs: null,
+      sinceLastRequestMs: null,
+      trackedPausePtyCount: 1,
+      requestStatus: 'unsupported' as const
+    }
+    const context = {
+      scope: 'ssh' as const,
+      rendererInFlightChars: 0,
+      msSinceLastRendererAck: null
+    }
+    setTerminalLatencyCapture(latency)
+    recordTerminalProducerFlowTransition(transition, context)
+    expect(latency).not.toHaveBeenCalled()
+    setTerminalProducerFlowCapture(flow)
+    recordTerminalProducerFlowTransition(transition, context)
+    setTerminalProducerFlowCapture(undefined)
+    recordTerminalProducerFlowTransition(transition, context)
+    expect(flow).toHaveBeenCalledTimes(1)
   })
 
   it('sanitizes and coalesces renderer error breadcrumbs', () => {

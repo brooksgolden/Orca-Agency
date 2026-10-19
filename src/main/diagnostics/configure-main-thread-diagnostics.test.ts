@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   capture: vi.fn(),
   latencyCapture: vi.fn(),
   setLatencyCapture: vi.fn(),
+  setFlowCapture: vi.fn(),
   record: vi.fn(),
   getFocusedWindow: vi.fn<() => object | null>(() => null),
   getAllWindows: vi.fn<() => { isVisible(): boolean; isMinimized(): boolean }[]>(() => []),
@@ -46,7 +47,8 @@ vi.mock('./terminal-latency-file-capture', () => ({
   createTerminalLatencyFileCapture: mocks.latencyCapture
 }))
 vi.mock('../ipc/crash-reporting-renderer-breadcrumbs', () => ({
-  setTerminalLatencyCapture: mocks.setLatencyCapture
+  setTerminalLatencyCapture: mocks.setLatencyCapture,
+  setTerminalProducerFlowCapture: mocks.setFlowCapture
 }))
 vi.mock('../../shared/child-process/spawn-observer', () => ({ setSpawnObserver: mocks.observer }))
 vi.mock('../git/source-control/git-read-cache-invalidation', () => ({
@@ -83,14 +85,19 @@ it('keeps file capture enabled after a normal relaunch when the profile marker e
   vi.stubEnv('ORCA_MAIN_THREAD_DIAGNOSTICS', '')
   const sink = vi.fn()
   const latencySink = vi.fn()
+  const flowSink = vi.fn()
   mocks.capture.mockReturnValue(sink)
-  mocks.latencyCapture.mockReturnValue(latencySink)
+  mocks.latencyCapture.mockReturnValueOnce(latencySink).mockReturnValueOnce(flowSink)
 
   configureMainThreadDiagnostics(temporaryProfile)
 
   expect(process.env.ORCA_MAIN_THREAD_DIAGNOSTICS).toBe('')
   expect(mocks.capture).toHaveBeenCalledWith(join(diagnosticsDir, 'main-thread.jsonl'))
   expect(mocks.latencyCapture).toHaveBeenCalledWith(join(diagnosticsDir, 'terminal-latency.jsonl'))
+  expect(mocks.latencyCapture).toHaveBeenCalledWith(
+    join(diagnosticsDir, 'terminal-producer-flow.jsonl')
+  )
+  expect(mocks.setFlowCapture).toHaveBeenCalledWith(flowSink)
   expect(mocks.setLineWriter).toHaveBeenCalledWith(sink)
   expect(mocks.observer).toHaveBeenCalledWith(mocks.record)
   expect(mocks.probe).toHaveBeenCalledWith(expect.objectContaining({ writeLine: sink }))
@@ -184,16 +191,21 @@ it('enables automatic file capture from the explicit launch option', () => {
   vi.stubEnv('ORCA_MAIN_THREAD_DIAGNOSTICS', '')
   const sink = vi.fn()
   const latencySink = vi.fn()
+  const flowSink = vi.fn()
   mocks.capture.mockReturnValue(sink)
-  mocks.latencyCapture.mockReturnValue(latencySink)
+  mocks.latencyCapture.mockReturnValueOnce(latencySink).mockReturnValueOnce(flowSink)
   configureMainThreadDiagnostics('/profile')
   expect(process.env.ORCA_MAIN_THREAD_DIAGNOSTICS).toBe('')
   expect(mocks.capture).toHaveBeenCalledWith(join('/profile', 'diagnostics', 'main-thread.jsonl'))
   expect(mocks.latencyCapture).toHaveBeenCalledWith(
     join('/profile', 'diagnostics', 'terminal-latency.jsonl')
   )
+  expect(mocks.latencyCapture).toHaveBeenCalledWith(
+    join('/profile', 'diagnostics', 'terminal-producer-flow.jsonl')
+  )
   expect(mocks.setLineWriter).toHaveBeenCalledWith(sink)
   expect(mocks.setLatencyCapture).toHaveBeenCalledWith(latencySink)
+  expect(mocks.setFlowCapture).toHaveBeenCalledWith(flowSink)
   expect(mocks.observer).toHaveBeenCalledWith(mocks.record)
   expect(mocks.probe).toHaveBeenCalledWith(expect.objectContaining({ writeLine: sink }))
 })
@@ -206,6 +218,7 @@ it('preserves stderr capture for the existing environment variable', () => {
   expect(mocks.capture).not.toHaveBeenCalled()
   expect(mocks.latencyCapture).not.toHaveBeenCalled()
   expect(mocks.setLatencyCapture).toHaveBeenCalledWith(undefined)
+  expect(mocks.setFlowCapture).toHaveBeenCalledWith(undefined)
   expect(mocks.setLineWriter).toHaveBeenCalledWith(undefined)
   expect(mocks.probe).toHaveBeenCalledWith(expect.objectContaining({ writeLine: undefined }))
 })
@@ -218,4 +231,5 @@ it('does not install the spawn observer or disk capture when diagnostics are dis
   expect(mocks.capture).not.toHaveBeenCalled()
   expect(mocks.latencyCapture).not.toHaveBeenCalled()
   expect(mocks.setLatencyCapture).toHaveBeenCalledWith(undefined)
+  expect(mocks.setFlowCapture).toHaveBeenCalledWith(undefined)
 })

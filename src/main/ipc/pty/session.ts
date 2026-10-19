@@ -11,6 +11,7 @@ import type {
 } from '../../../shared/pty-renderer-delivery-health'
 import type { PtyRendererDeliveryDebugSnapshot } from './delivery/debug'
 import { PtyProducerFlowController } from '../pty-producer-flow-control'
+import { recordTerminalProducerFlowTransition } from '../crash-reporting-renderer-breadcrumbs'
 import { PtyPendingDataDrainQueue, type PendingPtyData } from '../pty-pending-data-drain-queue'
 import type { SshPtyOutputIntake } from '../ssh-pty-output-intake'
 import { activeRendererPtys } from './delivery/visibility-state'
@@ -20,6 +21,28 @@ import {
 } from '../pty-hidden-delivery-gate'
 import type { CodexHomePtySpawnedLifecycleArgs, PrepareCodexSessionResume } from './host-env/types'
 import { tryGetProviderForPty } from './provider/registry'
+import { ptyOwnership } from './provider/ownership-state'
+import { parseAppSshPtyId } from '../../providers/ssh-pty-id'
+import type { ProducerFlowRequestStatus } from '../pty-producer-flow-control'
+import { getRendererInFlightCharsForPty } from './delivery/accounting'
+
+function requestProducerFlow(
+  id: string,
+  operation: 'pauseProducer' | 'resumeProducer'
+): ProducerFlowRequestStatus {
+  const provider = tryGetProviderForPty(id)
+  if (!provider) {
+    return 'missing-provider'
+  }
+  const method = provider[operation]
+  if (!method) {
+    return 'unsupported'
+  }
+  // This confirms only that the provider method was invoked. Legacy providers
+  // can silently ignore the request, and a daemon can auto-resume after 5s.
+  method.call(provider, id)
+  return 'method-invoked-unconfirmed'
+}
 
 export type PtyDataPayload = {
   id: string
@@ -230,10 +253,26 @@ export function createPtyIpcSession(args: {
     dispatcherReadyWatchdogTimer: null,
     lastHiddenDropContradictionWarnAtMs: 0,
     pendingDataDropWarnedPtys: new Set(),
-    producerFlowControl: new PtyProducerFlowController({
-      pauseProducer: (id) => tryGetProviderForPty(id)?.pauseProducer?.(id),
-      resumeProducer: (id) => tryGetProviderForPty(id)?.resumeProducer?.(id)
-    }),
+    producerFlowControl: new PtyProducerFlowController(
+      {
+        pauseProducer: (id) => requestProducerFlow(id, 'pauseProducer'),
+        resumeProducer: (id) => requestProducerFlow(id, 'resumeProducer')
+      },
+      {
+        onTransition: (transition) => {
+          const accounting = session.rendererDeliveryAccountingByPty.get(transition.id)
+          const owner = ptyOwnership.get(transition.id)
+          recordTerminalProducerFlowTransition(transition, {
+            scope: typeof owner === 'string' || parseAppSshPtyId(transition.id) ? 'ssh' : 'local',
+            rendererInFlightChars: accounting
+              ? getRendererInFlightCharsForPty(session, transition.id)
+              : null,
+            msSinceLastRendererAck:
+              accounting?.lastAckAtMs == null ? null : Date.now() - accounting.lastAckAtMs
+          })
+        }
+      }
+    ),
     sourceCreditPendingPtys: new Set(),
     backgroundedDeliverySyncByPty: new Map(),
     syntheticKillExitPtyIds: new Map(),

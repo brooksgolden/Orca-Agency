@@ -12,7 +12,10 @@ import { createMainThreadFileCapture } from './main-thread-file-capture'
 import { createTerminalLatencyFileCapture } from './terminal-latency-file-capture'
 import { setSpawnObserver } from '../../shared/child-process/spawn-observer'
 import { settledDiffCache } from '../git/source-control/git-read-cache-invalidation'
-import { setTerminalLatencyCapture } from '../ipc/crash-reporting-renderer-breadcrumbs'
+import {
+  setTerminalLatencyCapture,
+  setTerminalProducerFlowCapture
+} from '../ipc/crash-reporting-renderer-breadcrumbs'
 import { listRegisteredPtys } from '../memory/pty-registry'
 import { getSystemMemoryDetails } from '../crash-reporting/system-memory-details'
 
@@ -82,6 +85,12 @@ export function configureMainThreadDiagnostics(userDataPath: string): void {
   setTerminalLatencyCapture(
     capture
       ? createTerminalLatencyFileCapture(join(diagnosticsDir, 'terminal-latency.jsonl'))
+      : undefined
+  )
+  // Keep flow-control floods away from renderer-gap and slow-paste evidence.
+  setTerminalProducerFlowCapture(
+    capture
+      ? createTerminalLatencyFileCapture(join(diagnosticsDir, 'terminal-producer-flow.jsonl'))
       : undefined
   )
   if (isMainThreadDiagnosticsEnabled()) {

@@ -9,6 +9,7 @@ import {
 } from '../crash-reporting/crash-breadcrumb-store'
 import { startSpan } from '../observability/tracer'
 import { TERMINAL_WEBGL_DIAGNOSTIC_BREADCRUMB } from '../../shared/terminal-webgl-diagnostics'
+import type { ProducerFlowTransition } from './pty-producer-flow-control'
 
 function sanitizeRendererBreadcrumbData(value: unknown): CrashReportBreadcrumbData | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -92,9 +93,48 @@ const TERMINAL_LATENCY_METRICS: Record<string, readonly string[]> = {
   [TERMINAL_OUTPUT_BACKLOG_DROPPED_BREADCRUMB]: ['foreground', 'droppedChars', 'capChars']
 }
 let terminalLatencyCapture: ((line: string) => void) | undefined
+let terminalProducerFlowCapture: ((line: string) => void) | undefined
+let terminalProducerFlowSequence = 0
 
 export function setTerminalLatencyCapture(capture?: (line: string) => void): void {
   terminalLatencyCapture = capture
+}
+
+export function setTerminalProducerFlowCapture(capture?: (line: string) => void): void {
+  terminalProducerFlowCapture = capture
+  terminalProducerFlowSequence = 0
+}
+
+export function recordTerminalProducerFlowTransition(
+  transition: ProducerFlowTransition,
+  context: {
+    scope: 'local' | 'ssh'
+    rendererInFlightChars: number | null
+    msSinceLastRendererAck: number | null
+  }
+): void {
+  const capture = terminalProducerFlowCapture
+  if (!capture) {
+    return
+  }
+  capture(
+    JSON.stringify({
+      at: new Date().toISOString(),
+      name: 'terminal_producer_flow',
+      sequence: ++terminalProducerFlowSequence,
+      event: transition.event,
+      // A short stable suffix correlates transitions without logging terminal content.
+      ptyIdSuffix: transition.id.slice(-10),
+      scope: context.scope,
+      pendingChars: transition.pendingChars,
+      rendererInFlightChars: context.rendererInFlightChars,
+      msSinceLastRendererAck: context.msSinceLastRendererAck,
+      sinceInitialRequestMs: transition.sinceInitialRequestMs,
+      sinceLastRequestMs: transition.sinceLastRequestMs,
+      trackedPausePtyCount: transition.trackedPausePtyCount,
+      requestStatus: transition.requestStatus
+    })
+  )
 }
 
 function recordTerminalLatency(
