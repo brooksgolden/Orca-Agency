@@ -402,39 +402,7 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
       { x: lastTabBounds.x + 30, y: lastTabBounds.y + 16 },
       { x: firstTabBounds.x + 4, y: firstTabBounds.y + 16 }
     )
-    const releasePoint = { x: firstTabBounds.x + 4, y: firstTabBounds.y + 16 }
-    const dragProbe = await page.evaluate((point) => {
-      const top = document.elementFromPoint(point.x, point.y)
-      const strip = top?.closest<HTMLElement>('[data-tab-group-strip-id]')
-      const tab = top?.closest<HTMLElement>('[data-tab-id]')
-      const scroller = strip?.querySelector<HTMLElement>('.terminal-tab-strip')
-      const bounds = (element: Element | null | undefined) => {
-        const rect = element?.getBoundingClientRect()
-        return rect
-          ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
-          : null
-      }
-      return {
-        top: top?.tagName ?? null,
-        stripGroupId: strip?.dataset.tabGroupStripId ?? null,
-        stripWorktreeId: strip?.dataset.worktreeId ?? null,
-        stripBounds: bounds(strip),
-        scrollerBounds: bounds(scroller),
-        tabBounds: bounds(tab),
-        tabId: tab?.dataset.tabId ?? null,
-        unifiedTabId: tab?.dataset.unifiedTabId ?? null,
-        tabs: Array.from(strip?.querySelectorAll<HTMLElement>('[data-tab-id]') ?? []).map(
-          (item) => ({ id: item.dataset.tabId, unifiedId: item.dataset.unifiedTabId })
-        ),
-        dragStatus: document.querySelector('[role="status"]')?.textContent ?? null,
-        insertionCount: document.querySelectorAll('[data-workspace-tab-insertion]').length
-      }
-    }, releasePoint)
-    console.log(
-      'TAB_REORDER_PROBE:',
-      JSON.stringify({ dragProbe, beforeReorder, firstTabBounds, lastTabBounds })
-    )
-    await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
+    await expect(pane(ids[0]).locator('[data-tab-id]').first()).toHaveClass(/before:bg-blue-500/)
     await page.mouse.up()
     const reordered = [beforeReorder.at(-1), ...beforeReorder.slice(0, -1)]
     await expect
