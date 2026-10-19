@@ -290,6 +290,23 @@ try {
 Test-Expectation ($retryOriginalMoved -and (Test-Path -LiteralPath (Join-Path $target 'retry-proof.txt')) -and
   (Get-TreeSignature $retryBackup) -eq $appBefore) 'a transient lock is retried, promoting the stage and retaining the complete previous tree'
 
+# 14. A running replacement desktop keeps the verified new app and its rollback backup intact.
+$script:simulateReplacementDesktop = $false
+$runningReplacement = @{ Backup = '' }
+function Get-CimInstance {
+  if (-not $script:simulateReplacementDesktop) { throw 'Unexpected process inventory.' }
+  [pscustomobject]@{ ExecutablePath = (Join-Path $target 'Orca.exe'); CommandLine = 'Orca.exe'; ProcessId = 55555 }
+}
+$result = Invoke-FixtureInstall ($common + @{ AfterReplace = {
+  $runningReplacement.Backup = $backup
+  $script:simulateReplacementDesktop = $true
+  throw 'Fixture restart verification failed'
+} })
+$script:simulateReplacementDesktop = $false
+Test-Expectation ($result.Error -like '*rollback was deferred*' -and
+  (Get-FileHash -LiteralPath (Join-Path $target 'Orca.exe')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $package 'Orca.exe')).Hash -and
+  (Test-Path -LiteralPath (Join-Path $runningReplacement.Backup 'Orca.exe'))) 'a live replacement desktop cannot trigger rollback of its app files'
+
 Write-Host ''
 if ($failures) { throw "$failures installer expectation(s) failed." }
 Write-Host 'All installer backup expectations passed.'

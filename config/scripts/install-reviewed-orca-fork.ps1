@@ -97,6 +97,16 @@ try {
 } catch {
   $installError = $_
   if ($backupCreated -and (Test-Path -LiteralPath $backup -PathType Container)) {
+    # The launcher PID can exit before the actual desktop appears.
+    for ($sample = 0; $sample -lt 6; $sample++) {
+      $possibleHolders = @(Get-CimInstance Win32_Process -Filter "Name = 'Orca.exe'" -ErrorAction Stop | Where-Object {
+        -not $_.ExecutablePath -or [string]::Equals($_.ExecutablePath, $targetExecutable, [StringComparison]::OrdinalIgnoreCase)
+      })
+      if ($possibleHolders.Count) {
+        throw "Installation verification failed while Orca still uses the app files. Installed app: $targetPath. Complete backup: $backup. Rollback was deferred. Error: $installError"
+      }
+      if ($sample -lt 5) { Start-Sleep -Milliseconds 500 }
+    }
     try {
       if (Test-Path -LiteralPath $targetPath) { Move-ReviewedAppDirectory $targetPath $stage }
       Move-ReviewedAppDirectory $backup $targetPath
