@@ -206,6 +206,7 @@ describe('renderer breadcrumb IPC routing', () => {
         multiUnitEvents: 18,
         maxEventGapMs: 2_000,
         maxForwardMs: 7,
+        deferredEvents: 3,
         queuedChars: 24,
         text: 'private dictated words'
       }
@@ -218,6 +219,32 @@ describe('renderer breadcrumb IPC routing', () => {
         multiUnitEvents: 18,
         maxEventGapMs: 2_000,
         maxForwardMs: 7,
+        deferredEvents: 3,
+        queuedChars: 24
+      }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private dictated words')
+  })
+
+  it('captures rounded bulk-input timing without dictated content', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_input_bulk',
+      data: {
+        codeUnitsRoundedUp64: 1472,
+        dispatchCallMs: 3,
+        deferred: true,
+        queuedChars: 24,
+        text: 'private dictated words'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_input_bulk',
+      metrics: {
+        codeUnitsRoundedUp64: 1472,
+        dispatchCallMs: 3,
+        deferred: true,
         queuedChars: 24
       }
     })
@@ -468,6 +495,19 @@ describe('renderer breadcrumb IPC routing', () => {
     }
     expect(startSpanMock).toHaveBeenCalledTimes(2)
     expect(spanEndMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('coalesces bulk-input crash entries while retaining each durable trace', () => {
+    recordCoalescedCrashBreadcrumbMock
+      .mockReturnValueOnce({ suppressedSinceLast: 0 })
+      .mockReturnValue(undefined)
+    emitRendererBreadcrumb({ name: 'terminal_input_bulk', data: { codeUnitsRoundedUp64: 512 } })
+    emitRendererBreadcrumb({ name: 'terminal_input_bulk', data: { codeUnitsRoundedUp64: 1024 } })
+    expect(recordCoalescedCrashBreadcrumbMock).toHaveBeenCalledTimes(2)
+    for (const call of recordCoalescedCrashBreadcrumbMock.mock.calls) {
+      expect(call[0].coalesceKey).toBe('terminal_input_bulk')
+    }
+    expect(startSpanMock).toHaveBeenCalledTimes(2)
   })
 
   it('preserves each foreground renderer gap in the trace while coalescing the crash ring', () => {

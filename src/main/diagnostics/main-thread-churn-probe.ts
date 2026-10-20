@@ -157,6 +157,15 @@ export type MainThreadChurnProbeOptions = {
   writeLine?: (line: string) => void
 }
 
+function readThreadCpuUsage(): NodeJS.CpuUsage | null {
+  try {
+    return typeof process.threadCpuUsage === 'function' ? process.threadCpuUsage() : null
+  } catch {
+    // Some Electron runtimes do not expose per-thread CPU time on every host.
+    return null
+  }
+}
+
 /**
  * Long-running main-process jank probe for benchmarks and field diagnosis of
  * issue #7576. Every 5s emits one `[main-thread] {json}` stderr line with the
@@ -175,6 +184,7 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
   let gapsOver50Ms = 0
   let gapsOver250Ms = 0
   let cpu = process.cpuUsage()
+  let threadCpu = readThreadCpuUsage()
   let eventLoop = nodePerformance.eventLoopUtilization()
   const timer = setInterval(() => {
     const now = performance.now()
@@ -196,6 +206,12 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
     const spawns = drainSubprocessSpawnStats()
     const usage = process.cpuUsage(cpu)
     cpu = process.cpuUsage()
+    const threadCpuNow = readThreadCpuUsage()
+    const threadUsage =
+      threadCpu && threadCpuNow
+        ? Math.max(0, threadCpuNow.user - threadCpu.user + threadCpuNow.system - threadCpu.system)
+        : null
+    threadCpu = threadCpuNow
     const eventLoopDelta = nodePerformance.eventLoopUtilization(eventLoop)
     eventLoop = nodePerformance.eventLoopUtilization()
     // Electron's main process can return all zeroes here even while timers
@@ -211,6 +227,7 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
       gapsOver250Ms,
       spawnCount: Object.values(spawns).reduce((sum, s) => sum + s.count, 0),
       cpuMs: Math.round((usage.user + usage.system) / 1000),
+      mainThreadCpuMs: threadUsage === null ? null : Math.round(threadUsage / 1000),
       eventLoopMetricsAvailable,
       eventLoopActiveMs: eventLoopMetricsAvailable ? Math.round(eventLoopDelta.active) : null,
       eventLoopIdleMs: eventLoopMetricsAvailable ? Math.round(eventLoopDelta.idle) : null,

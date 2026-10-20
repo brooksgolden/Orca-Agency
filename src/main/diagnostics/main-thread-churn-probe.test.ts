@@ -162,6 +162,8 @@ describe('startMainThreadChurnProbe', () => {
       spawns: { icacls: { count: 1, blockMsTotal: 40, blockMsMax: 40 } }
     })
     const report = JSON.parse(line.replace('[main-thread] ', ''))
+    expect(report).toHaveProperty('mainThreadCpuMs')
+    expect(report.mainThreadCpuMs === null || typeof report.mainThreadCpuMs === 'number').toBe(true)
     if (report.eventLoopMetricsAvailable) {
       expect(report.eventLoopActiveMs).toEqual(expect.any(Number))
       expect(report.eventLoopIdleMs).toEqual(expect.any(Number))

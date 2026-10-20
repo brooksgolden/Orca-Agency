@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createTerminalInputStreamProbe } from './terminal-input-stream-probe'
+import {
+  countTerminalInputTextCodeUnits,
+  createTerminalInputStreamProbe
+} from './terminal-input-stream-probe'
 
 const recordBreadcrumb = vi.hoisted(() => vi.fn())
 const queuePressure = vi.hoisted(() => vi.fn())
@@ -24,6 +27,17 @@ describe('terminal input stream probe', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('counts bracketed text and skips terminal control replies', () => {
+    expect(countTerminalInputTextCodeUnits('typed')).toBe(5)
+    expect(countTerminalInputTextCodeUnits('\x1b[A')).toBe(0)
+    expect(countTerminalInputTextCodeUnits('\r')).toBe(0)
+    expect(countTerminalInputTextCodeUnits('\x7f')).toBe(0)
+    expect(countTerminalInputTextCodeUnits('')).toBe(0)
+    expect(countTerminalInputTextCodeUnits('\x1b[200~')).toBe(0)
+    expect(countTerminalInputTextCodeUnits('\x1b[200~pasted\x1b[201~')).toBe(6)
+    expect(countTerminalInputTextCodeUnits('\x1b[200~partial')).toBe(7)
   })
 
   it('records a sustained word stream with counts only and limits report frequency', () => {
@@ -63,5 +77,26 @@ describe('terminal input stream probe', () => {
       expect(() => probe.observe(5, 2)).not.toThrow()
     }
     expect(recordBreadcrumb).not.toHaveBeenCalled()
+  })
+
+  it('records a large input event once per minute without retaining the input', () => {
+    const probe = createTerminalInputStreamProbe()
+    probe.observe(1426, 3, true)
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_input_bulk',
+      expect.objectContaining({
+        codeUnitsRoundedUp64: 1472,
+        dispatchCallMs: 3,
+        deferred: true,
+        terminalPaneCount: 2
+      })
+    )
+    now = 1_000
+    probe.observe(2048, 2)
+    expect(recordBreadcrumb).toHaveBeenCalledTimes(1)
+    now = 60_000
+    probe.observe(512, 2)
+    expect(recordBreadcrumb).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(recordBreadcrumb.mock.calls)).not.toContain('secret')
   })
 })

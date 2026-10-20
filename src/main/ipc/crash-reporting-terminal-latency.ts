@@ -4,6 +4,7 @@ export const TERMINAL_PASTE_SLOW_BREADCRUMB = 'terminal_paste_slow'
 export const TERMINAL_RENDERER_GAP_BREADCRUMB = 'terminal_renderer_gap'
 export const TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB = 'terminal_input_dispatch_delay'
 export const TERMINAL_INPUT_STREAM_BREADCRUMB = 'terminal_input_stream'
+export const TERMINAL_INPUT_BULK_BREADCRUMB = 'terminal_input_bulk'
 const TERMINAL_OUTPUT_BACKLOG_DROPPED_BREADCRUMB = 'terminal_output_backlog_dropped'
 const TERMINAL_PASTE_LABELS: Record<string, readonly string[]> = {
   source: [
@@ -56,6 +57,17 @@ const TERMINAL_LATENCY_METRICS: Record<string, readonly string[]> = {
     'multiUnitEvents',
     'maxEventGapMs',
     'maxForwardMs',
+    'deferredEvents',
+    'terminalPaneCount',
+    'queuedTerminalCount',
+    'queuedChars',
+    'highPriorityTerminalCount',
+    'heldForegroundTerminalCount'
+  ],
+  [TERMINAL_INPUT_BULK_BREADCRUMB]: [
+    'codeUnitsRoundedUp64',
+    'dispatchCallMs',
+    'deferred',
     'terminalPaneCount',
     'queuedTerminalCount',
     'queuedChars',
