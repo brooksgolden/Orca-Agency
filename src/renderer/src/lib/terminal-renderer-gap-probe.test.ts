@@ -31,6 +31,7 @@ describe('terminal renderer gap probe', () => {
     vi.useFakeTimers()
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     vi.stubGlobal('window', { setInterval, clearInterval })
+    vi.stubGlobal('PerformanceObserver', undefined)
     class TerminalElement {
       closest(selector: string): object | null {
         return selector === '.xterm' ? this : null
@@ -158,5 +159,20 @@ describe('terminal renderer gap probe', () => {
     now = 1_000
     expect(() => listeners.get('keydown')?.(keyEvent)).not.toThrow()
     dispose()
+  })
+
+  it('disconnects the long-frame observer when the gap probe closes', () => {
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    class Observer {
+      static supportedEntryTypes = ['long-animation-frame']
+      observe = observe
+      disconnect = disconnect
+    }
+    vi.stubGlobal('PerformanceObserver', Observer)
+    const dispose = installTerminalRendererGapProbe()
+    expect(observe).toHaveBeenCalledWith({ type: 'long-animation-frame' })
+    dispose()
+    expect(disconnect).toHaveBeenCalledTimes(1)
   })
 })

@@ -2,6 +2,7 @@ import type { CrashReportBreadcrumbData } from '../../shared/crash-reporting'
 
 export const TERMINAL_PASTE_SLOW_BREADCRUMB = 'terminal_paste_slow'
 export const TERMINAL_RENDERER_GAP_BREADCRUMB = 'terminal_renderer_gap'
+export const TERMINAL_RENDERER_LONG_FRAME_BREADCRUMB = 'terminal_renderer_long_frame'
 export const TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB = 'terminal_input_dispatch_delay'
 export const TERMINAL_INPUT_STREAM_BREADCRUMB = 'terminal_input_stream'
 export const TERMINAL_INPUT_BULK_BREADCRUMB = 'terminal_input_bulk'
@@ -36,6 +37,22 @@ const TERMINAL_LATENCY_METRICS: Record<string, readonly string[]> = {
   ],
   [TERMINAL_RENDERER_GAP_BREADCRUMB]: [
     'gapMs',
+    'terminalPaneCount',
+    'queuedTerminalCount',
+    'queuedChars',
+    'highPriorityTerminalCount',
+    'heldForegroundTerminalCount'
+  ],
+  [TERMINAL_RENDERER_LONG_FRAME_BREADCRUMB]: [
+    'durationMs',
+    'blockingDurationMs',
+    'renderStartOffsetMs',
+    'layoutStartOffsetMs',
+    'scriptCount',
+    'topScriptMs',
+    'topScriptForcedLayoutMs',
+    'topScriptSourceChar',
+    'topScriptAssetHash',
     'terminalPaneCount',
     'queuedTerminalCount',
     'queuedChars',

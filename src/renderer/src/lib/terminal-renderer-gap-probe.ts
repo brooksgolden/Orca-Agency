@@ -1,5 +1,6 @@
 import { recordRendererCrashBreadcrumb } from './crash-breadcrumb-recorder'
 import { getTerminalOutputQueuePressure } from './pane-manager/pane-terminal-output-queue-registry'
+import { installTerminalLongFrameProbe } from './terminal-long-frame-probe'
 
 const TICK_MS = 100
 const REPORT_GAP_MS = 100
@@ -17,6 +18,7 @@ export function installTerminalRendererGapProbe(): () => void {
   }
 
   let previousTick = performance.now()
+  const disposeLongFrameProbe = installTerminalLongFrameProbe()
   let previousForeground = isForeground()
   let lastReport = Number.NEGATIVE_INFINITY
   let lastInputReport = Number.NEGATIVE_INFINITY
@@ -91,6 +93,7 @@ export function installTerminalRendererGapProbe(): () => void {
     }
   }, TICK_MS)
   return () => {
+    disposeLongFrameProbe()
     window.clearInterval(timer)
     document.removeEventListener('keydown', onTerminalInput, true)
     document.removeEventListener('input', onTerminalInput, true)

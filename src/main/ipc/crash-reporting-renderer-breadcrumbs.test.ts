@@ -128,6 +128,29 @@ describe('renderer breadcrumb IPC routing', () => {
     expect(capture.mock.calls[0][0]).not.toContain('private error')
   })
 
+  it('retains numeric long frame attribution without source paths or script text', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_renderer_long_frame',
+      data: {
+        at: '2026-10-20T04:00:00.000Z',
+        durationMs: 800,
+        topScriptSourceChar: 432,
+        topScriptAssetHash: 12345,
+        sourceURL: 'file:///private/asset.js?secret',
+        message: 'private terminal text'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_renderer_long_frame',
+      rendererAt: '2026-10-20T04:00:00.000Z',
+      metrics: { durationMs: 800, topScriptSourceChar: 432, topScriptAssetHash: 12345 }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private')
+    expect(capture.mock.calls[0][0]).not.toContain('secret')
+  })
+
   it('keeps fixed paste labels and event time without retaining terminal content', () => {
     const capture = vi.fn()
     setTerminalLatencyCapture(capture)
