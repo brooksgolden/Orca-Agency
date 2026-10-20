@@ -11,6 +11,65 @@ const MIN_OBSERVE_MS = 5_000
 const MAX_OBSERVE_MS = 20_000
 const SLOW_MS = 500
 const active = new WeakMap<PasteLatencyTerminal, () => void>()
+type OutputObservation = {
+  rawPtyAtMs: number | null
+  queuedAtMs: number | null
+  xtermWriteAtMs: number | null
+  matchedParseAtMs: number | null
+  matchedPaintAtMs: number | null
+  queuedForeground: boolean | null
+  queuedLatencySensitive: boolean | null
+  queuedHold: boolean | null
+  queuedCoalesce: boolean | null
+  dispatchedAtMs: number | null
+}
+const observations = new WeakMap<PasteLatencyTerminal, OutputObservation>()
+let activeObservations = 0
+
+export function noteTerminalPasteRawPtyOutput(terminal: PasteLatencyTerminal): void {
+  if (activeObservations === 0) {
+    return
+  }
+  const observation = observations.get(terminal)
+  if (observation && observation.dispatchedAtMs !== null && observation.rawPtyAtMs === null) {
+    observation.rawPtyAtMs = performance.now()
+  }
+}
+
+export function noteTerminalPasteOutputQueued(
+  terminal: PasteLatencyTerminal,
+  options: { foreground: boolean; latencySensitive: boolean; hold: boolean; coalesce: boolean }
+): { onWrite: () => void; onParsed: () => void } | null {
+  if (activeObservations === 0) {
+    return null
+  }
+  const observation = observations.get(terminal)
+  if (
+    !observation ||
+    observation.dispatchedAtMs === null ||
+    observation.rawPtyAtMs === null ||
+    observation.queuedAtMs !== null
+  ) {
+    return null
+  }
+  observation.queuedAtMs = performance.now()
+  observation.queuedForeground = options.foreground
+  observation.queuedLatencySensitive = options.latencySensitive
+  observation.queuedHold = options.hold
+  observation.queuedCoalesce = options.coalesce
+  return {
+    onWrite: () => {
+      if (observations.get(terminal) === observation) {
+        observation.xtermWriteAtMs ??= performance.now()
+      }
+    },
+    onParsed: () => {
+      if (observations.get(terminal) === observation && observation.xtermWriteAtMs !== null) {
+        observation.matchedParseAtMs ??= performance.now()
+      }
+    }
+  }
+}
 
 export function captureTerminalPasteLatency(
   terminal: PasteLatencyTerminal,
@@ -44,6 +103,20 @@ export function captureTerminalPasteLatency(
   let timer: ReturnType<typeof setTimeout> | null = null
   let maxTimer: ReturnType<typeof setTimeout> | null = null
   let closed = false
+  const observation: OutputObservation = {
+    rawPtyAtMs: null,
+    queuedAtMs: null,
+    xtermWriteAtMs: null,
+    matchedParseAtMs: null,
+    matchedPaintAtMs: null,
+    queuedForeground: null,
+    queuedLatencySensitive: null,
+    queuedHold: null,
+    queuedCoalesce: null,
+    dispatchedAtMs: null
+  }
+  observations.set(terminal, observation)
+  activeObservations++
 
   const stop = (record = true): void => {
     if (closed) {
@@ -60,6 +133,8 @@ export function captureTerminalPasteLatency(
       disposable.dispose()
     }
     active.delete(terminal)
+    observations.delete(terminal)
+    activeObservations--
     if (!record) {
       return
     }
@@ -95,6 +170,19 @@ export function captureTerminalPasteLatency(
       planningMs: rounded(times.plannedAtMs - times.clipboardReadyAtMs),
       writeMs,
       dispatchDelayMs: dispatchDelayMs === null ? -1 : rounded(dispatchDelayMs),
+      rawPtyAfterDispatchMs: afterDispatch(observation.rawPtyAtMs, firstDispatchAtMs),
+      queueAfterDispatchMs: afterDispatch(observation.queuedAtMs, firstDispatchAtMs),
+      xtermWriteAfterDispatchMs: afterDispatch(observation.xtermWriteAtMs, firstDispatchAtMs),
+      matchedParseAfterDispatchMs: afterDispatch(observation.matchedParseAtMs, firstDispatchAtMs),
+      matchedPaintAfterDispatchMs: afterDispatch(observation.matchedPaintAtMs, firstDispatchAtMs),
+      ...(observation.queuedAtMs !== null
+        ? {
+            queuedForeground: observation.queuedForeground,
+            queuedLatencySensitive: observation.queuedLatencySensitive,
+            queuedHold: observation.queuedHold,
+            queuedCoalesce: observation.queuedCoalesce
+          }
+        : {}),
       parseAfterDispatchMs: parseDelayMs === null ? -1 : rounded(parseDelayMs),
       firstPaintDelayMs: firstPaintDelayMs === null ? -1 : rounded(firstPaintDelayMs),
       lastPaintDelayMs: lastPaintDelayMs === null ? -1 : rounded(lastPaintDelayMs),
@@ -135,6 +223,9 @@ export function captureTerminalPasteLatency(
       const at = performance.now()
       firstRenderAtMs ??= at
       lastRenderAtMs = at
+      if (observation.matchedParseAtMs !== null) {
+        observation.matchedPaintAtMs ??= at
+      }
       renderBatches++
     })
   )
@@ -144,6 +235,7 @@ export function captureTerminalPasteLatency(
   return {
     markDispatched: () => {
       firstDispatchAtMs ??= performance.now()
+      observation.dispatchedAtMs = firstDispatchAtMs
     },
     complete: (execution) => {
       result = execution
@@ -155,4 +247,8 @@ export function captureTerminalPasteLatency(
 
 function rounded(value: number): number {
   return Math.max(0, Math.round(value))
+}
+
+function afterDispatch(atMs: number | null, dispatchedAtMs: number | null): number {
+  return atMs === null || dispatchedAtMs === null ? -1 : rounded(atMs - dispatchedAtMs)
 }

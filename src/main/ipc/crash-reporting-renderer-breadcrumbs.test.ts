@@ -163,6 +163,12 @@ describe('renderer breadcrumb IPC routing', () => {
         runtime: 'local',
         status: 'pending',
         dispatchDelayMs: -1,
+        rawPtyAfterDispatchMs: 12,
+        queueAfterDispatchMs: 15,
+        xtermWriteAfterDispatchMs: 1_015,
+        matchedParseAfterDispatchMs: 1_035,
+        matchedPaintAfterDispatchMs: 1_055,
+        queuedCoalesce: true,
         firstPaintDelayMs: 800,
         message: 'private terminal text'
       }
@@ -178,7 +184,16 @@ describe('renderer breadcrumb IPC routing', () => {
         runtime: 'local',
         status: 'pending'
       },
-      metrics: { dispatchDelayMs: -1, firstPaintDelayMs: 800 }
+      metrics: {
+        dispatchDelayMs: -1,
+        rawPtyAfterDispatchMs: 12,
+        queueAfterDispatchMs: 15,
+        xtermWriteAfterDispatchMs: 1_015,
+        matchedParseAfterDispatchMs: 1_035,
+        matchedPaintAfterDispatchMs: 1_055,
+        queuedCoalesce: true,
+        firstPaintDelayMs: 800
+      }
     })
     expect(capture.mock.calls[0][0]).not.toContain('private terminal text')
   })

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalPastePlan } from './terminal-paste-model'
-import { captureTerminalPasteLatency } from './terminal-paste-latency-capture'
+import {
+  captureTerminalPasteLatency,
+  noteTerminalPasteOutputQueued,
+  noteTerminalPasteRawPtyOutput
+} from './terminal-paste-latency-capture'
 
 const recordBreadcrumb = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/crash-breadcrumb-recorder', () => ({
@@ -119,6 +123,62 @@ describe('bounded terminal paste latency capture', () => {
     expect(JSON.stringify(recordBreadcrumb.mock.calls)).not.toContain('private')
     expect(JSON.stringify(recordBreadcrumb.mock.calls)).not.toContain('pty')
     expect(listenerCount()).toBe(0)
+  })
+
+  it('separates raw PTY arrival from a held xterm write without retaining output', () => {
+    const { terminal, emit } = terminalFixture()
+    const capture = captureTerminalPasteLatency(terminal, plan, {
+      requestedAtMs: 0,
+      clipboardReadyAtMs: 2,
+      plannedAtMs: 3
+    })
+    noteTerminalPasteRawPtyOutput(terminal)
+    advance(5)
+    capture?.markDispatched()
+    advance(6)
+    expect(
+      noteTerminalPasteOutputQueued(terminal, {
+        foreground: true,
+        latencySensitive: false,
+        hold: false,
+        coalesce: true
+      })
+    ).toBeNull()
+    advance(6)
+    noteTerminalPasteRawPtyOutput(terminal)
+    advance(3)
+    const outputProbe = noteTerminalPasteOutputQueued(terminal, {
+      foreground: true,
+      latencySensitive: false,
+      hold: false,
+      coalesce: true
+    })
+    advance(1_000)
+    outputProbe?.onWrite()
+    advance(20)
+    outputProbe?.onParsed()
+    emit('parsed')
+    advance(20)
+    emit('render')
+    capture?.complete({ status: 'pasted', chunksWritten: 1, durationMs: 3, diagnostic: '' })
+    advance(5_000)
+
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_paste_slow',
+      expect.objectContaining({
+        rawPtyAfterDispatchMs: 12,
+        queueAfterDispatchMs: 15,
+        xtermWriteAfterDispatchMs: 1_015,
+        matchedParseAfterDispatchMs: 1_035,
+        matchedPaintAfterDispatchMs: 1_055,
+        queuedForeground: true,
+        queuedLatencySensitive: false,
+        queuedHold: false,
+        queuedCoalesce: true,
+        parseAfterDispatchMs: 1_035
+      })
+    )
+    expect(JSON.stringify(recordBreadcrumb.mock.calls)).not.toContain('private clipboard contents')
   })
 
   it('does not call a fast paste slow when an agent keeps repainting afterward', () => {

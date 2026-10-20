@@ -3,6 +3,7 @@ import { nativeWindowsRewriteNeedsFollowupRenderRefresh } from '@/lib/pane-manag
 import { writeTerminalOutput } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 import { RESET_TERMINAL_CURSOR_STYLE } from '../../../../../shared/terminal-mode-reset-profiles'
 import { forceFullViewportPresent } from '@/lib/pane-manager/terminal-render-pause-release'
+import { noteTerminalPasteOutputQueued } from '../terminal-paste-latency-capture'
 
 import { FOREGROUND_SYNCHRONIZED_FRAME_INTERACTIVE_WINDOW_MS } from './foreground-output-budgets'
 import {
@@ -92,22 +93,49 @@ export function bindWritePtyOutputToXterm(session: ConnectPanePtySession): void 
           forceFullViewportPresent(session.pane.terminal)
         }
       : startupWrite?.onParsed
+    const latencySensitive =
+      !foreground || parseHiddenStartupOutput
+        ? true
+        : synchronizedFrameLatencySensitive || session.isLatencySensitiveForegroundOutput(data)
+    const coalesceForeground = synchronizedForegroundOutput && synchronizedOutputEnded
+    const holdForeground = synchronizedForegroundOutput && nextSynchronizedForegroundOutputActive
+    const pasteOutputProbe =
+      opts?.liveStartupBatch && data.length > 0
+        ? noteTerminalPasteOutputQueued(session.pane.terminal, {
+            foreground: foregroundOutput,
+            latencySensitive,
+            hold: holdForeground,
+            coalesce: coalesceForeground
+          })
+        : null
     writeTerminalOutput(session.pane.terminal, data, {
       foreground: foregroundOutput,
-      beforeWrite: startupWrite
+      beforeWrite: pasteOutputProbe
+        ? (chunk) => {
+            pasteOutputProbe.onWrite()
+            session.beforeTerminalOutputWrite?.(chunk)
+            startupWrite?.beforeWrite()
+          }
+        : startupWrite
         ? (chunk) => {
             session.beforeTerminalOutputWrite?.(chunk)
             startupWrite.beforeWrite()
           }
         : session.beforeTerminalOutputWrite,
-      ...(onParsed ? { onParsed } : {}),
+      ...(pasteOutputProbe
+        ? {
+            onParsed: () => {
+              pasteOutputProbe.onParsed()
+              onParsed?.()
+            }
+          }
+        : onParsed
+          ? { onParsed }
+          : {}),
       // Why: every scheduler write claims one child so a split delivery is credited only after all children parse or discard.
       ackCredit: takeCurrentTerminalDeliveryCredit() ?? undefined,
       onBackgroundBacklogDropped: session.markHiddenOutputRestoreNeeded,
-      latencySensitive:
-        !foreground || parseHiddenStartupOutput
-          ? true
-          : synchronizedFrameLatencySensitive || session.isLatencySensitiveForegroundOutput(data),
+      latencySensitive,
       forceForegroundRefresh:
         foregroundOutput &&
         (synchronizedForegroundOutput ||
@@ -117,8 +145,8 @@ export function bindWritePtyOutputToXterm(session: ConnectPanePtySession): void 
       // Why: xterm already queued a WebGL frame parsing this chunk; merge the repair into it instead of rendering the grid twice.
       shouldRefreshForegroundSynchronously: session.shouldRefreshForegroundSynchronously,
       stripTransientCursorShows: session.shouldProtectNativeWindowsSynchronizedOutput && foreground,
-      coalesceForeground: synchronizedForegroundOutput && synchronizedOutputEnded,
-      holdForeground: synchronizedForegroundOutput && nextSynchronizedForegroundOutputActive
+      coalesceForeground,
+      holdForeground
     })
   }
 

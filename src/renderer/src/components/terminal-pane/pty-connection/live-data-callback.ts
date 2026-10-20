@@ -3,6 +3,7 @@ import { useAppStore } from '@/store'
 import { takeCurrentTerminalDeliveryCredit } from '@/lib/pane-manager/terminal-delivery-credit'
 import { recordAgentHibernationPaneOutput } from '@/lib/agent-hibernation-output-activity'
 import { observeTerminalBracketedPasteModeOutput } from '../terminal-bracketed-paste'
+import { noteTerminalPasteRawPtyOutput } from '../terminal-paste-latency-capture'
 import type { PtyDataMeta } from '../pty-dispatcher'
 import { sendTerminalOscColorQueryReplies } from '../terminal-capability-replies'
 
@@ -19,6 +20,9 @@ export function bindLiveDataCallback(session: ConnectPanePtySession): void {
   ): void => {
     if (streamGeneration !== session.transportStreamGeneration) {
       return
+    }
+    if (data.length > 0) {
+      noteTerminalPasteRawPtyOutput(session.pane.terminal)
     }
     if (session.deferredReattachLiveData !== null) {
       const ackCredit = takeCurrentTerminalDeliveryCredit()
