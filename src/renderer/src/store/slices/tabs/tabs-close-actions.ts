@@ -44,7 +44,10 @@ export function createTabsCloseActions(
         const wasLastTab =
           dedupeTabOrder(dedupedGroupOrder.filter((id) => id !== tabId)).length === 0
         // Why: unified-only hydrated tabs still own provider sessions without a legacy row, so retire every terminal close by entity id.
-        get().closeTab(tab.entityId, { recordInteraction: opts?.recordInteraction })
+        get().closeTab(tab.entityId, {
+          recordInteraction: opts?.recordInteraction,
+          ...(opts?.terminalCloseReason ? { reason: opts.terminalCloseReason } : {})
+        })
         return { closedTabId: tabId, wasLastTab, worktreeId }
       }
 
@@ -196,7 +199,12 @@ export function createTabsCloseActions(
       })
 
       if (!opts?.preserveWorktreeSelection) {
-        collapseEmptyWorkspaceSplit(get(), worktreeId)
+        collapseEmptyWorkspaceSplit(
+          get(),
+          worktreeId,
+          tab.contentType === 'agent-session' ||
+            (tab.contentType === 'terminal' && opts?.terminalCloseReason === 'user')
+        )
       }
 
       if (opts?.recordInteraction !== false) {

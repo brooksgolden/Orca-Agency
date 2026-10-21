@@ -112,7 +112,7 @@ test('packaged file links and folder workspace splits retain their workspace', a
       })
     )
     await page.waitForFunction(() => Boolean(window.api))
-    expect(await page.evaluate(() => Boolean(window.__store))).toBe(false)
+    expect(await page.evaluate(() => '__store' in window)).toBe(false)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     const ids = await page.evaluate(async (folderPaths) => {
@@ -248,10 +248,33 @@ test('packaged file links and folder workspace splits retain their workspace', a
     await expect(surface(ids[0])).toBeVisible()
     await expect(surface(ids[1])).toBeVisible()
     await captureHiddenRendererScreenshot(page, testInfo.outputPath('folder-workspace-split.png'))
-    await row(ids[1]).locator('[data-worktree-card-surface]').click({ button: 'right' })
-    await page.getByRole('menuitem', { name: 'Unsplit workspace' }).click()
+    const closingPane = surface(ids[1])
+    await expect(closingPane.locator('[data-tab-id]').filter({ hasText: 'linked.md' })).toHaveCount(
+      1
+    )
+    await closingPane
+      .locator('[data-tab-id]')
+      .filter({ hasNotText: 'linked.md' })
+      .first()
+      .locator('[data-tab-close-button]')
+      .click()
     await expect(page.locator('[data-workspace-split="true"]')).toHaveCount(0)
     await expect(row(ids[0])).toHaveAttribute('aria-current', 'page')
+    await expect(closingPane).not.toBeVisible()
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(async () => {
+          await window.api.session.flush()
+          return window.api.session.get()
+        })
+        const tabs = saved.unifiedTabs?.[`folder:${ids[1]}`] ?? []
+        return (
+          tabs.some((tab) => tab.contentType === 'editor' && tab.label === 'linked.md') &&
+          !tabs.some((tab) => tab.contentType === 'terminal')
+        )
+      })
+      .toBe(true)
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('last-chat-pane-closed.png'))
     expect(errors).toEqual([])
     expect(
       await app.evaluate(({ BrowserWindow }) =>

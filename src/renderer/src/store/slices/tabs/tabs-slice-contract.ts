@@ -8,6 +8,7 @@ import type {
 } from '../../../../../shared/tab-types'
 import type { WorkspaceSessionState } from '../../../../../shared/workspace-session-state-types'
 import type { WorkspaceSessionHydrationOptions } from '@/lib/workspace-session-hydration-keys'
+import type { TerminalTabCloseReason } from '../terminal-tab-retirement'
 
 export type TabSplitDirection = 'left' | 'right' | 'up' | 'down'
 
@@ -96,6 +97,8 @@ export type TabsSlice = {
       preserveWorktreeSelection?: boolean
       recordInteraction?: boolean
       terminalRetirementHandled?: boolean
+      /** Provider cleanup must not dismiss a pane that still contains files. */
+      terminalCloseReason?: TerminalTabCloseReason
     }
   ) => { closedTabId: string; wasLastTab: boolean; worktreeId: string } | null
   reorderUnifiedTabs: (
