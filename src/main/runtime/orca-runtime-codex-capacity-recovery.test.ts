@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime-test-mocks.spec'
 import { store, TEST_WORKTREE_ID } from './orca-runtime-test-fixtures.spec'
 import { WRITE_ACCEPTED } from '../../shared/pty-write-settlement'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -55,6 +57,18 @@ async function runtimeWithCapacityRecovery(enabled: boolean) {
 }
 
 describe('runtime Codex capacity recovery wiring', () => {
+  it('continues from the real captured Codex working and idle transitions', async () => {
+    const h = await runtimeWithCapacityRecovery(true)
+    const raw = readFileSync(
+      join(import.meta.dirname, '__fixtures__', 'codex-capacity-overload.txt'),
+      'utf8'
+    )
+    for (let i = 0; i < raw.length; i += 256) {
+      h.runtime.onPtyData('pty-capacity', raw.slice(i, i + 256), Date.now())
+    }
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(h.writes).toEqual(['\x1b[200~Continue\x1b[201~\r'])
+  })
   it('routes a live capacity error through one fenced terminal write', async () => {
     const h = await runtimeWithCapacityRecovery(true)
     h.fail()

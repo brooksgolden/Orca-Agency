@@ -18,9 +18,15 @@ export type CodexCapacityState = {
 export type CodexCapacityRecoveryPort = {
   enabled(): boolean
   current(ptyId: string): CodexCapacityState | null
+  canRecover(ptyId: string): boolean
   screen(ptyId: string): Promise<RuntimeTerminalRead>
   sendContinue(ptyId: string, reserveWrite: () => void): Promise<boolean>
-  report(ptyId: string, outcome: 'scheduled' | 'sent' | 'held' | 'exhausted', attempt: number): void
+  report(
+    ptyId: string,
+    outcome: 'scheduled' | 'sent' | 'held' | 'exhausted',
+    attempt: number,
+    reason?: string
+  ): void
 }
 
 type Entry = {
@@ -31,6 +37,9 @@ type Entry = {
   attempts: number[]
   timer?: ReturnType<typeof setTimeout>
   pending: boolean
+  baseline?: CodexCapacityState
+  lastWorkingSequence: number
+  lastInputSequence: number
 }
 
 /** A provider capacity notice must be the last content above an empty Codex composer. */
@@ -89,9 +98,25 @@ export class CodexCapacityRecovery {
         sawWorking: false,
         lastFailureTurn: -1,
         attempts: [],
-        pending: false
+        pending: false,
+        lastWorkingSequence: state.workingSequence,
+        lastInputSequence: state.inputSequence
       }
       this.entries.set(ptyId, entry)
+    }
+    if (
+      state.workingSequence !== entry.lastWorkingSequence ||
+      state.inputSequence !== entry.lastInputSequence
+    ) {
+      if (entry.timer) {
+        clearTimeout(entry.timer)
+      }
+      entry.timer = undefined
+      entry.pending = false
+      entry.baseline = undefined
+      entry.carry = ''
+      entry.lastWorkingSequence = state.workingSequence
+      entry.lastInputSequence = state.inputSequence
     }
     if (state.status === 'working') {
       entry.sawWorking = true
@@ -118,6 +143,7 @@ export class CodexCapacityRecovery {
     this.port.report(ptyId, 'scheduled', attempt)
     const expected = entry
     const baseline = { ...state }
+    entry.baseline = baseline
     entry.timer = setTimeout(
       () => {
         entry.timer = undefined
@@ -153,13 +179,22 @@ export class CodexCapacityRecovery {
       if (
         !this.port.enabled() ||
         this.entries.get(ptyId) !== entry ||
-        !current ||
-        current.generation !== expected.generation ||
-        current.inputSequence !== expected.inputSequence ||
-        current.workingSequence !== expected.workingSequence ||
-        current.status !== 'idle'
+        entry.baseline !== expected ||
+        !current
       ) {
         throw new Error('capacity_recovery_superseded')
+      }
+      if (current.generation !== expected.generation) {
+        throw new Error('capacity_recovery_process_changed')
+      }
+      if (current.inputSequence !== expected.inputSequence) {
+        throw new Error('capacity_recovery_input_changed')
+      }
+      if (current.workingSequence !== expected.workingSequence) {
+        throw new Error('capacity_recovery_turn_changed')
+      }
+      if (!this.port.canRecover(ptyId)) {
+        throw new Error('capacity_recovery_busy')
       }
       return current
     }
@@ -178,11 +213,18 @@ export class CodexCapacityRecovery {
         }
       })
       this.port.report(ptyId, sent ? 'sent' : 'held', attempt)
-    } catch {
-      this.port.report(ptyId, 'held', attempt)
+    } catch (error) {
+      const reason =
+        error instanceof Error && error.message.startsWith('capacity_recovery_')
+          ? error.message
+          : 'preflight_failed'
+      this.port.report(ptyId, 'held', attempt, reason)
     } finally {
-      entry.pending = false
-      entry.carry = ''
+      if (entry.baseline === expected) {
+        entry.pending = false
+        entry.baseline = undefined
+        entry.carry = ''
+      }
     }
   }
 }

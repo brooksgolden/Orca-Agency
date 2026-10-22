@@ -17,6 +17,20 @@ type CapacityRecoveryRuntime = Pick<
   agentPromptLifecycleByPtyId: Map<string, { status: AgentStatus | null; workingSequence: number }>
   getPtyLifecycleGeneration(ptyId: string): number
   issuePtyHandle(pty: RuntimePtyWorktreeRecord): string
+  getAgentPromptActivity(handle: string, ptyId: string): CapacityRecoveryActivity
+}
+
+type CapacityRecoveryActivity = {
+  status: AgentStatus | null
+  explicitWorkingStartedAt: number | null
+}
+
+export function canRecoverCodexCapacity(activity: CapacityRecoveryActivity): boolean {
+  // A title spinner can outlive the error. The rendered error/composer check proves idle then.
+  return (
+    activity.status === 'idle' ||
+    (activity.status !== 'permission' && activity.explicitWorkingStartedAt === null)
+  )
 }
 
 export function createRuntimeCodexCapacityRecovery(
@@ -52,6 +66,8 @@ export function createRuntimeCodexCapacityRecovery(
       }
     },
     screen: (ptyId) => runtime.readTerminal(ptyHandle(ptyId), { screen: true, limit: 80 }),
+    canRecover: (ptyId) =>
+      canRecoverCodexCapacity(runtime.getAgentPromptActivity(ptyHandle(ptyId), ptyId)),
     sendContinue: async (ptyId, reserveWrite) => {
       if ((await runtime.readLaunchedAgentForeground(ptyId, 'codex')) === 'shell') {
         return false
@@ -67,7 +83,9 @@ export function createRuntimeCodexCapacityRecovery(
       )
       return result.accepted
     },
-    report: (ptyId, outcome, attempt) =>
-      console.info(`[codex-capacity-recovery] ${outcome} attempt=${attempt} pty=${ptyId}`)
+    report: (ptyId, outcome, attempt, reason) =>
+      console.info(
+        `[codex-capacity-recovery] ${outcome} attempt=${attempt} reason=${reason ?? 'none'} pty=${ptyId}`
+      )
   })
 }

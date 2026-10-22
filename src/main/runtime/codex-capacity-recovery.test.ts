@@ -10,6 +10,7 @@ import type { RuntimeTerminalRead } from '../../shared/runtime-terminal-read'
 import { TerminalRunFactsRegister } from './terminal-run-facts'
 import { normalizeTerminalChunk } from './terminal-ansi-normalization'
 import { HeadlessEmulator } from '../daemon/headless-emulator'
+import { canRecoverCodexCapacity } from './runtime-codex-capacity-recovery'
 
 const NOTICE = '■ Selected model is at capacity. Please try a different model.'
 const screen = (): RuntimeTerminalRead => ({
@@ -39,12 +40,14 @@ function harness() {
     return true
   })
   const report = vi.fn()
+  const idle = vi.fn(() => state?.status === 'idle')
   const recovery = new CodexCapacityRecovery({
     enabled: () => enabled,
     current: () => state,
     screen: read,
     sendContinue: send,
-    report
+    report,
+    canRecover: idle
   })
   const observeFailure = () => {
     if (!state) {
@@ -60,6 +63,7 @@ function harness() {
     send,
     read,
     report,
+    idle,
     observeFailure,
     state: () => state!,
     replace: (next: CodexCapacityState | null) => {
@@ -77,6 +81,27 @@ afterEach(() => {
 })
 
 describe('Codex capacity recovery', () => {
+  it('cancels a parked retry when a new turn starts and retries its fresh failure', async () => {
+    const h = harness()
+    h.observeFailure()
+    await vi.advanceTimersByTimeAsync(10_000)
+    h.state().workingSequence++
+    h.state().status = 'working'
+    h.recovery.observe('pty', 'new work')
+    h.state().status = 'idle'
+    h.recovery.observe('pty', NOTICE)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(h.send).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(h.send).toHaveBeenCalledTimes(1)
+  })
+  it('respects authoritative busy or permission state despite a cached idle title', async () => {
+    const h = harness()
+    h.observeFailure()
+    h.idle.mockReturnValue(false)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(h.send).not.toHaveBeenCalled()
+  })
   it('continues once after a delay, never per repaint or old repeated text', async () => {
     const h = harness()
     h.observeFailure()
@@ -118,7 +143,7 @@ describe('Codex capacity recovery', () => {
     expect(h.send).not.toHaveBeenCalled()
   })
 
-  it.each(['working', 'permission', null] as const)(
+  it.each(['working', 'permission'] as const)(
     'cancels when status changes to %s',
     async (status) => {
       const h = harness()
@@ -152,7 +177,7 @@ describe('Codex capacity recovery', () => {
     h.observeFailure()
     await vi.advanceTimersByTimeAsync(30_000)
     expect(wrote).toBe(false)
-    expect(h.report).toHaveBeenLastCalledWith('pty', 'held', 1)
+    expect(h.report).toHaveBeenLastCalledWith('pty', 'held', 1, 'capacity_recovery_input_changed')
   })
 
   it('holds if the screen changes during a rendered read', async () => {
@@ -211,6 +236,18 @@ describe('Codex capacity recovery', () => {
 })
 
 describe('capacity screen boundary', () => {
+  it('blocks explicit working and permissions while allowing a stale title spinner', () => {
+    expect(canRecoverCodexCapacity({ status: 'working', explicitWorkingStartedAt: 100 })).toBe(
+      false
+    )
+    expect(canRecoverCodexCapacity({ status: 'permission', explicitWorkingStartedAt: null })).toBe(
+      false
+    )
+    expect(canRecoverCodexCapacity({ status: 'working', explicitWorkingStartedAt: null })).toBe(
+      true
+    )
+    expect(canRecoverCodexCapacity({ status: null, explicitWorkingStartedAt: null })).toBe(true)
+  })
   it('accepts the real error frame rendered from the captured PTY bytes', async () => {
     const emulator = new HeadlessEmulator({ cols: 120, rows: 34 })
     try {
