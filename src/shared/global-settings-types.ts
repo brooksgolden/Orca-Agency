@@ -429,6 +429,8 @@ export type GlobalSettings = NativeChatGlobalSettings & {
   codexTerminalServerIsolation?: boolean
   /** Off hides the banner on a typed `codex` that joined Codex's shared server. Absent reads as on. */
   codexSharedServerWarning?: boolean
+  /** Explicit opt-in to bounded, same-model continuation after a terminal capacity failure. */
+  codexCapacityAutoContinue?: boolean
   /** Dismissed freshness tuples: no write authority, just suppress re-nudging the same official placement/revision. */
   dismissedSkillFreshnessNudges?: string[]
   /** Why: generated tab titles are subjective, so they stay opt-in and manual renames win. */

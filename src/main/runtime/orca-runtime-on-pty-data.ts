@@ -278,6 +278,7 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
       this.touchMobileSessionSnapshotsForPty(ptyId)
     }
 
+    this.codexCapacityRecovery.observe(ptyId, ptyNormalized?.text ?? '')
     this.terminalStreamConsumers.publish(ptyId, data, () => ({
       seq: outputSequence,
       rawLength: sequenceChars,

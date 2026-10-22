@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-10-22",
+  "platform": "win32",
+  "cols": 120,
+  "rows": 34,
+  "agent": "codex",
+  "version": "0.163.0",
+  "note": "Real Codex TUI captured with capture-agent-pty-transcript.mjs against a loopback-only HTTP provider returning 503 server_is_overloaded. No login or inference. Username scrubbed with equal length replacement."
+}

@@ -46,6 +46,8 @@
 # these carry real CR and CRLF bytes as the terminal emitted them, and line-ending
 # normalisation on a Windows checkout would rewrite the evidence the fixture exists to be.
 /src/main/runtime/__fixtures__/*.txt -text
+# Captured blank cells and CR bytes are terminal data.
+/src/main/runtime/__fixtures__/codex-capacity-overload.txt whitespace=-blank-at-eol
 /src/main/daemon/__fixtures__/pty-transcripts/*.txt -text
 # Generated runtime English subset: compared byte-for-byte by
 # verify:localization-runtime-catalog, so a CRLF checkout would fail the gate.

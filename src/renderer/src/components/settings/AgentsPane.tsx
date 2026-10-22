@@ -9,6 +9,7 @@ import { AgentAwakeSetting } from './AgentAwakeSetting'
 import { AgentCacheTimerSection } from './AgentCacheTimerSection'
 import { AgentRuntimeSetting } from './AgentRuntimeSetting'
 import { CodexTerminalServerIsolationSetting } from './CodexTerminalServerIsolationSetting'
+import { CodexCapacityRecoverySetting } from './CodexCapacityRecoverySetting'
 import { buildCodexSessionSourceHomeControl } from './codex-session-source-home-control'
 import {
   getAgentGeneratedTabTitlesDescription,
@@ -267,6 +268,7 @@ export function AgentsPane({
             settings={settings}
             updateSettings={updateSettings}
           />
+          <CodexCapacityRecoverySetting settings={settings} updateSettings={updateSettings} />
         </>
       ) : null}
       <AgentGeneratedTabTitlesSetting settings={settings} updateSettings={updateSettings} />

@@ -42,6 +42,7 @@ export class TerminalRunFactsRegister {
   private readonly runsByPtyId = new Map<string, TerminalRunRecord>()
   // Why apart from the run record: input must count on a PTY main adopted without a commit.
   private readonly lastInputAtByPtyId = new Map<string, number>()
+  private readonly inputSequenceByPtyId = new Map<string, number>()
   private readonly pendingByPtyId = new Map<
     string,
     { incarnationId: string | null; firstInputAt: number | null }
@@ -102,6 +103,7 @@ export class TerminalRunFactsRegister {
       return
     }
     this.lastInputAtByPtyId.set(ptyId, now)
+    this.inputSequenceByPtyId.set(ptyId, this.readInputSequence(ptyId) + 1)
     const run = this.runsByPtyId.get(ptyId)
     if (inputKind === 'driving') {
       const pending = this.pendingByPtyId.get(ptyId)
@@ -122,6 +124,10 @@ export class TerminalRunFactsRegister {
     return this.lastInputAtByPtyId.get(ptyId) ?? null
   }
 
+  readInputSequence(ptyId: string): number {
+    return this.inputSequenceByPtyId.get(ptyId) ?? 0
+  }
+
   /** A run main never saw committed reads as not fresh, which keeps today's close-on-exit. */
   read(ptyId: string, incarnationId: string | null | undefined): TerminalRunFacts {
     const run = this.runsByPtyId.get(ptyId)
@@ -137,6 +143,7 @@ export class TerminalRunFactsRegister {
   delete(ptyId: string): void {
     this.runsByPtyId.delete(ptyId)
     this.lastInputAtByPtyId.delete(ptyId)
+    this.inputSequenceByPtyId.delete(ptyId)
     this.pendingByPtyId.delete(ptyId)
   }
 }

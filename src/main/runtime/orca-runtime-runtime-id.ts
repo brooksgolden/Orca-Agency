@@ -43,6 +43,7 @@ import type { PtyIncarnationHandleRecord } from './orca-runtime-core'
 import { MailPointerRepointScheduler } from './orchestration/mail-pointer-repoint-scheduler'
 import { RuntimeTerminalWaiterRegistry } from './runtime-terminal-waiter-registry'
 import { RuntimeTerminalWriter } from './runtime-terminal-writer'
+import { createRuntimeCodexCapacityRecovery } from './runtime-codex-capacity-recovery'
 import { writeRefused } from '../../shared/pty-write-settlement'
 import { RuntimeTerminalIdlePolls } from './runtime-terminal-idle-polls'
 import { TerminalIntentionalStops } from './terminal-intentional-stops'
@@ -239,6 +240,8 @@ export class OrcaRuntimeWithRuntimeId {
   readonly intentionalPtyStops = new TerminalIntentionalStops()
 
   readonly terminalRunFacts = new TerminalRunFactsRegister()
+
+  protected readonly codexCapacityRecovery = createRuntimeCodexCapacityRecovery(this)
 
   /** Both spawn-commit funnels report each committed process here, once. */
   noteTerminalSpawnCommit(commit: TerminalSpawnCommit, expectedSourceBinding?: unknown): void {

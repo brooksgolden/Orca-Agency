@@ -94,6 +94,7 @@ export type RuntimeStore = {
     terminalDefaultShell?: GlobalSettings['terminalDefaultShell']
     floatingTerminalEnabled?: GlobalSettings['floatingTerminalEnabled']
     agentStatusHooksEnabled?: GlobalSettings['agentStatusHooksEnabled']
+    codexCapacityAutoContinue?: GlobalSettings['codexCapacityAutoContinue']
     terminalCopyTrimsGutter?: GlobalSettings['terminalCopyTrimsGutter']
     experimentalNativeChat?: GlobalSettings['experimentalNativeChat']
     defaultTaskSource?: GlobalSettings['defaultTaskSource']
