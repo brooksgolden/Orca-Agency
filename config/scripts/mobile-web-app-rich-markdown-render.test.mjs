@@ -521,6 +521,17 @@ describeEditor(
           const { page, consoleErrors } = await openPage(browser)
           try {
             await setContent(page, 'alpha', '<p>alpha</p>')
+            const textStyle = await page.locator('#first-surface #editor p').evaluate((element) => {
+              const style = getComputedStyle(element)
+              return {
+                selection: style.getPropertyValue('-webkit-user-select') || style.userSelect,
+                caret: style.caretColor,
+                foreground: style.color
+              }
+            })
+            expect(textStyle.selection).toBe('text')
+            expect(textStyle.caret).toBe(textStyle.foreground)
+            expect(textStyle.caret).not.toBe('rgba(0, 0, 0, 0)')
             const word = page.locator('#first-surface #editor p')
             await word.click()
             await page.keyboard.press('End')
@@ -533,6 +544,12 @@ describeEditor(
             await page.evaluate(() => window.getSelection()?.removeAllRanges())
             await word.dblclick()
             expect(await page.evaluate(() => window.getSelection()?.toString().trim())).not.toBe('')
+            await page.evaluate(() => globalThis.__orcaEditor.set({ content: '- [ ] task' }))
+            const checkboxLabel = page.locator('#first-surface #editor label')
+            await checkboxLabel.waitFor()
+            expect(
+              await checkboxLabel.evaluate((element) => getComputedStyle(element).userSelect)
+            ).toBe('none')
             expect(consoleErrors).toEqual([])
           } finally {
             await page.close()

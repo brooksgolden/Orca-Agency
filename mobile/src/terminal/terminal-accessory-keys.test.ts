@@ -12,7 +12,14 @@ describe('TERMINAL_ACCESSORY_KEYS', () => {
       bytes: '\x1b[1;2D',
       accessibilityLabel: 'Shift Left Arrow'
     })
-    expect(ids.indexOf('shiftArrowLeft')).toBe(ids.indexOf('shiftTab') - 1)
+    expect(ids.slice(0, 6)).toEqual([
+      'escape',
+      'enter',
+      'shiftArrowLeft',
+      'ctrlU',
+      'tab',
+      'shiftTab'
+    ])
   })
 
   it('sends reverse-tab with a non-repeatable Shift+Tab key', () => {

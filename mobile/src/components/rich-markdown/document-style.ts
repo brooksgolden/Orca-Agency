@@ -50,6 +50,11 @@ export function richMarkdownEditorStyle(): string {
       overflow-wrap: anywhere;
       caret-color: var(--foreground);
     }
+    #editor, :where(#editor *) {
+      -webkit-user-select: text;
+      user-select: text;
+      -webkit-touch-callout: default;
+    }
     #editor[contenteditable="false"] {
       opacity: 0.78;
     }

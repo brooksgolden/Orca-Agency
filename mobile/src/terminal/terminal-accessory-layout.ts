@@ -11,7 +11,7 @@ export type TerminalAccessoryLayout = {
 }
 
 export type TerminalAccessoryLayoutPreference = TerminalAccessoryLayout & {
-  version: 2
+  version: 3
 }
 
 function builtInIds(): string[] {
@@ -20,7 +20,7 @@ function builtInIds(): string[] {
 
 function defaultPreference(ids = builtInIds()): TerminalAccessoryLayoutPreference {
   return {
-    version: 2,
+    version: 3,
     orderedBuiltInIds: [...ids],
     visibleBuiltInIds: [...ids]
   }
@@ -111,14 +111,43 @@ export function normalizeTerminalAccessoryLayoutPreference(
   }
   const builtInSet = new Set(currentBuiltInIds)
 
-  if (candidate.version === 2) {
+  if (candidate.version === 2 || candidate.version === 3) {
     const orderedInput = stringArray(candidate.orderedBuiltInIds)
     const visibleInput = stringArray(candidate.visibleBuiltInIds)
     if (!orderedInput || !visibleInput) {
       return fallback
     }
+    const knownOrder = dedupeKnownIds(orderedInput, builtInSet)
+    const legacyDefault = [
+      'escape',
+      'tab',
+      'enter',
+      'shiftArrowLeft',
+      'shiftTab',
+      'space',
+      'backspace',
+      'delete',
+      'arrowUp',
+      'arrowDown',
+      'arrowLeft',
+      'arrowRight',
+      'ctrlC',
+      'ctrlD',
+      'ctrlL',
+      'ctrlZ',
+      'ctrlR',
+      'ctrlA',
+      'ctrlE',
+      'ctrlW',
+      'ctrlU'
+    ]
+    // Preserve custom orders while upgrading the former shipped default.
+    const wasDefault =
+      candidate.version === 2 &&
+      knownOrder.length === legacyDefault.length &&
+      knownOrder.every((id, index) => id === legacyDefault[index])
     const { ordered, inserted } = insertMissingBuiltInIds(
-      dedupeKnownIds(orderedInput, builtInSet),
+      wasDefault ? currentBuiltInIds : knownOrder,
       currentBuiltInIds
     )
     const visibleSet = new Set(dedupeKnownIds(visibleInput, builtInSet))
@@ -126,7 +155,7 @@ export function normalizeTerminalAccessoryLayoutPreference(
       visibleSet.add(id)
     }
     return {
-      version: 2,
+      version: 3,
       orderedBuiltInIds: ordered,
       visibleBuiltInIds: ordered.filter((id) => visibleSet.has(id))
     }
@@ -147,7 +176,7 @@ export function normalizeTerminalAccessoryLayoutPreference(
     }
     // Why: v1 layouts never had a custom order, so migrate to canonical order.
     return {
-      version: 2,
+      version: 3,
       orderedBuiltInIds: [...currentBuiltInIds],
       visibleBuiltInIds: currentBuiltInIds.filter((id) => visibleSet.has(id))
     }
@@ -167,7 +196,7 @@ export function createTerminalAccessoryLayoutPreference(
   )
   const visibleSet = new Set(dedupeKnownIds(layout.visibleBuiltInIds, builtInSet))
   return {
-    version: 2,
+    version: 3,
     orderedBuiltInIds: ordered,
     visibleBuiltInIds: ordered.filter((id) => visibleSet.has(id))
   }

@@ -80,6 +80,37 @@ describe('terminal accessory layout', () => {
     expect(restored.visibleBuiltInIds.slice(0, 2)).toEqual(['shiftArrowLeft', 'shiftTab'])
   })
 
+  it('upgrades the previous default order without resetting a custom order', () => {
+    const current = getDefaultTerminalAccessoryBuiltInIds()
+    const previous = [
+      'escape',
+      'tab',
+      'enter',
+      'shiftArrowLeft',
+      'shiftTab',
+      ...current.filter(
+        (id) => !['escape', 'tab', 'enter', 'shiftArrowLeft', 'shiftTab', 'ctrlU'].includes(id)
+      ),
+      'ctrlU'
+    ]
+    const restore = (ids: string[]) =>
+      normalizeTerminalAccessoryLayoutPreference({
+        version: 2,
+        orderedBuiltInIds: ids,
+        visibleBuiltInIds: ids
+      })
+    expect(restore(previous).orderedBuiltInIds).toEqual(current)
+    const custom = ['ctrlU', ...previous.filter((id) => id !== 'ctrlU')]
+    expect(restore(custom).orderedBuiltInIds).toEqual(custom)
+    expect(
+      normalizeTerminalAccessoryLayoutPreference({
+        version: 3,
+        orderedBuiltInIds: previous,
+        visibleBuiltInIds: previous
+      }).orderedBuiltInIds
+    ).toEqual(previous)
+  })
+
   it('normalizes invalid storage to defaults', () => {
     expect(normalizeTerminalAccessoryLayoutPreference(null).visibleBuiltInIds).toEqual(
       getDefaultTerminalAccessoryBuiltInIds()
@@ -120,7 +151,7 @@ describe('terminal accessory layout', () => {
         visibleBuiltInIds: ['tab', 'escape']
       })
     ).toEqual({
-      version: 2,
+      version: 3,
       orderedBuiltInIds: reversed,
       visibleBuiltInIds: ['tab', 'escape']
     })
@@ -139,7 +170,7 @@ describe('terminal accessory layout', () => {
         current
       )
     ).toEqual({
-      version: 2,
+      version: 3,
       orderedBuiltInIds: ['tab', 'escape', 'enter'],
       visibleBuiltInIds: ['tab', 'escape']
     })
@@ -158,7 +189,7 @@ describe('terminal accessory layout', () => {
         current
       )
     ).toEqual({
-      version: 2,
+      version: 3,
       // Why asserted: 'space' follows its canonical predecessor 'tab' even
       // though the user moved 'tab' into the middle of the bar.
       orderedBuiltInIds: ['enter', 'tab', 'space', 'escape'],
@@ -189,7 +220,7 @@ describe('terminal accessory layout', () => {
         knownBuiltInIds: getDefaultTerminalAccessoryBuiltInIds()
       })
     ).toEqual({
-      version: 2,
+      version: 3,
       orderedBuiltInIds: getDefaultTerminalAccessoryBuiltInIds(),
       visibleBuiltInIds: ['escape', 'tab']
     })
@@ -230,7 +261,7 @@ describe('terminal accessory layout', () => {
         visibleBuiltInIds: ['escape', 'tab', 'enter', 'shiftTab', 'backspace', 'delete'],
         knownBuiltInIds: oldBuiltInIds
       }).visibleBuiltInIds
-    ).toEqual(['escape', 'tab', 'enter', 'shiftTab', 'space', 'backspace', 'delete'])
+    ).toEqual(['escape', 'enter', 'tab', 'shiftTab', 'space', 'backspace', 'delete'])
   })
 
   it('shows Space once for an all-hidden old layout', () => {
