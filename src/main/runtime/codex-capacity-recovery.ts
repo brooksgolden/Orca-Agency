@@ -68,7 +68,9 @@ function capacityNoticeAtEnd(text: string): boolean {
     .filter(
       (line) =>
         !/^\s*• Completed `\/root\/[a-zA-Z0-9_/-]+`\s*$/.test(line) &&
-        !/^\s*(?:GPT-[^\n]*|G…) Goal stalled \(\/goal resume\)\s+⚠ \d+ warnings? · f2 to view\s*$/.test(line) &&
+        !/^\s*(?:GPT-[^\n]*|G…) Goal stalled \(\/goal resume\)\s+⚠ \d+ warnings? · f2 to view\s*$/.test(
+          line
+        ) &&
         !/^\s*\d+ background terminals? running(?:\s*·\s*\/ps to view(?:\s*·\s*\/stop to close)?)?\s*$/.test(
           line
         )

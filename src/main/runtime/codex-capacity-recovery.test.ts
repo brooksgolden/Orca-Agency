@@ -86,7 +86,9 @@ describe('Codex capacity recovery', () => {
     const tail = readFileSync(
       join(import.meta.dirname, '__fixtures__', 'codex-capacity-completed-screen.txt'),
       'utf8'
-    ).trimEnd().split('\n')
+    )
+      .trimEnd()
+      .split('\n')
     const h = harness()
     h.read.mockResolvedValue({ ...screen(), tail })
     h.observeFailure()
