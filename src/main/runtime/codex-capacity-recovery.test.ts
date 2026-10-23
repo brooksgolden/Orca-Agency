@@ -35,10 +35,12 @@ function harness() {
   }
   let enabled = true
   const read = vi.fn(async () => screen())
-  const send = vi.fn(async (_ptyId: string, reserve: () => void) => {
-    reserve()
-    return true
-  })
+  const send = vi.fn(
+    async (_ptyId: string, reserve: () => void, _command: 'Continue' | '/goal resume') => {
+      reserve()
+      return true
+    }
+  )
   const report = vi.fn()
   const idle = vi.fn(() => state?.status === 'idle')
   const recovery = new CodexCapacityRecovery({
@@ -81,6 +83,64 @@ afterEach(() => {
 })
 
 describe('Codex capacity recovery', () => {
+  it.each(['active', 'stalled', 'paused', 'unknown'] as const)(
+    'resumes only a goal observed active before the failure: %s',
+    async (before) => {
+      const h = harness()
+      const active = readFileSync(
+        join(import.meta.dirname, '__fixtures__', 'codex-pursuing-goal-screen.txt'),
+        'utf8'
+      )
+      const footer =
+        before === 'active'
+          ? active
+          : before === 'unknown'
+            ? 'ordinary text'
+            : `G… Goal ${before} (/goal resume)    ⚠ 2 warnings · f2 to view`
+      h.read.mockResolvedValue({ ...screen(), tail: footer.trimEnd().split('\n') })
+      h.recovery.observe('pty', footer)?.(footer.trimEnd().split('\n'))
+      await vi.advanceTimersByTimeAsync(0)
+      h.read.mockResolvedValue({
+        ...screen(),
+        tail: [NOTICE, 'G… Goal stalled (/goal resume)    ⚠ 3 warnings · f2 to view']
+      })
+      h.observeFailure()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(h.send).toHaveBeenCalledWith(
+        'pty',
+        expect.any(Function),
+        before === 'active' ? '/goal resume' : 'Continue'
+      )
+    }
+  )
+  it('cancels automatic goal resumption after a manual resume or input', async () => {
+    const h = harness()
+    const active = 'GP… Pursuing goal (4m)    ⚠ 2 warnings · f2 to view'
+    h.read.mockResolvedValue({ ...screen(), tail: [active] })
+    h.recovery.observe('pty', active)?.([active])
+    await vi.advanceTimersByTimeAsync(0)
+    h.read.mockResolvedValue({
+      ...screen(),
+      tail: [NOTICE, 'G… Goal stalled (/goal resume)    ⚠ 3 warnings · f2 to view']
+    })
+    h.observeFailure()
+    h.state().inputSequence++
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(h.send).not.toHaveBeenCalled()
+  })
+  it.each(['G…', 'GP…', 'GPT-6.1-So…'])(
+    'preserves a previously paused goal with a narrow model footer: %s',
+    async (model) => {
+      const h = harness()
+      h.read.mockResolvedValue({
+        ...screen(),
+        tail: [NOTICE, `${model} Goal paused (/goal resume)    ⚠ 3 warnings · f2 to view`]
+      })
+      h.observeFailure()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(h.send).toHaveBeenCalledWith('pty', expect.any(Function), 'Continue')
+    }
+  )
   it('continues after captured helper completions and the narrow stalled-goal footer', async () => {
     // Captured with terminal read --screen on 2026-10-23, matching Brooks's mobile report.
     const tail = readFileSync(

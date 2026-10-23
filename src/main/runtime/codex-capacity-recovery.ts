@@ -1,6 +1,11 @@
 import type { AgentStatus } from '../../shared/agent-detection'
 import type { RuntimeTerminalRead } from '../../shared/runtime-terminal-read'
 import { ownRetainedString } from '../../shared/own-retained-string'
+import {
+  CodexCapacityGoal,
+  capacityGoalState,
+  capacityGoalFooterState
+} from './codex-capacity-goal'
 
 const CAPACITY_SENTENCE = 'Selected model is at capacity. Please try a different model.'
 const RETRY_DELAYS_MS = [30_000, 60_000, 120_000] as const
@@ -20,7 +25,11 @@ export type CodexCapacityRecoveryPort = {
   current(ptyId: string): CodexCapacityState | null
   canRecover(ptyId: string): boolean
   screen(ptyId: string): Promise<RuntimeTerminalRead>
-  sendContinue(ptyId: string, reserveWrite: () => void): Promise<boolean>
+  sendContinue(
+    ptyId: string,
+    reserveWrite: () => void,
+    command: 'Continue' | '/goal resume'
+  ): Promise<boolean>
   report(
     ptyId: string,
     outcome: 'scheduled' | 'sent' | 'held' | 'exhausted',
@@ -40,6 +49,7 @@ type Entry = {
   baseline?: CodexCapacityState
   lastWorkingSequence: number
   lastInputSequence: number
+  goal: CodexCapacityGoal
 }
 
 /** Only Codex completion notices and terminal chrome may follow a capacity failure. */
@@ -68,9 +78,7 @@ function capacityNoticeAtEnd(text: string): boolean {
     .filter(
       (line) =>
         !/^\s*• Completed `\/root\/[a-zA-Z0-9_/-]+`\s*$/.test(line) &&
-        !/^\s*(?:GPT-[^\n]*|G…) Goal stalled \(\/goal resume\)\s+⚠ \d+ warnings? · f2 to view\s*$/.test(
-          line
-        ) &&
+        capacityGoalFooterState(line) === 'unknown' &&
         !/^\s*\d+ background terminals? running(?:\s*·\s*\/ps to view(?:\s*·\s*\/stop to close)?)?\s*$/.test(
           line
         )
@@ -90,7 +98,7 @@ export class CodexCapacityRecovery {
 
   constructor(private readonly port: CodexCapacityRecoveryPort) {}
 
-  observe(ptyId: string, data: string): void {
+  observe(ptyId: string, data: string): ((footer: string[]) => void) | undefined {
     if (!this.port.enabled()) {
       this.dispose()
       return
@@ -114,7 +122,8 @@ export class CodexCapacityRecovery {
         attempts: [],
         pending: false,
         lastWorkingSequence: state.workingSequence,
-        lastInputSequence: state.inputSequence
+        lastInputSequence: state.inputSequence,
+        goal: new CodexCapacityGoal()
       }
       this.entries.set(ptyId, entry)
     }
@@ -136,14 +145,33 @@ export class CodexCapacityRecovery {
       entry.sawWorking = true
     }
     const text = entry.carry + data
+    const hasFailure = text.replace(/\s+/g, ' ').includes(CAPACITY_SENTENCE)
     entry.carry = ownRetainedString(text.slice(-512))
     if (
       !text.includes('capacity') ||
-      !text.replace(/\s+/g, ' ').includes(CAPACITY_SENTENCE) ||
+      !hasFailure ||
       !entry.sawWorking ||
       entry.pending ||
       state.workingSequence <= entry.lastFailureTurn
     ) {
+      if (!entry.pending && !hasFailure && state.status === 'working') {
+        const observedEntry = entry
+        const expected = { ...state }
+        return (footer) => {
+          const current = this.port.current(ptyId)
+          if (
+            this.entries.get(ptyId) === observedEntry &&
+            (!observedEntry.pending ||
+              (observedEntry.baseline !== undefined &&
+                expected.outputSequence < observedEntry.baseline.outputSequence)) &&
+            current?.generation === expected.generation &&
+            current.inputSequence === expected.inputSequence &&
+            current.workingSequence === expected.workingSequence
+          ) {
+            observedEntry.goal.observe(footer, expected)
+          }
+        }
+      }
       return
     }
     entry.lastFailureTurn = state.workingSequence
@@ -166,6 +194,7 @@ export class CodexCapacityRecovery {
       RETRY_DELAYS_MS[attempt - 1] + Math.floor(Math.random() * 5_000)
     )
     entry.timer.unref?.()
+    return undefined
   }
 
   forget(ptyId: string): void {
@@ -221,11 +250,25 @@ export class CodexCapacityRecovery {
       }
       // One atomic paste-and-submit frame, fenced again at the actual provider write.
       entry.attempts.push(Date.now())
-      const sent = await this.port.sendContinue(ptyId, () => {
-        if (valid().outputSequence !== before) {
-          throw new Error('capacity_recovery_screen_changed')
-        }
-      })
+      const command =
+        entry.goal.wasActive(expected) && capacityGoalState(screen) === 'stalled'
+          ? '/goal resume'
+          : 'Continue'
+      let reservedPrefix = false
+      const sent = await this.port.sendContinue(
+        ptyId,
+        () => {
+          const current = valid()
+          if (!reservedPrefix && current.outputSequence !== before) {
+            throw new Error('capacity_recovery_screen_changed')
+          }
+          // Adopt exactly our next write; intervening user input still invalidates the fence.
+          expected.inputSequence++
+          entry.lastInputSequence = expected.inputSequence
+          reservedPrefix = true
+        },
+        command
+      )
       this.port.report(ptyId, sent ? 'sent' : 'held', attempt)
     } catch (error) {
       const reason =

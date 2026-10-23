@@ -24,6 +24,8 @@ import type { TerminalSnapshot, TerminalModes } from './types'
 import type { TerminalOscLinkRange } from '../../shared/terminal-osc-link-ranges'
 import type { TerminalCursorContext } from '../../shared/terminal-composer-draft'
 import { readTerminalCursorLineContext } from '../../shared/terminal-cursor-line-context'
+import { SynchronizedOutputState } from './headless-synchronized-footer'
+import { cursorFollowingLines, bufferTailLines } from './headless-buffer-lines'
 
 export type HeadlessEmulatorOptions = {
   cols: number
@@ -70,6 +72,7 @@ export class HeadlessEmulator {
   private queryReplyForwardingDepth = 0
   // Why: a mid-escape chunk tail lives in xterm's parser, not the buffer, so serialize() drops it and it renders literal after restore (Bug E).
   private partialEscapeTail = ''
+  private synchronizedOutput: SynchronizedOutputState
 
   constructor(opts: HeadlessEmulatorOptions) {
     this.pathFlavor = opts.pathFlavor
@@ -88,6 +91,7 @@ export class HeadlessEmulator {
       // Why: parse CSI =/>/< u pushes so CSI ? u answers with the flags the hidden app pushed (renderer parity).
       vtExtensions: { kittyKeyboard: true }
     })
+    this.synchronizedOutput = new SynchronizedOutputState(this.terminal)
 
     this.serializer = new SerializeAddon()
     this.terminal.loadAddon(this.serializer)
@@ -282,6 +286,10 @@ export class HeadlessEmulator {
     return this.terminal.buffer.active.type === 'alternate'
   }
 
+  get isSynchronizedOutput(): boolean {
+    return this.synchronizedOutput.active
+  }
+
   /** Dangling incomplete escape at the stream position; handoffs seed the other side so a split sequence isn't lost. */
   get partialEscapeTailAnsi(): string {
     return this.partialEscapeTail
@@ -308,6 +316,10 @@ export class HeadlessEmulator {
     return lines
   }
 
+  getCursorFollowingLines(limit: number): string[] {
+    return cursorFollowingLines(this.terminal, limit)
+  }
+
   getVisibleBufferRange(): { start: number; endExclusive: number; totalLength: number } {
     const buffer = this.terminal.buffer.active
     const start = buffer.viewportY
@@ -323,13 +335,7 @@ export class HeadlessEmulator {
   }
 
   getBufferTailLines(limit: number): string[] {
-    const buffer = this.terminal.buffer.active
-    const start = Math.max(0, buffer.length - Math.max(0, Math.floor(limit)))
-    const lines: string[] = []
-    for (let row = start; row < buffer.length; row += 1) {
-      lines.push(buffer.getLine(row)?.translateToString(true) ?? '')
-    }
-    return lines
+    return bufferTailLines(this.terminal, limit)
   }
 
   getCwd(): string | null {

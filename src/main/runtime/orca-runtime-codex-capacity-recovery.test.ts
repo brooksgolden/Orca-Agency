@@ -57,6 +57,45 @@ async function runtimeWithCapacityRecovery(enabled: boolean) {
 }
 
 describe('runtime Codex capacity recovery wiring', () => {
+  it.each([
+    { manualInput: false, chunkSize: 256 },
+    { manualInput: true, chunkSize: 256 },
+    { manualInput: false, chunkSize: 17 }
+  ])(
+    'replays the real goal interruption: $manualInput manual input, $chunkSize byte chunks',
+    async ({ manualInput, chunkSize }) => {
+      const h = await runtimeWithCapacityRecovery(true)
+      vi.spyOn(h.runtime, 'getTerminalSize').mockReturnValue({ cols: 100, rows: 32 })
+      const raw = readFileSync(
+        join(import.meta.dirname, '__fixtures__', 'codex-goal-capacity.txt'),
+        'utf8'
+      )
+      for (let i = 0; i < raw.length; i += chunkSize) {
+        h.runtime.onPtyData('pty-capacity', raw.slice(i, i + chunkSize), Date.now())
+        await vi.advanceTimersByTimeAsync(0)
+      }
+      h.read.mockResolvedValue({
+        handle: 'term-capacity-screen',
+        status: 'running',
+        source: 'screen',
+        composerState: 'empty',
+        tail: [
+          '■ Selected model is at capacity. Please try a different model.',
+          'GPT-6.1-Sol default · fixture Goal stalled (/goal resume)'
+        ],
+        truncated: false,
+        nextCursor: null
+      })
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(h.writes).toEqual(['/goal resume'])
+      h.runtime.onPtyData('pty-capacity', '/goal resume', Date.now())
+      if (manualInput) {
+        h.runtime.terminalRunFacts.recordInput('pty-capacity', 'driving', 'my unsent input')
+      }
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(h.writes).toEqual(manualInput ? ['/goal resume'] : ['/goal resume', '\r'])
+    }
+  )
   it('continues once when helper completion notices follow the provider failure', async () => {
     const h = await runtimeWithCapacityRecovery(true)
     const captured = readFileSync(

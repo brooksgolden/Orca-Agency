@@ -278,7 +278,16 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
       this.touchMobileSessionSnapshotsForPty(ptyId)
     }
 
-    this.codexCapacityRecovery.observe(ptyId, ptyNormalized?.text ?? '')
+    const observeCapacityGoal = this.codexCapacityRecovery.observe(ptyId, ptyNormalized?.text ?? '')
+    if (observeCapacityGoal) {
+      void modelCompletion.then(() => {
+        const model = this.headlessTerminals.get(ptyId)
+        if (model?.outputSequence === outputSequence &&
+          !model.emulator.isSynchronizedOutput && !model.emulator.partialEscapeTailAnsi) {
+          observeCapacityGoal(model.emulator.getCursorFollowingLines(4))
+        }
+      }).catch(() => {})
+    }
     this.terminalStreamConsumers.publish(ptyId, data, () => ({
       seq: outputSequence,
       rawLength: sequenceChars,

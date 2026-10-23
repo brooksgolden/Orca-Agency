@@ -68,13 +68,15 @@ export function createRuntimeCodexCapacityRecovery(
     screen: (ptyId) => runtime.readTerminal(ptyHandle(ptyId), { screen: true, limit: 80 }),
     canRecover: (ptyId) =>
       canRecoverCodexCapacity(runtime.getAgentPromptActivity(ptyHandle(ptyId), ptyId)),
-    sendContinue: async (ptyId, reserveWrite) => {
+    sendContinue: async (ptyId, reserveWrite, command) => {
       if ((await runtime.readLaunchedAgentForeground(ptyId, 'codex')) === 'shell') {
         return false
       }
       const result = await runtime.sendTerminal(
         ptyHandle(ptyId),
-        { text: '\x1b[200~Continue\x1b[201~\r' },
+        command === '/goal resume'
+          ? { text: command, enter: true }
+          : { text: '\x1b[200~Continue\x1b[201~\r' },
         {
           inputKind: 'driving',
           reserveWrite,
