@@ -62,7 +62,17 @@ function capacityNoticeAtEnd(text: string): boolean {
   if (!match) {
     return false
   }
-  const after = text.slice(match.index + match[0].length).trim()
+  const after = text
+    .slice(match.index + match[0].length)
+    .split('\n')
+    .filter(
+      (line) =>
+        !/^\s*\d+ background terminals? running(?:\s*·\s*\/ps to view(?:\s*·\s*\/stop to close)?)?\s*$/.test(
+          line
+        )
+    )
+    .join('\n')
+    .trim()
   // Screen projection usually removes the composer; old hosts may retain its placeholder/footer.
   return (
     after === '' ||

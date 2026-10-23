@@ -81,6 +81,20 @@ afterEach(() => {
 })
 
 describe('Codex capacity recovery', () => {
+  it('accepts the background-terminal footer after a capacity failure', () => {
+    expect(
+      isCodexCapacityScreen({
+        ...screen(),
+        tail: [NOTICE, '', '1 background terminal running · /ps to view · /stop to close']
+      })
+    ).toBe(true)
+    expect(
+      isCodexCapacityScreen({
+        ...screen(),
+        tail: [NOTICE, 'Do you approve continuing?', '1 background terminal running']
+      })
+    ).toBe(false)
+  })
   it('cancels a parked retry when a new turn starts and retries its fresh failure', async () => {
     const h = harness()
     h.observeFailure()
