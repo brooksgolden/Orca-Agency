@@ -42,7 +42,7 @@ type Entry = {
   lastInputSequence: number
 }
 
-/** A provider capacity notice must be the last content above an empty Codex composer. */
+/** Only Codex completion notices and terminal chrome may follow a capacity failure. */
 export function isCodexCapacityScreen(read: RuntimeTerminalRead): boolean {
   if (
     read.status !== 'running' ||
@@ -67,6 +67,8 @@ function capacityNoticeAtEnd(text: string): boolean {
     .split('\n')
     .filter(
       (line) =>
+        !/^\s*• Completed `\/root\/[a-zA-Z0-9_/-]+`\s*$/.test(line) &&
+        !/^\s*(?:GPT-[^\n]*|G…) Goal stalled \(\/goal resume\)\s+⚠ \d+ warnings? · f2 to view\s*$/.test(line) &&
         !/^\s*\d+ background terminals? running(?:\s*·\s*\/ps to view(?:\s*·\s*\/stop to close)?)?\s*$/.test(
           line
         )

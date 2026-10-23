@@ -1,0 +1,5 @@
+■ Selected model is at capacity. Please try a different model.
+• Completed `/root/client_chat_release`
+• Completed `/root/roadmap_context_audit`
+› Ask Codex to do anything
+  G… Goal stalled (/goal resume)    ⚠ 3 warnings · f2 to view

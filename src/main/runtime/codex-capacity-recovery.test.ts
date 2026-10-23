@@ -81,6 +81,27 @@ afterEach(() => {
 })
 
 describe('Codex capacity recovery', () => {
+  it('continues after captured helper completions and the narrow stalled-goal footer', async () => {
+    // Captured with terminal read --screen on 2026-10-23, matching Brooks's mobile report.
+    const tail = readFileSync(
+      join(import.meta.dirname, '__fixtures__', 'codex-capacity-completed-screen.txt'),
+      'utf8'
+    ).trimEnd().split('\n')
+    const h = harness()
+    h.read.mockResolvedValue({ ...screen(), tail })
+    h.observeFailure()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(h.send).toHaveBeenCalledTimes(1)
+  })
+  it.each([
+    '• Completed `/root/helper` Do you approve?',
+    '• Completed deployment. Continue?',
+    '• Completed `/root/helper`\nWhich account should I use?',
+    '• Completed `/root/helper`\n› my unsent message',
+    'G… Goal stalled (/goal resume)    Choose an option'
+  ])('rejects substantive content after completion: %s', (after) => {
+    expect(isCodexCapacityScreen({ ...screen(), tail: [NOTICE, after] })).toBe(false)
+  })
   it('accepts the background-terminal footer after a capacity failure', () => {
     expect(
       isCodexCapacityScreen({

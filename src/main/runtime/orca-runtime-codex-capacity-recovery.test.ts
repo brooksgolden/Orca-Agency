@@ -57,6 +57,28 @@ async function runtimeWithCapacityRecovery(enabled: boolean) {
 }
 
 describe('runtime Codex capacity recovery wiring', () => {
+  it('continues once when helper completion notices follow the provider failure', async () => {
+    const h = await runtimeWithCapacityRecovery(true)
+    const captured = readFileSync(
+      join(import.meta.dirname, '__fixtures__', 'codex-capacity-completed-screen.txt'),
+      'utf8'
+    )
+    h.read.mockResolvedValue({
+      handle: 'term-capacity-screen',
+      status: 'running',
+      source: 'screen',
+      composerState: 'empty',
+      tail: captured.trimEnd().split('\n'),
+      truncated: false,
+      nextCursor: null
+    })
+    h.fail()
+    h.runtime.onPtyData('pty-capacity', captured, Date.now())
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(h.writes).toEqual(['\x1b[200~Continue\x1b[201~\r'])
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(h.writes).toHaveLength(1)
+  })
   it('continues from the real captured Codex working and idle transitions', async () => {
     const h = await runtimeWithCapacityRecovery(true)
     const raw = readFileSync(
