@@ -36,7 +36,7 @@ export class CodexCapacityGoal {
 
   observe(lines: string[], expected: CodexCapacityState): void {
     const footer = lines.findLast((line) => line.trim() !== '') ?? ''
-    if (!/^\s*(?:GPT-[A-Za-z0-9.\-]+…?|G(?:P(?:T)?)?…)\s/.test(footer)) {
+    if (!/^\s*(?:GPT-[A-Za-z0-9.-]+…?|G(?:P(?:T)?)?…)\s/.test(footer)) {
       return
     }
     this.observation = {

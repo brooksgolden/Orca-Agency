@@ -412,6 +412,13 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
           .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tab-id')))
       )
       .toEqual(reordered)
+    await expect
+      .poll(async () => {
+        await page.evaluate(() => window.api.session.flush())
+        const saved = await page.evaluate(() => window.api.session.get())
+        return saved.tabsByWorktree[ids[0]]?.map((tab) => tab.id)
+      })
+      .toEqual(reordered)
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect
       .poll(() =>

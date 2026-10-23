@@ -145,7 +145,8 @@ export class CodexCapacityRecovery {
       entry.sawWorking = true
     }
     const text = entry.carry + data
-    const hasFailure = text.replace(/\s+/g, ' ').includes(CAPACITY_SENTENCE)
+    const hasFailure =
+      text.includes('capacity') && text.replace(/\s+/g, ' ').includes(CAPACITY_SENTENCE)
     entry.carry = ownRetainedString(text.slice(-512))
     if (
       !text.includes('capacity') ||
@@ -248,7 +249,7 @@ export class CodexCapacityRecovery {
       if (!isCodexCapacityScreen(screen) || valid().outputSequence !== before) {
         throw new Error('capacity_recovery_screen_changed')
       }
-      // One atomic paste-and-submit frame, fenced again at the actual provider write.
+      // Fence each write, including Enter after a separated goal command.
       entry.attempts.push(Date.now())
       const command =
         entry.goal.wasActive(expected) && capacityGoalState(screen) === 'stalled'
