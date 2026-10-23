@@ -416,7 +416,9 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
       .poll(async () => {
         await page.evaluate(() => window.api.session.flush())
         const saved = await page.evaluate(() => window.api.session.get())
-        return saved.tabsByWorktree[ids[0]]?.map((tab) => tab.id)
+        // Tab groups own visual order; the legacy terminal array retains its independent order.
+        return saved.tabGroups?.[ids[0]]?.find((group) => group.tabOrder.includes(reordered[0]!))
+          ?.tabOrder
       })
       .toEqual(reordered)
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
