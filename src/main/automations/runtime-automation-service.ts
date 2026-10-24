@@ -227,6 +227,10 @@ function bindHeadlessRunTerminalRetention(
 ): void {
   const retention = createHeadlessRunTerminalRetention({
     listRuns: () => store.listAutomationRuns(),
+    keepCompletedTerminals: (automationId) =>
+      store.listAutomations().some((entry) => entry.id === automationId && entry.reuseSession)
+        ? 1
+        : 0,
     terminalClaimedByAnotherRun: (run) => {
       const claimedBy = run.terminalPaneKey && reusedPaneRuns.get(run.terminalPaneKey)
       return Boolean(

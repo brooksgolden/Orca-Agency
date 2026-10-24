@@ -31,7 +31,7 @@ function finishedRuns(count: number): AutomationRun[] {
   )
 }
 
-function build(headless: boolean) {
+function build(headless: boolean, dispatchHeadlessly = false) {
   const runtime = {
     setAutomationService: vi.fn(),
     notifyAutomationsChanged: vi.fn(),
@@ -44,13 +44,17 @@ function build(headless: boolean) {
     confirmTerminalShellAlone: vi.fn(async (_ptyId: string) => false),
     closeTerminalTab: vi.fn(async (_handle: string) => ({}))
   }
-  const store = { listAutomationRuns: vi.fn(() => finishedRuns(5)), listAutomations: () => [] }
+  const store = {
+    listAutomationRuns: vi.fn(() => finishedRuns(5)),
+    listAutomations: vi.fn((): { id: string; reuseSession: boolean }[] => [])
+  }
   const service = createRuntimeAutomationService({
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mocked service and retention read only listAutomationRuns.
     store: store as never,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: retention reads only the members faked above.
     runtime: runtime as never,
-    headless
+    headless,
+    dispatchHeadlessly
   })
   return { runtime, service, store }
 }
@@ -66,9 +70,14 @@ describe('headless automation service run terminal retention', () => {
     service.start()
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS + 2 * 60_000)
 
-    // The oldest two finished runs are past the newest three; the one a client used stays open.
+    // Run history retains results without retaining processes; a client-used terminal stays open.
     // Only the run's own pane closes: a pane a user split into its tab survives.
-    expect(runtime.closeTerminal.mock.calls.map(([handle]) => handle)).toEqual(['handle:tab-0:1'])
+    expect(runtime.closeTerminal.mock.calls.map(([handle]) => handle)).toEqual([
+      'handle:tab-4:1',
+      'handle:tab-3:1',
+      'handle:tab-2:1',
+      'handle:tab-0:1'
+    ])
     expect(runtime.closeTerminalTab).not.toHaveBeenCalled()
     expect(service.markDispatchResult).toHaveBeenCalledWith(
       expect.objectContaining({ runId: 'r0', status: 'completed', terminalPaneKey: null })
@@ -90,7 +99,11 @@ describe('headless automation service run terminal retention', () => {
     service.start()
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS + 2 * 60_000)
 
-    expect(runtime.closeTerminal).not.toHaveBeenCalled()
+    expect(runtime.closeTerminal.mock.calls.map(([handle]) => handle)).toEqual([
+      'handle:tab-4:1',
+      'handle:tab-3:1',
+      'handle:tab-2:1'
+    ])
     expect(service.markDispatchResult).toHaveBeenCalledWith(
       expect.objectContaining({ runId: 'r0', terminalPaneKey: null, terminalPtyId: null })
     )
@@ -115,11 +128,44 @@ describe('headless automation service run terminal retention', () => {
     )
   })
 
-  it('leaves run terminals to the renderer on the desktop', async () => {
+  it('leaves renderer-dispatched run terminals to the renderer', async () => {
     vi.useFakeTimers()
     const { runtime, service } = build(false)
     service.start()
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS * 2)
     expect(runtime.closeTerminal).not.toHaveBeenCalled()
+  })
+
+  it('releases every unused finished terminal on the desktop headless dispatch path', async () => {
+    vi.useFakeTimers()
+    const { runtime, service } = build(false, true)
+    service.start()
+    await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS)
+    expect(runtime.closeTerminal).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(runtime.closeTerminal.mock.calls.map(([handle]) => handle)).toEqual([
+      'handle:tab-4:1',
+      'handle:tab-3:1',
+      'handle:tab-2:1',
+      'handle:tab-0:1'
+    ])
+    service.stop()
+  })
+
+  it('keeps only the newest live terminal for an explicitly reused automation', async () => {
+    vi.useFakeTimers()
+    const { runtime, service, store } = build(false, true)
+    store.listAutomations.mockReturnValue([{ id: 'nightly', reuseSession: true }])
+    service.start()
+    await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS + 2 * 60_000)
+    expect(runtime.closeTerminal.mock.calls.map(([handle]) => handle)).toEqual([
+      'handle:tab-3:1',
+      'handle:tab-2:1',
+      'handle:tab-0:1'
+    ])
+    expect(service.markDispatchResult).not.toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'r4', terminalPaneKey: null })
+    )
+    service.stop()
   })
 })

@@ -1,8 +1,8 @@
 /**
  * Closing run terminals on a headless host. The desktop closes a run's terminal when the run
  * completes; on orcad nobody does, so schedules leave a shell and a PTY per run until the host
- * runs out. A run terminal stays open for a grace period and the newest few per automation stay
- * viewable; older ones are closed. A completed run's terminal is closed as is. A failed or
+ * runs out. A run terminal stays open for a grace period after completion. Hosts choose how many
+ * reusable terminals stay live; results remain in run history. A failed or
  * never-finishing run's is closed only once the shell is proven alone at its prompt, since a timed
  * out agent may still be alive. A terminal a client typed into or is viewing, or one whose use
  * this host cannot tell, is never closed: as on the desktop, that terminal is the user's.
@@ -19,6 +19,8 @@ const SWEEP_INTERVAL_MS = 60_000
 
 export type HeadlessRunTerminalRetentionDeps = {
   listRuns: () => readonly AutomationRun[]
+  /** Results stay in run history; hosts can retain zero live processes after the grace period. */
+  keepCompletedTerminals?: (automationId: string) => number
   /**
    * Whether any client drove or is viewing the run's terminal. Like the desktop's take-over rule,
    * a used terminal is the user's now; `unknown` keeps it too.
@@ -53,12 +55,14 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
   const now = deps.now ?? Date.now
   // When each run terminal was first seen as a candidate; the grace runs from there.
   const firstSeenAt = new Map<string, number>()
+  const lastStatusByRun = new Map<string, AutomationRunStatus>()
   let timer: ReturnType<typeof setInterval> | null = null
   let sweeping: Promise<void> | null = null
 
   const forget = async (run: AutomationRun): Promise<void> => {
     await deps.forgetRunTerminal(run)
     firstSeenAt.delete(run.id)
+    lastStatusByRun.delete(run.id)
   }
 
   const mayClose = async (run: AutomationRun, graceMs: number): Promise<boolean> => {
@@ -71,19 +75,24 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
     return run.status === 'completed' || (await deps.shellAloneAtPrompt(run))
   }
 
-  const sweepOnce = async (policy: { keep: number; graceMs: number }): Promise<number> => {
+  const sweepOnce = async (policy: {
+    keep: number | ((automationId: string) => number)
+    graceMs: number
+  }): Promise<number> => {
     let closedCount = 0
     const byAutomation = new Map<string, AutomationRun[]>()
     for (const run of deps.listRuns()) {
       if (!run.terminalPaneKey || STARTING.has(run.status)) {
         continue
       }
-      if (!firstSeenAt.has(run.id)) {
+      if (!firstSeenAt.has(run.id) || lastStatusByRun.get(run.id) !== run.status) {
         firstSeenAt.set(run.id, now())
       }
+      lastStatusByRun.set(run.id, run.status)
       byAutomation.set(run.automationId, [...(byAutomation.get(run.automationId) ?? []), run])
     }
-    for (const runs of byAutomation.values()) {
+    for (const [automationId, runs] of byAutomation) {
+      const keep = typeof policy.keep === 'function' ? policy.keep(automationId) : policy.keep
       let kept = 0
       const seenTerminals = new Set<string>()
       for (const run of runs.toSorted((a, b) => runRecency(b) - runRecency(a))) {
@@ -106,7 +115,7 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
             }
             continue
           }
-          if (kept < policy.keep) {
+          if (kept < keep) {
             kept += 1
             continue
           }
@@ -130,7 +139,7 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
 
   const sweep = (): Promise<void> => {
     sweeping ??= sweepOnce({
-      keep: RUN_TERMINALS_KEPT_PER_AUTOMATION,
+      keep: deps.keepCompletedTerminals ?? RUN_TERMINALS_KEPT_PER_AUTOMATION,
       graceMs: RUN_TERMINAL_GRACE_MS
     })
       .then(() => {})

@@ -25,7 +25,7 @@ function makeRun(
   } as AutomationRun
 }
 
-function harness(runs: AutomationRun[]) {
+function harness(runs: AutomationRun[], keepCompletedTerminals?: (automationId: string) => number) {
   const closed: string[] = []
   const forgotten: AutomationRun[] = []
   const use = new Map<string, 'used' | 'unused' | 'unknown'>()
@@ -35,6 +35,7 @@ function harness(runs: AutomationRun[]) {
   const claimed = new Set<string>()
   const retention = createHeadlessRunTerminalRetention({
     listRuns: () => runs.filter((run) => !forgotten.some((gone) => gone.id === run.id)),
+    keepCompletedTerminals,
     terminalClientUse: (run) => use.get(run.id) ?? 'unused',
     terminalClaimedByAnotherRun: (run) => claimed.has(run.id),
     runTerminalAlive: (run) => !dead.has(run.id),
@@ -59,6 +60,24 @@ afterEach(() => {
 })
 
 describe('headless run terminal retention', () => {
+  it('starts the full grace after a long-running automation completes', async () => {
+    const run = makeRun('long-running', 0, 'dispatched')
+    const h = harness([run], () => 0)
+    await h.retention.sweep()
+    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS * 3)
+    await h.retention.sweep()
+    expect(h.closed).toEqual([])
+
+    run.status = 'completed'
+    await h.retention.sweep()
+    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS - 1)
+    await h.retention.sweep()
+    expect(h.closed).toEqual([])
+    vi.advanceTimersByTime(1)
+    await h.retention.sweep()
+    expect(h.closed).toEqual(['tab-long-running:1'])
+  })
+
   it('never closes a reused terminal through older completed run records', async () => {
     const runs = [0, 1, 2, 3].map((n) => ({
       ...makeRun(`r${n}`, n, n === 3 ? 'dispatched' : 'completed'),
