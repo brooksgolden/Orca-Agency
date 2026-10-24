@@ -41,6 +41,7 @@ class StorageMaintenanceTests(unittest.TestCase):
             protected_release=[self.releases[1]], keep=10,
             minimum_age_hours=3, minimum_file_bytes=1048576,
             maximum_files=5000, deadline_seconds=60, apply=True,
+            receipt_directory=self.root.parent,
         )
 
     def reset_dates(self):
@@ -97,6 +98,33 @@ class StorageMaintenanceTests(unittest.TestCase):
         os.utime(self.releases[2], None)
         roots = maintenance.candidate_roots(self.root, self.link, set(), 10, 10800)
         self.assertNotIn(self.releases[2] / "node_modules", roots)
+
+    def test_runtime_owned_release_is_excluded_without_opening_its_contents(self):
+        os.chown(self.releases[2], 994, 994)
+        self.releases[2].chmod(0o700)
+        roots = maintenance.candidate_roots(self.root, self.link, set(), 10, 10800)
+        self.assertNotIn(self.releases[2] / "node_modules", roots)
+
+    def test_runtime_writable_release_is_excluded(self):
+        self.releases[2].chmod(0o770)
+        roots = maintenance.candidate_roots(self.root, self.link, set(), 10, 10800)
+        self.assertNotIn(self.releases[2] / "node_modules", roots)
+
+    def test_batches_rotate_and_prioritize_unseen_roots(self):
+        roots = [p / "node_modules" for p in self.releases]
+        first = maintenance.select_batch(roots, self.root.parent)
+        self.assertEqual(len(first), 4)
+        self.assertIn(roots[0], first)
+        maintenance.record_batch({"status": "completed", "apply": True,
+                                  "selectedRoots": [str(p) for p in first]}, self.root.parent)
+        second = maintenance.select_batch(roots, self.root.parent)
+        self.assertEqual(set(first) & set(second), {roots[0]})
+
+    def test_failed_and_dry_runs_do_not_advance_rotation(self):
+        for result in [{"status": "failed", "apply": True},
+                       {"status": "completed", "apply": False}]:
+            maintenance.record_batch(result, self.root.parent)
+        self.assertFalse((self.root.parent / "rotation.json").exists())
 
     def test_external_current_release_is_refused(self):
         self.link.unlink()

@@ -39,7 +39,10 @@ def candidate_roots(root, current_link, protected, keep, age_seconds, now=None):
     for release in releases:
         if release in excluded or not RELEASE_NAME.fullmatch(release.name):
             continue
-        if now - release.stat().st_mtime < age_seconds:
+        info = release.stat()
+        if info.st_uid != 0 or info.st_mode & 0o022:
+            continue
+        if now - info.st_mtime < age_seconds:
             continue
         dependencies = release / "node_modules"
         if dependencies.is_symlink() or not dependencies.is_dir():
@@ -48,6 +51,27 @@ def candidate_roots(root, current_link, protected, keep, age_seconds, now=None):
             raise ValueError("dependency root has a symlink ancestor")
         result.append(dependencies)
     return sorted(result)
+
+
+def select_batch(roots, receipt_directory):
+    state_path = receipt_directory / "rotation.json"
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    if len(roots) <= 4:
+        return roots
+    anchor = roots[0]
+    others = sorted(roots[1:], key=lambda p: (state.get(str(p), 0), -p.parent.stat().st_mtime))
+    return sorted([anchor, *others[:3]])
+
+
+def record_batch(result, receipt_directory):
+    if result.get("status") != "completed" or not result.get("apply"):
+        return
+    state_path = receipt_directory / "rotation.json"
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    state.update({p: time.time() for p in result.get("selectedRoots", [])})
+    temporary = state_path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(state), encoding="utf-8")
+    temporary.replace(state_path)
 
 
 def find_large_files(roots, minimum_size, deadline, maximum_files):
@@ -59,7 +83,7 @@ def find_large_files(roots, minimum_size, deadline, maximum_files):
             args.append("-o")
         args.extend(["-name", name])
     args.extend([")", "-prune", "-o", "-type", "f", "-size", f"+{minimum_size - 1}c", "-print0"])
-    result = subprocess.run(args, capture_output=True, check=True, timeout=min(45, remaining(deadline)))
+    result = subprocess.run(args, capture_output=True, check=True, timeout=min(90, remaining(deadline)))
     paths = sorted(Path(os.fsdecode(raw)) for raw in result.stdout.split(b"\0") if raw)
     if len(paths) > maximum_files:
         raise ValueError("file budget exceeded; no changes applied")
@@ -102,16 +126,18 @@ def maintain(args):
         raise ValueError("protected releases must be existing canonical children of the root")
     current_before = args.current_link.resolve(strict=True)
     roots = candidate_roots(root, args.current_link, protected, args.keep, args.minimum_age_hours * 3600)
+    all_roots = roots
+    roots = select_batch(roots, args.receipt_directory)
     paths = find_large_files(roots, args.minimum_file_bytes, deadline, args.maximum_files)
     before, before_inodes = fingerprints(paths, deadline)
     if len(paths) < 2:
-        return {"status": "completed", "roots": len(roots), "files": len(paths), "changed": False}
+        return {"status": "completed", "roots": len(roots), "files": len(paths), "changed": False, "apply": args.apply, "selectedRoots": [str(p) for p in roots]}
     # Reserve time to verify the result, even if the native tool reaches its own bound.
     tool_timeout = min(75, remaining(deadline) - 45)
     if tool_timeout <= 0:
         raise TimeoutError("insufficient verification time; no changes applied")
     roots_now = candidate_roots(root, args.current_link, protected, args.keep, args.minimum_age_hours * 3600)
-    if roots_now != roots or args.current_link.resolve(strict=True) != current_before:
+    if roots_now != all_roots or args.current_link.resolve(strict=True) != current_before:
         raise ValueError("release membership changed; no changes applied")
     if any(file_identity(p)[1] != fingerprint[0] for p, fingerprint in before.items()):
         raise ValueError("dependency metadata changed; no changes applied")
@@ -139,7 +165,8 @@ def maintain(args):
         raise ValueError("live release changed during maintenance")
     return {
         "status": "completed" if tool_code == 0 else "incomplete",
-        "apply": args.apply, "roots": len(roots), "files": len(paths),
+        "apply": args.apply, "roots": len(roots), "eligibleRoots": len(all_roots),
+        "selectedRoots": [str(p) for p in roots], "files": len(paths),
         "verifiedFiles": len(after), "uniqueFilesBefore": before_inodes,
         "uniqueFilesAfter": after_inodes, "toolExit": tool_code,
         "toolTimedOut": timed_out, "toolSummary": summary,
@@ -178,6 +205,7 @@ def main():
             return 0
         try:
             result = maintain(args)
+            record_batch(result, args.receipt_directory)
         except Exception as error:
             result = {"status": "failed", "error": type(error).__name__, "detail": str(error)}
         result["at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
