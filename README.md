@@ -24,6 +24,21 @@ The current 1.4.1055 download is for **Windows ARM64**. The [earlier Windows x64
 | **Native Windows ARM64**<br><br>A native build for Windows on ARM, including the terminal runtime. The local speech component is omitted. Native architecture is supported; terminal slowdowns remain under investigation. | <img src="media/native-arm64.svg" alt="Native ARM64 Windows app and terminal runtime" width="480"><br><sub>Architecture diagram.</sub> |
 | **Navigate with your mouse**<br><br>Mouse side buttons follow the same **Back and Forward history** as the toolbar arrows. Return to the previous view, then move forward again. | <img src="media/mouse-workspace-history.png" alt="Mouse side buttons labeled Back and Forward for workspace history" width="480"> |
 
+## The fastest porpoise in the sea?
+
+No cross-product speed benchmark exists, but daily use shows substantial improvement, while occasional stalls remain under investigation.
+
+The public download remains [version 1.4.1055](https://github.com/brooksgolden/Orca-Agency/releases/tag/v1.4.1055). Several newer refinements live in the [reviewed source branch](https://github.com/brooksgolden/Orca-Agency/tree/reviewed/agency-post1045-local) and are not all in that installer. These open source improvements are freely reusable under the MIT license.
+
+- **Reduced disk work:** Reuses transcript scans, bounds title reads, and cancels superseded scans.
+- **Lighter UI:** Shifts blocking tasks off the main thread and cuts repeated sidebar checks.
+- **Fair terminal output:** Prioritizes input feedback and rotates visible terminals so busy panes cannot monopolize output.
+- **Process priority:** Keeps automation and child tools below interactive tasks through resource admission guards.
+- **Release finished workers:** Newer reviewed source retires completed automation processes after a grace period. This change is not yet installed locally.
+- **Windows refinements:** Less Codex redraw traffic, native ARM64 app and terminal runtimes, and system ConPTY input and teardown fixes.
+
+Build safeguards separately check available memory and keep build stages bounded. These protect development workloads; they are not runtime speed claims.
+
 ## Small touches that keep the pod moving
 
 - **One name everywhere:** Rename a chat in the sidebar and its tab follows.
