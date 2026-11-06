@@ -5,7 +5,7 @@ type GoalState = 'active' | 'stalled' | 'paused' | 'unknown'
 
 export function capacityGoalFooterState(footer: string): GoalState {
   const match =
-    /^\s*G[A-Za-z0-9.\-…]*(?: [^\n]*?)? (Pursuing goal \([\d dhms]+\)|Goal (stalled|paused) \(\/goal resume\))\s*(?:⚠\s*\d+ (.*?))?\s*$/.exec(
+    /^\s*G[A-Za-z0-9.\-\u2026]*(?: [^\n]*?)? (Pursuing goal \([\d dhms]+\)|Goal (stalled|paused) \(\/goal resume\))\s*(?:\u26a0\s*\d+ (.*?))?\s*$/.exec(
       footer
     )
   if (!match) {
@@ -45,7 +45,7 @@ export class CodexCapacityGoal {
 
   observe(lines: string[], expected: CodexCapacityState): void {
     const footer = lines.findLast((line) => line.trim() !== '') ?? ''
-    if (!/^\s*(?:GPT-[A-Za-z0-9.-]+…?|G(?:P(?:T)?)?…)\s/.test(footer)) {
+    if (!/^\s*(?:GPT-[A-Za-z0-9.-]+\u2026?|G(?:P(?:T)?)?\u2026)\s/.test(footer)) {
       return
     }
     const state = capacityGoalFooterState(footer)

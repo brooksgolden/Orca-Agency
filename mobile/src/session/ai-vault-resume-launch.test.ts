@@ -203,7 +203,11 @@ describe('resumeAiVaultSessionInTerminal', () => {
       })
       .mockResolvedValueOnce({ ok: true, result: { send: { accepted: true } } })
     const launch = buildMobileAiVaultResumeLaunch({
-      session: session({ agent: 'codex', sessionId: 'codex-1' }),
+      session: session({
+        agent: 'codex',
+        sessionId: 'codex-1',
+        filePath: '/Users/ada/.codex/sessions/codex-1.jsonl'
+      }),
       workspacePlatform: 'darwin'
     })
 
@@ -214,7 +218,11 @@ describe('resumeAiVaultSessionInTerminal', () => {
       'session.tabs.createTerminal',
       expect.objectContaining({
         launchAgent: 'codex',
-        resumeProviderSession: { key: 'session_id', id: 'codex-1' }
+        resumeProviderSession: {
+          key: 'session_id',
+          id: 'codex-1',
+          transcriptPath: '/Users/ada/.codex/sessions/codex-1.jsonl'
+        }
       }),
       { timeoutMs: RESUME_RPC_TIMEOUT_MS }
     )

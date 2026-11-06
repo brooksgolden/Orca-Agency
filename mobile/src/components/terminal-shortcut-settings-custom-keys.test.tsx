@@ -219,7 +219,8 @@ it('persists the independent D-pad switch and custom visibility through settings
   act(() => switchFor('Show D-pad').props.onValueChange(false))
   act(() => switchFor('Show Escape shortcut').props.onValueChange(false))
   act(() => switchFor('Show Arrow Up shortcut').props.onValueChange(true))
-  act(() => lists.builtIn?.onReorder(lists.builtIn.items.map((key) => key.id).toReversed()))
+  const customBuiltInOrder = lists.builtIn!.items.map((key) => key.id).toReversed()
+  act(() => lists.builtIn?.onReorder(customBuiltInOrder))
   act(() => switchFor('Show a shortcut').props.onValueChange(false))
   act(() => lists.custom?.onReorder(['custom-c', 'custom-b', 'custom-a']))
   await settle()
@@ -229,8 +230,12 @@ it('persists the independent D-pad switch and custom visibility through settings
   expect(switchFor('Show D-pad').props.value).toBe(false)
   expect(switchFor('Show Escape shortcut').props.value).toBe(false)
   expect(switchFor('Show Arrow Up shortcut').props.value).toBe(true)
-  expect((await loadTerminalAccessoryLayout()).visibleBuiltInIds.indexOf('arrowUp')).toBeLessThan(
-    (await loadTerminalAccessoryLayout()).visibleBuiltInIds.indexOf('tab')
+  const reopenedLayout = await loadTerminalAccessoryLayout()
+  expect(reopenedLayout.orderedBuiltInIds).toEqual(customBuiltInOrder)
+  expect(reopenedLayout.visibleBuiltInIds).toEqual(
+    customBuiltInOrder.filter(
+      (id) => !['escape', 'arrowDown', 'arrowLeft', 'arrowRight'].includes(id)
+    )
   )
   expect(switchFor('Show a shortcut').props.value).toBe(false)
   expect(shown()).toEqual(['custom-c', 'custom-b', 'custom-a'])
