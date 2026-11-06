@@ -1,4 +1,5 @@
 import { normalizeAgentDefaultSurface } from '../../../shared/native-chat/native-chat-providers'
+import { parseChatUiLaunchTipAudience } from '../../../shared/native-chat/chat-ui-launch-tip-audience'
 import { normalizeNativeChatAppearanceSettings } from '../../../shared/native-chat/native-chat-appearance-settings'
 import { getDefaultVoiceSettings } from '../../../shared/constants'
 import { normalizePRBotAuthorOverrides } from '../../../shared/pr-bot-author-overrides'
@@ -70,6 +71,7 @@ export function normalizeLoadedGlobalSettings(
     normalizedSourceControlGroupOrder
   } = profile
   const pluginOwnedSettings = normalizePluginOwnedSettings(parsed.settings ?? {})
+  const chatUiAudience = parseChatUiLaunchTipAudience(parsed.chatUiLaunchTipAudience)
   const matchTerminalSidebarInputs = {
     pluginAppThemeLight: pluginOwnedSettings.pluginAppThemeLight,
     pluginAppThemeDark: pluginOwnedSettings.pluginAppThemeDark,
@@ -83,7 +85,9 @@ export function normalizeLoadedGlobalSettings(
     // the default changed. Legacy stored booleans cannot distinguish opt-in from the old default; retain explicit true.
     ...expandWorkspaceDirHome(stripRetiredGlobalSettings(parsed.settings)),
     // Why: Chat UI on now opens new tabs in chat; keep users whose new tabs opened in the terminal there.
-    ...(savedChatUiWithTerminalDefaultView(parsed.settings)
+    ...(savedChatUiWithTerminalDefaultView(parsed.settings) ||
+    (chatUiAudience?.membership === 'eligible' &&
+      chatUiAudience.basis === 'chat-ui-on-terminal-default')
       ? { experimentalNativeChat: false }
       : {}),
     agentDefaultSurface: normalizeAgentDefaultSurface(parsed.settings?.agentDefaultSurface),

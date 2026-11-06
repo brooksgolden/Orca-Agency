@@ -301,6 +301,16 @@ describe('profile state Store authority factory', () => {
           ? settingsAfterRestart.experimentalNativeChat
           : undefined
       expect(savedNativeChatSwitch).toBe(savedChatUiSwitch)
+      restarted.store.flushOrThrow()
+      const secondRestart = createProfileStateStore({ ...options })
+      const savedAgain = JSON.parse(secondRestart.store.prepareProfileStateExport().json)
+      expect(savedAgain.chatUiLaunchTipAudience).toEqual(saved.chatUiLaunchTipAudience)
+      const secondSettings = secondRestart.store.getSettings()
+      expect(
+        'experimentalNativeChat' in secondSettings
+          ? secondSettings.experimentalNativeChat
+          : undefined
+      ).toBe(savedChatUiSwitch)
     }
   )
 

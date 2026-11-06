@@ -136,25 +136,39 @@ export function admitLocalWorkspaceTerminalMoves(
   }
   const corrected = restoreRejectedWorkspaceTerminalMoves(incoming, prior, rejected)
   const owners = uniqueTabs(admitted)
+  let tabsByWorktree = corrected.tabsByWorktree
+  for (const [worktreeId, tabs] of Object.entries(corrected.tabsByWorktree)) {
+    const next = tabs.map((tab) => {
+      const owner = owners.get(tab.id)
+      if (owner?.workspaceMoveRevision === undefined || owner.worktreeId !== worktreeId) {
+        return tab
+      }
+      const sameOwners =
+        tab.relocatedFromWorktreeIds === owner.relocatedFromWorktreeIds ||
+        (tab.relocatedFromWorktreeIds?.length === owner.relocatedFromWorktreeIds?.length &&
+          tab.relocatedFromWorktreeIds?.every(
+            (id, index) => id === owner.relocatedFromWorktreeIds?.[index]
+          ))
+      if (tab.workspaceMoveRevision === owner.workspaceMoveRevision && sameOwners) {
+        return tab
+      }
+      return {
+        ...tab,
+        workspaceMoveRevision: owner.workspaceMoveRevision,
+        relocatedFromWorktreeIds: owner.relocatedFromWorktreeIds
+      }
+    })
+    if (next.every((tab, index) => tab === tabs[index])) {
+      continue
+    }
+    if (tabsByWorktree === corrected.tabsByWorktree) {
+      tabsByWorktree = { ...tabsByWorktree }
+    }
+    tabsByWorktree[worktreeId] = next
+  }
   return {
     prior: admitted,
-    session: {
-      ...corrected,
-      tabsByWorktree: Object.fromEntries(
-        Object.entries(corrected.tabsByWorktree).map(([worktreeId, tabs]) => [
-          worktreeId,
-          tabs.map((tab) => {
-            const owner = owners.get(tab.id)
-            return owner?.workspaceMoveRevision !== undefined && owner.worktreeId === worktreeId
-              ? {
-                  ...tab,
-                  workspaceMoveRevision: owner.workspaceMoveRevision,
-                  relocatedFromWorktreeIds: owner.relocatedFromWorktreeIds
-                }
-              : tab
-          })
-        ])
-      )
-    }
+    session:
+      tabsByWorktree === corrected.tabsByWorktree ? corrected : { ...corrected, tabsByWorktree }
   }
 }
