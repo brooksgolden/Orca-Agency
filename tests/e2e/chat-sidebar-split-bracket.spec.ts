@@ -19,15 +19,18 @@ test('split windows stay bracketed and adjacent until unsplit', async ({
       name: 'Bracket test',
       parentPath: original.path
     })
-    await s.fetchProjectGroups()
+    await s.fetchProjectGroups({ runtimeEnvironmentId: null })
     const ids: string[] = []
     const names = ['Working split chat', 'Old split partner', 'Recent independent chat']
     for (let index = 0; index < names.length; index++) {
-      const folder = await s.createFolderWorkspace({
-        projectGroupId: group.id,
-        folderPath: original.path,
-        name: original.path.split(/[\\/]/).at(-1)
-      })
+      const folder = await s.createFolderWorkspace(
+        {
+          projectGroupId: group.id,
+          folderPath: original.path,
+          name: original.path.split(/[\\/]/).at(-1)
+        },
+        { runtimeEnvironmentId: null }
+      )
       if (!folder) {
         throw new Error('Could not create bracket test workspace')
       }

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Why: The preview component owns xterm setup, live output binding, sizing, and disposal as one terminal lifecycle. */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { useShallow } from 'zustand/react/shallow'
@@ -34,6 +35,7 @@ import { usePreviewTerminalOsFileDropOwner } from './use-preview-terminal-os-fil
 import { createPreviewLivePayloadWriter } from './preview-terminal-live-payload-writer'
 import { createPreviewLivePhaseFrame } from './preview-terminal-live-phase-frame'
 import { nextPreviewTerminalSurfaceId } from './preview-terminal-surface-id'
+import { terminalPreviewApiFor } from './terminal-preview-api'
 
 const PREVIEW_SCROLLBACK_ROWS = 24
 // Why: main only ever serializes PREVIEW_SCROLLBACK_ROWS of history into this
@@ -65,7 +67,8 @@ export function AgentTerminalPreview({
   focusRef,
   detachBatched = false,
   onPtyGone,
-  className
+  className,
+  onRequestClose
 }: AgentTerminalPreviewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -89,6 +92,7 @@ export function AgentTerminalPreview({
   const fontSizeRef = useRef(fontSize)
   const autoFocusRef = useRef(autoFocus)
   const onPtyGoneRef = useRef(onPtyGone)
+  const onRequestCloseRef = useRef(onRequestClose)
   const { terminalTheme: composedTheme, terminalMode } = usePreviewTerminalTheme(
     settings,
     systemPrefersDark
@@ -117,7 +121,18 @@ export function AgentTerminalPreview({
     fontSizeRef.current = fontSize
     autoFocusRef.current = autoFocus
     onPtyGoneRef.current = onPtyGone
-  }, [settings, macOptionAsAlt, terminalInput, ptyId, workspace, fontSize, autoFocus, onPtyGone])
+    onRequestCloseRef.current = onRequestClose
+  }, [
+    settings,
+    macOptionAsAlt,
+    terminalInput,
+    ptyId,
+    workspace,
+    fontSize,
+    autoFocus,
+    onPtyGone,
+    onRequestClose
+  ])
 
   // Font changes retain the replay-driven fit, grid claim and input-owner reset.
   useEffect(() => {
@@ -130,6 +145,8 @@ export function AgentTerminalPreview({
     let disposed = false
     let terminal: Terminal | null = null
     let offData: (() => void) | null = null
+    // Route every call through the owner of this pty: a paired host's pane previews from that host.
+    const previewApi = terminalPreviewApiFor(ptyId)
     // The advertised mode and the input mirror must come from the same mount snapshot.
     const mountTerminalInput = terminalInputRef.current
     // Why: mirrors the pane's tracker — the policy needs the flags the TUI
@@ -238,11 +255,12 @@ export function AgentTerminalPreview({
       getMacOptionAsAlt: () => macOptionAsAltRef.current,
       getTerminalInput: () => terminalInputRef.current,
       getWorkspace: () => workspaceRef.current,
-      getReplayDepth: () => replayDepth
+      getReplayDepth: () => replayDepth,
+      requestClose: () => onRequestCloseRef.current?.()
     })
 
     const replayConnection = (
-      connection: Awaited<ReturnType<typeof window.api.terminalPreview.connect>>,
+      connection: Awaited<ReturnType<typeof previewApi.connect>>,
       replaceExisting: boolean,
       requestRefresh: () => void
     ): void => {
@@ -369,7 +387,7 @@ export function AgentTerminalPreview({
       refreshInFlight = true
       connectionEpochRef.current += 1
       inputInstallers.invalidateTargetInteractions()
-      const connection = await window.api.terminalPreview
+      const connection = await previewApi
         .connect(ptyId, {
           scrollbackRows: PREVIEW_SCROLLBACK_ROWS,
           surfaceId
@@ -401,7 +419,7 @@ export function AgentTerminalPreview({
         terminal?.dispose()
         terminal = null
         terminalRef.current = null
-        void window.api.terminalPreview.unsubscribe(ptyId, surfaceId)
+        void previewApi.unsubscribe(ptyId, surfaceId)
         return
       }
       refreshInFlight = false
@@ -415,7 +433,7 @@ export function AgentTerminalPreview({
 
     inputInstallers.installContainerClipboard(container)
 
-    offData = window.api.terminalPreview.onData((payload) => {
+    offData = previewApi.onData((payload) => {
       // A payload without a surface id is the implicit surface's; ours always has one.
       if (payload.ptyId !== ptyId || (payload.surfaceId ?? surfaceId) !== surfaceId) {
         return
@@ -442,9 +460,9 @@ export function AgentTerminalPreview({
       offData?.()
       inputInstallers.dispose()
       if (detachBatched) {
-        queuePreviewDetach(ptyId, surfaceId)
+        queuePreviewDetach(ptyId, surfaceId, previewApi)
       } else {
-        void window.api.terminalPreview.unsubscribe(ptyId, surfaceId)
+        void previewApi.unsubscribe(ptyId, surfaceId)
       }
       scheduleFitRef.current = null
       gridClaimScheduleRef.current = null

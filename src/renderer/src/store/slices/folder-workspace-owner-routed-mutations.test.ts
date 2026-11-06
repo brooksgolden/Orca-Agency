@@ -75,6 +75,56 @@ beforeEach(() => {
 })
 
 describe('folder workspace owner-routed mutations', () => {
+  it('updates inherited folder metadata and batches on the qualified physical row', async () => {
+    const inherited = makeFolderWorkspace({ projectGroupId: 'inherited', folderPath: '/remote' })
+    const local = makeFolderWorkspace({ executionHostId: 'local', folderPath: '/local' })
+    const store = createTestStore()
+    store.setState({
+      repos: [],
+      activeWorktreeId: folderWorkspaceKey(inherited.id),
+      activeWorkspaceExecutionHostId: 'runtime:env-owner',
+      projectGroups: [
+        {
+          ...projectGroup,
+          id: 'inherited',
+          executionHostId: 'runtime:env-owner',
+          connectionId: 'box'
+        }
+      ],
+      folderWorkspaces: [local, inherited]
+    })
+    let remote = inherited
+    runtimeEnvironmentCall.mockImplementation(async (args: RuntimeEnvironmentCallRequest) => {
+      const updates = args.params?.updates
+      if (!updates || typeof updates !== 'object') {
+        throw new Error('Missing update payload')
+      }
+      remote = { ...remote, ...updates }
+      return { id: 'write', ok: true, result: { folderWorkspace: remote } }
+    })
+    await expect(
+      store
+        .getState()
+        .updateWorktreeMeta(
+          folderWorkspaceKey(inherited.id),
+          { comment: 'kept on server' },
+          { executionHostId: 'runtime:env-owner' }
+        )
+    ).resolves.toEqual({ ok: true })
+    await store
+      .getState()
+      .updateWorktreesMeta([
+        { worktreeId: folderWorkspaceKey(inherited.id), updates: { manualOrder: 9 } }
+      ])
+    expect(
+      runtimeEnvironmentCall.mock.calls.filter(([args]) => args.method === 'folderWorkspace.update')
+        .length
+    ).toBe(2)
+    expect(store.getState().folderWorkspaces.find((row) => row.folderPath === '/local')).toBe(local)
+    expect(
+      store.getState().folderWorkspaces.find((row) => row.folderPath === '/remote')
+    ).toMatchObject({ comment: 'kept on server', manualOrder: 9 })
+  })
   it.each([true, false])(
     'keeps legacy folder task link=%s compatible with an older host',
     async (link) => {
@@ -308,7 +358,7 @@ describe('folder workspace owner-routed mutations', () => {
     const pendingUpdate = store
       .getState()
       .updateFolderWorkspace(folderWorkspace.id, { isUnread: true })
-    await store.getState().fetchFolderWorkspaces()
+    await store.getState().fetchFolderWorkspaces(catalogOwner(store))
     resolveUpdate({ ...folderWorkspace, isUnread: true, updatedAt: 2 })
     await pendingUpdate
 
@@ -335,7 +385,7 @@ describe('folder workspace owner-routed mutations', () => {
     const pendingUpdate = store
       .getState()
       .updateFolderWorkspace(folderWorkspace.id, { isUnread: true })
-    await store.getState().fetchFolderWorkspaces()
+    await store.getState().fetchFolderWorkspaces(catalogOwner(store))
     resolveUpdate({ ...folderWorkspace, isUnread: true, updatedAt: 2 })
     await pendingUpdate
 
@@ -619,8 +669,20 @@ describe('folder workspace owner-routed mutations', () => {
       settings: createGlobalSettingsFixture({ activeRuntimeEnvironmentId: 'env-old' })
     })
     await expect(
-      store.getState().createFolderWorkspace({ projectGroupId: projectGroup.id, linkedItems: [] })
+      store
+        .getState()
+        .createFolderWorkspace(
+          { projectGroupId: projectGroup.id, linkedItems: [] },
+          { runtimeEnvironmentId: 'env-old' }
+        )
     ).rejects.toThrow('Update the remote runtime')
     expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
   })
 })
+
+// The catalog these tests read is the one the focused host would have shown.
+function catalogOwner(store: {
+  getState: () => { settings: { activeRuntimeEnvironmentId?: string | null } | null }
+}): { runtimeEnvironmentId: string | null } {
+  return { runtimeEnvironmentId: store.getState().settings?.activeRuntimeEnvironmentId ?? null }
+}

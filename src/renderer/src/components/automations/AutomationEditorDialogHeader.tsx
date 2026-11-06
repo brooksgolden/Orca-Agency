@@ -57,13 +57,13 @@ function getEditorTitle(args: {
   }
   if (args.isEditingExternal) {
     return translate(
-      'auto.components.automations.AutomationEditorDialogHeader.03142e7721',
+      'auto.components.automations.AutomationEditorDialogHeader.editHermes',
       'Edit Hermes automation'
     )
   }
   if (args.isHermesCreate) {
     return translate(
-      'auto.components.automations.AutomationEditorDialogHeader.0a75e5e2fa',
+      'auto.components.automations.AutomationEditorDialogHeader.createHermes',
       'Create Hermes automation'
     )
   }
@@ -105,14 +105,11 @@ export function AutomationEditorDialogHeader({
             className={segmentedGroupClassName}
           >
             <ToggleGroupItem value="orca" className={segmentedItemClassName}>
-              {translate(
-                'auto.components.automations.AutomationEditorDialogHeader.6f309eef8d',
-                'Orca'
-              )}
+              {translate('auto.components.automations.AutomationEditorDialogHeader.orca', 'Orca')}
             </ToggleGroupItem>
             <ToggleGroupItem value="hermes" className={segmentedItemClassName}>
               {translate(
-                'auto.components.automations.AutomationEditorDialogHeader.7e35393632',
+                'auto.components.automations.AutomationEditorDialogHeader.hermes',
                 'Hermes'
               )}
             </ToggleGroupItem>

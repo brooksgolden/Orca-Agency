@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import { Check, Copy, ExternalLink, Globe, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
@@ -14,6 +14,8 @@ import type { LinkAction, LinkActionRequest } from './link-action-request'
 type LinkActionPopoverProps<TRequest extends LinkActionRequest> = {
   request: TRequest | null
   onClose: (dismissed?: TRequest) => void
+  onPointerDownOutside?: (event: Event) => void
+  onOpenSettings?: () => void
 }
 
 function ActionRow({
@@ -28,7 +30,7 @@ function ActionRow({
   const isMac = navigator.userAgent.includes('Mac')
   const keys =
     shortcut === 'alternate'
-      ? [isMac ? '⇧' : 'Shift', isMac ? '⌘' : 'Ctrl', 'Click']
+      ? ['⇧', isMac ? '⌘' : 'Ctrl', 'Click']
       : shortcut === 'primary'
         ? [isMac ? '⌘' : 'Ctrl', 'Click']
         : null
@@ -51,17 +53,38 @@ function ActionRow({
   )
 }
 
-/** Shared by the terminal and native chat: pick where a clicked link opens. */
 export function LinkActionPopover<TRequest extends LinkActionRequest>({
   request,
-  onClose
+  onClose,
+  onPointerDownOutside,
+  onOpenSettings
 }: LinkActionPopoverProps<TRequest>): React.JSX.Element {
   const openSettingsPage = useAppStore((state) => state.openSettingsPage)
   const openSettingsTarget = useAppStore((state) => state.openSettingsTarget)
-  const copyableDestination =
-    request?.kind === 'url' || request?.kind === 'file' ? request.destination : ''
+  const isFilePath = request?.kind === 'file'
+  const canCopyDestination = isFilePath || request?.kind === 'url'
+  const copyableDestination = canCopyDestination
+    ? (request?.copyValue ?? request?.destination ?? '')
+    : ''
   const { copyText, status: copyStatus } = useClipboardTextCopyFeedback(copyableDestination)
   const copyInFlightRef = useRef(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const dismissOnOutsidePointerDown = useEffectEvent((event: PointerEvent): void => {
+    if (!request || (event.target instanceof Node && contentRef.current?.contains(event.target))) {
+      return
+    }
+    onPointerDownOutside?.(event)
+    onClose(request)
+  })
+  useEffect(() => {
+    if (!request) {
+      return
+    }
+    // Why: Radix defers outside dismissal to the click and skips it when the click's
+    // propagation is stopped, which hover cards and sidebar cards both do.
+    document.addEventListener('pointerdown', dismissOnOutsidePointerDown, true)
+    return () => document.removeEventListener('pointerdown', dismissOnOutsidePointerDown, true)
+  }, [request])
   const virtualRef = useMemo(
     () => ({
       current: {
@@ -84,12 +107,28 @@ export function LinkActionPopover<TRequest extends LinkActionRequest>({
   const copyLabel =
     copyStatus === 'copied'
       ? translate('auto.components.terminal.pane.TerminalLinkActionPopover.copied', 'Copied')
-      : request?.kind === 'file'
+      : isFilePath
         ? translate(
-            'auto.components.editor.HtmlDocPreview.copyDocumentPathControl',
+            'auto.components.terminal.pane.TerminalLinkActionPopover.copyFilePath',
             'Copy file path'
           )
         : translate('auto.components.terminal.pane.TerminalLinkActionPopover.copyLink', 'Copy link')
+
+  const copiedMessage = isFilePath
+    ? translate(
+        'auto.components.terminal.pane.TerminalLinkActionPopover.copiedFilePath',
+        'Copied file path'
+      )
+    : translate('auto.components.terminal.pane.TerminalLinkActionPopover.copiedLink', 'Copied link')
+  const copyFailedMessage = isFilePath
+    ? translate(
+        'auto.components.terminal.pane.TerminalLinkActionPopover.copyFilePathFailed',
+        'Failed to copy file path'
+      )
+    : translate(
+        'auto.components.terminal.pane.TerminalLinkActionPopover.copyLinkFailed',
+        'Failed to copy link'
+      )
 
   const copyDestination = async (): Promise<void> => {
     if (copyInFlightRef.current) {
@@ -98,27 +137,10 @@ export function LinkActionPopover<TRequest extends LinkActionRequest>({
     copyInFlightRef.current = true
     try {
       if (await copyText()) {
-        toast.success(
-          request?.kind === 'file'
-            ? translate(
-                'auto.components.github.project.GhAuthErrorHelp.224c9d0ae8',
-                'Copied to clipboard'
-              )
-            : translate(
-                'auto.components.terminal.pane.TerminalLinkActionPopover.copiedLink',
-                'Copied link'
-              )
-        )
+        toast.success(copiedMessage)
         return
       }
-      toast.error(
-        request?.kind === 'file'
-          ? translate('auto.components.github.project.GhAuthErrorHelp.8a7f6bf5dc', 'Failed to copy')
-          : translate(
-              'auto.components.terminal.pane.TerminalLinkActionPopover.copyLinkFailed',
-              'Failed to copy link'
-            )
-      )
+      toast.error(copyFailedMessage)
     } finally {
       copyInFlightRef.current = false
     }
@@ -126,6 +148,7 @@ export function LinkActionPopover<TRequest extends LinkActionRequest>({
 
   const openTerminalLinkSettings = (): void => {
     onClose()
+    onOpenSettings?.()
     openSettingsTarget({
       pane: 'browser',
       repoId: null,
@@ -142,6 +165,7 @@ export function LinkActionPopover<TRequest extends LinkActionRequest>({
       <PopoverAnchor virtualRef={virtualRef} />
       {request ? (
         <PopoverContent
+          ref={contentRef}
           align="start"
           side="top"
           sideOffset={6}
@@ -161,7 +185,7 @@ export function LinkActionPopover<TRequest extends LinkActionRequest>({
             >
               {request.destination}
             </span>
-            {request.kind === 'url' || request.kind === 'file' ? (
+            {canCopyDestination ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

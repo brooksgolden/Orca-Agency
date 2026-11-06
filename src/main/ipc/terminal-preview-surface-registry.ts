@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron'
 import type { TerminalPreviewOutputStream } from './terminal-preview-output-stream'
+import { abortWhenRendererGone } from './renderer-lifetime-abort'
 
 const SURFACE_ID_MAX_LENGTH = 256
 
@@ -34,16 +35,20 @@ export class TerminalPreviewSurfaceRegistry {
   // explicit unsubscribe or a destroyed window always releases the size floor,
   // and each surface releases only its own viewer.
   private readonly claimsByContents = new Map<number, Map<string, Map<string, symbol>>>()
+  // Why: stable's renderer-lifetime helper also covers document replacement and renderer crash, not only destruction.
+  private readonly rendererLifetimes = new Map<number, ReturnType<typeof abortWhenRendererGone>>()
 
   constructor(
     private readonly releaseViewer: (contentsId: number, ptyId: string, surfaceId: string) => void
   ) {}
 
-  /** Registers the destroyed hook on first sight of a webContents. */
+  /** Registers renderer-lifetime cleanup on first sight of a webContents. */
   observe(contents: WebContents): void {
     if (!this.streamsByContents.has(contents.id)) {
       this.streamsByContents.set(contents.id, new Map())
-      contents.once('destroyed', () => this.disposeContents(contents.id))
+      const lifetime = abortWhenRendererGone(contents)
+      this.rendererLifetimes.set(contents.id, lifetime)
+      lifetime.signal.addEventListener('abort', () => this.disposeContents(contents.id), { once: true })
     }
   }
 
@@ -115,6 +120,9 @@ export class TerminalPreviewSurfaceRegistry {
   }
 
   private disposeContents(contentsId: number): void {
+    const lifetime = this.rendererLifetimes.get(contentsId)
+    this.rendererLifetimes.delete(contentsId)
+    lifetime?.dispose()
     const perPty = this.streamsByContents.get(contentsId)
     if (perPty) {
       for (const surfaces of perPty.values()) {

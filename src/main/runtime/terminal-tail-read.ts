@@ -1,4 +1,5 @@
 import type { RuntimeTerminalRead, RuntimeTerminalState } from '../../shared/runtime-types'
+import type { RuntimeTerminalRowMetadata } from '../../shared/runtime-terminal-contracts'
 import {
   DEFAULT_TERMINAL_READ_LIMIT,
   MAX_TERMINAL_PREVIEW_CHARS,
@@ -141,7 +142,8 @@ export function buildVisibleSnapshotReadFallback(
   visibleLines: string[],
   limit: number | undefined,
   draft?: string,
-  composerState?: RuntimeTerminalRead['composerState']
+  composerState?: RuntimeTerminalRead['composerState'],
+  tailRows?: RuntimeTerminalRowMetadata[]
 ): RuntimeTerminalRead {
   const lineLimit = terminalReadLimit(limit, DEFAULT_TERMINAL_READ_LIMIT)
   const lineBoundedTail = visibleLines.slice(-lineLimit)
@@ -149,9 +151,18 @@ export function buildVisibleSnapshotReadFallback(
     lineBoundedTail,
     MAX_TERMINAL_PREVIEW_CHARS
   )
+  const boundedRows =
+    tailRows?.length === visibleLines.length
+      ? tailRows
+          .slice(-lineLimit)
+          .slice(charBoundedTail.omittedLineCount)
+          .map((row, index) => ({ ...row, wrapped: index > 0 && row.wrapped }))
+      : undefined
+  const { tailRows: _priorRows, ...streamRead } = read
   return {
-    ...read,
+    ...streamRead,
     tail: charBoundedTail.tail,
+    ...(boundedRows ? { tailRows: boundedRows } : {}),
     limited:
       read.limited || lineBoundedTail.length < visibleLines.length || charBoundedTail.limited,
     returnedLineCount: charBoundedTail.tail.length,

@@ -1,33 +1,56 @@
 import { describe, expect, it } from 'vitest'
-import { isMissingExternalRunsApiError } from './external-automation-display'
-import { EXTERNAL_AUTOMATION_SCOPE_CODES } from '../../../../shared/external-automation-scope'
+import type {
+  ExternalAutomationManager,
+  ExternalAutomationRun
+} from '../../../../shared/automations-types'
+import {
+  getExternalProviderLabel,
+  getExternalRunStatusLabel,
+  getExternalRunStatusVariant
+} from './external-automation-display'
 
-describe('isMissingExternalRunsApiError', () => {
-  it('recognizes the relay code carried in the message', () => {
-    // Electron IPC keeps only the message, so the code rides inside it.
-    expect(
-      isMissingExternalRunsApiError(
-        new Error(
-          `Error invoking remote method: This host does not report external automation run history.: ${EXTERNAL_AUTOMATION_SCOPE_CODES.runsUnsupported}`
-        )
-      )
-    ).toBe(true)
+function manager(provider: 'hermes' | 'openclaw'): ExternalAutomationManager {
+  return {
+    id: `${provider}:local`,
+    provider,
+    label: provider,
+    targetLabel: 'This computer',
+    target: { type: 'local' },
+    status: 'available',
+    error: null,
+    canManage: true,
+    jobs: []
+  }
+}
+
+function run(status: ExternalAutomationRun['status']): ExternalAutomationRun {
+  return {
+    id: 'run-1',
+    managerId: 'hermes:local',
+    provider: 'hermes',
+    jobId: 'job-1',
+    runAt: null,
+    status,
+    outputPreview: null,
+    outputContent: null,
+    error: null,
+    outputPath: null
+  }
+}
+
+describe('external automation display', () => {
+  it('labels Hermes and OpenClaw by their actual provider', () => {
+    expect(getExternalProviderLabel(manager('hermes'))).toBe('Hermes')
+    expect(getExternalProviderLabel(manager('openclaw'))).toBe('OpenClaw')
   })
 
-  it('still recognizes hosts that answer with no code at all', () => {
-    expect(
-      isMissingExternalRunsApiError(new Error("No handler registered for 'automations:listRuns'"))
-    ).toBe(true)
-    expect(isMissingExternalRunsApiError(new Error('listExternalRuns is not a function'))).toBe(
-      true
-    )
-  })
-
-  it('does not treat an ordinary relay failure as a missing endpoint', () => {
-    // Falling back here would render a truncated run list as if it were complete.
-    expect(isMissingExternalRunsApiError(new Error('SSH target "ssh-1" is not connected.'))).toBe(
-      false
-    )
-    expect(isMissingExternalRunsApiError(new Error('socket hang up'))).toBe(false)
+  it.each([
+    ['completed', 'Completed', 'secondary'],
+    ['failed', 'Failed', 'destructive'],
+    ['unknown', 'Unknown', 'outline']
+  ] as const)('maps %s run status to its label and badge', (status, label, variant) => {
+    const value = run(status)
+    expect(getExternalRunStatusLabel(value)).toBe(label)
+    expect(getExternalRunStatusVariant(value)).toBe(variant)
   })
 })

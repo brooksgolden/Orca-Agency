@@ -1,5 +1,5 @@
 import type { Terminal } from '@xterm/xterm'
-import type { PtyTransport } from './pty-transport'
+import type { PtyTransport } from './pty-transport-types'
 
 export type TerminalDropPane = {
   id: number

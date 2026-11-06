@@ -21,6 +21,11 @@ import {
   imeHarness
 } from './__mocks__/preview-terminal-input'
 
+// Paste encoding is under test here; owner routing is covered by AgentTerminalPreview.test.tsx.
+vi.mock('./terminal-preview-api', () => ({
+  terminalPreviewApiFor: () => window.api.terminalPreview
+}))
+
 import { AgentTerminalPreview } from './AgentTerminalPreview'
 
 describe('AgentTerminalPreview clipboard routes', () => {
@@ -262,8 +267,7 @@ describe('AgentTerminalPreview clipboard routes', () => {
     await waitFor(() => expect(terminal.customKeyHandler).not.toBeNull())
     focusInsidePreview(view.container)
 
-    // Why deferred: macOS keeps a real Cmd+V accelerator, so handling it here
-    // AND letting the menu fire would paste twice.
+    // macOS Cmd+V uses its native accelerator; handling it here too would paste twice.
     const plain = terminal.customKeyHandler!(
       new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', metaKey: true })
     )

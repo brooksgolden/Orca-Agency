@@ -11,7 +11,7 @@ import { useStagedMountPerFrame } from '@/lib/use-staged-mount-per-frame'
 import { extractVirtualRangeWithFocusedIndex } from './virtual-range-with-focused-index'
 import WorkspaceKanbanStatusLane from './WorkspaceKanbanStatusLane'
 
-// Why: a fresh [] per render would defeat the memoized lane on empty lanes.
+// Reuse empty lane arrays so unrelated renders preserve memoization.
 const EMPTY_LANE_ITEMS: readonly Worktree[] = []
 const WORKSPACE_BOARD_LANE_GAP = 12
 const WORKSPACE_BOARD_LANE_OVERSCAN = 1

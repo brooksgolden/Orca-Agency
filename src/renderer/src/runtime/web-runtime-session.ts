@@ -4,7 +4,7 @@ export {
   toHostSessionTabId,
   toWebTerminalSurfaceTabId,
   WEB_TERMINAL_SURFACE_TAB_PREFIX
-} from './web-terminal-surface-id'
+} from '../../../shared/terminal-surface-id'
 
 export { isWebRuntimeSessionActive } from './web-runtime-session-environment'
 export type { WebRuntimeTerminalCreateOutcome } from './web-runtime-session-types'

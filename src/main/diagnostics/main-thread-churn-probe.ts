@@ -1,37 +1,41 @@
 import { performance as nodePerformance } from 'node:perf_hooks'
+import { freemem } from 'node:os'
 import { writeStartupDiagnosticLine } from '../startup/startup-diagnostics'
 
 export const MAIN_THREAD_DIAGNOSTICS_ENV = 'ORCA_MAIN_THREAD_DIAGNOSTICS'
+let persistentCaptureEnabled = false
+let diagnosticLineWriter: (line: string) => void = writeStartupDiagnosticLine
+
+export function setPersistentMainThreadDiagnosticsEnabled(enabled: boolean): void {
+  persistentCaptureEnabled = enabled
+}
+
+export function setMainThreadDiagnosticLineWriter(writer?: (line: string) => void): void {
+  diagnosticLineWriter = writer ?? writeStartupDiagnosticLine
+}
 
 // Why: a late 25ms timer detects a responsiveness gap. Scheduler delay can
 // also make it late, so pair it with event-loop utilization and CPU time to
 // distinguish main-thread work or waits from a delayed wake-up.
+// Match the startup probe's 25ms sampling interval for comparable stall windows.
 const TICK_MS = 25
 const REPORT_EVERY_MS = 5_000
 
 export function isMainThreadDiagnosticsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return (
+    persistentCaptureEnabled ||
     env[MAIN_THREAD_DIAGNOSTICS_ENV] === '1' ||
     process.argv.includes('--orca-main-thread-diagnostics')
   )
 }
 
-// Git global options that precede the subcommand. Value-taking flags must be
-// skipped together with their value to find the real subcommand.
+// Skip Git global options together with their separate values.
 const GIT_VALUE_FLAGS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--exec-path'])
 
-// Why: only subcommand-style CLIs get a "<binary> <subcommand>" bucket; for
-// anything else (rg, node, …) the first positional is an operand, not a
-// subcommand, and would fragment the aggregation.
+// Operand-based CLIs would fragment aggregation if bucketed by their first positional.
 const SUBCOMMAND_BINARIES = new Set(['git', 'gh', 'glab'])
 
-/**
- * Reduce a resolved spawn to a stable aggregation key like "git status" or
- * "gh api". Handles WSL wrapping (`wsl.exe -d <distro> -- git …`), absolute
- * binary paths, `.exe` suffixes, and git global flags before the subcommand.
- */
-// Split on both separators so Windows-style paths classify correctly even
-// when the classifier itself runs in a posix test environment.
+// Accept both path separators even when classifying foreign-platform commands.
 function binaryName(command: string): string {
   const leaf = command.split(/[\\/]/).pop() ?? command
   return leaf.replace(/\.exe$/i, '').toLowerCase()
@@ -41,8 +45,7 @@ export function classifySubprocessCommand(command: string, args: readonly string
   let binary = binaryName(command)
   const rest = [...args]
   if (binary === 'wsl') {
-    // Orca spawns guest commands with `--exec`; `--`/`-e` still appear on
-    // wsl.exe processes started outside Orca, so unwrap either separator.
+    // Accept external WSL invocations using -- or -e as well as Orca's --exec.
     while (rest.length > 0) {
       const arg = rest.shift()
       if (arg === '--' || arg === '--exec' || arg === '-e') {
@@ -65,8 +68,6 @@ export function classifySubprocessCommand(command: string, args: readonly string
       subcommand = arg
       break
     }
-    // Why: only git's global flags take a separate value; e.g. rg's -C takes
-    // a number that must not be consumed as if it were a flag value.
     if (binary === 'git' && GIT_VALUE_FLAGS.has(arg)) {
       i++
     }
@@ -79,19 +80,13 @@ export function classifySubprocessCommand(command: string, args: readonly string
 
 export type SubprocessSpawnStats = {
   count: number
-  // Cumulative and worst synchronous cost of initiating the spawn (the
-  // uv_spawn → posix_spawn call runs on the main thread before returning).
+  // Async launches measure spawn initiation; synchronous launches measure the entire run.
   blockMsTotal: number
   blockMsMax: number
 }
 
 const spawnStatsByCommand = new Map<string, SubprocessSpawnStats>()
 
-/**
- * Record one subprocess spawn from the main process. `blockMs` is how long
- * the synchronous spawn/execFile initiation call held the main thread.
- * No-op unless ORCA_MAIN_THREAD_DIAGNOSTICS=1.
- */
 export function recordSubprocessSpawn(
   command: string,
   args: readonly string[],
@@ -124,17 +119,12 @@ export function drainSubprocessSpawnStats(): Record<string, SubprocessSpawnStats
   return drained
 }
 
-/**
- * Timestamped marker line for correlating a specific main-process activity
- * (e.g. an updater check) with the probe's stall windows and with macOS
- * Performance Diagnostics log entries in field captures. No-op unless
- * ORCA_MAIN_THREAD_DIAGNOSTICS=1.
- */
+/** Correlate process activity with stall windows and captured macOS diagnostics. */
 export function writeMainThreadDiagnosticMarker(marker: string): void {
   if (!isMainThreadDiagnosticsEnabled()) {
     return
   }
-  writeStartupDiagnosticLine(
+  diagnosticLineWriter(
     `[main-thread] ${JSON.stringify({ marker, t: Math.round(performance.now()) })}`
   )
 }
@@ -145,14 +135,16 @@ export type MainThreadChurnProbeOptions = {
   writeLine?: (line: string) => void
 }
 
-/**
- * Long-running main-process jank probe for benchmarks and field diagnosis of
- * issue #7576. Every 5s emits one `[main-thread] {json}` stderr line with the
- * window's worst event-loop stall, stall counts over 50/250ms, drained subprocess
- * spawn stats, and any counters the caller contributes. Unlike the startup stall
- * probe this never stops: the churn it measures (git status polling, updater
- * retries) is steady-state.
- */
+function readThreadCpuUsage(): NodeJS.CpuUsage | null {
+  try {
+    return typeof process.threadCpuUsage === 'function' ? process.threadCpuUsage() : null
+  } catch {
+    // Some Electron runtimes do not expose per-thread CPU time on every host.
+    return null
+  }
+}
+
+/** Unlike the startup probe, report steady-state stalls and subprocess costs throughout the session. */
 export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions = {}): void {
   if (!isMainThreadDiagnosticsEnabled()) {
     return
@@ -163,6 +155,7 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
   let gapsOver50Ms = 0
   let gapsOver250Ms = 0
   let cpu = process.cpuUsage()
+  let threadCpu = readThreadCpuUsage()
   let eventLoop = nodePerformance.eventLoopUtilization()
   const timer = setInterval(() => {
     const now = performance.now()
@@ -184,6 +177,12 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
     const spawns = drainSubprocessSpawnStats()
     const usage = process.cpuUsage(cpu)
     cpu = process.cpuUsage()
+    const threadCpuNow = readThreadCpuUsage()
+    const threadUsage =
+      threadCpu && threadCpuNow
+        ? Math.max(0, threadCpuNow.user - threadCpu.user + threadCpuNow.system - threadCpu.system)
+        : null
+    threadCpu = threadCpuNow
     const eventLoopDelta = nodePerformance.eventLoopUtilization(eventLoop)
     eventLoop = nodePerformance.eventLoopUtilization()
     // Electron's main process can return all zeroes here even while timers
@@ -199,6 +198,7 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
       gapsOver250Ms,
       spawnCount: Object.values(spawns).reduce((sum, s) => sum + s.count, 0),
       cpuMs: Math.round((usage.user + usage.system) / 1000),
+      mainThreadCpuMs: threadUsage === null ? null : Math.round(threadUsage / 1000),
       eventLoopMetricsAvailable,
       eventLoopActiveMs: eventLoopMetricsAvailable ? Math.round(eventLoopDelta.active) : null,
       eventLoopIdleMs: eventLoopMetricsAvailable ? Math.round(eventLoopDelta.idle) : null,
@@ -206,13 +206,14 @@ export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions =
         ? Math.round(eventLoopDelta.utilization * 1_000) / 1_000
         : null,
       rssBytes: process.memoryUsage().rss,
+      freePhysicalBytes: freemem(),
       spawns,
       ...options.extraStats?.()
     }
     windowMaxGapMs = 0
     gapsOver50Ms = 0
     gapsOver250Ms = 0
-    ;(options.writeLine ?? writeStartupDiagnosticLine)(`[main-thread] ${JSON.stringify(report)}`)
+    ;(options.writeLine ?? diagnosticLineWriter)(`[main-thread] ${JSON.stringify(report)}`)
   }, TICK_MS)
   timer.unref?.()
 }

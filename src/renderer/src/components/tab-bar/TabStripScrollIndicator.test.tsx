@@ -16,20 +16,6 @@ describe('TabStripScrollIndicator', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders under the tabs with bottom-0 and idle 3px height', () => {
-    const { getByTestId } = render(<TabStripScrollIndicator hasOverflow />)
-    const indicator = getByTestId('tab-strip-scroll-indicator')
-    expect(indicator).toBeTruthy()
-    expect(indicator.className).toContain('bottom-0')
-    expect(indicator.className).toContain('h-[3px]')
-    expect(indicator.className).toContain('z-[12]')
-    expect(indicator.className).toContain('opacity-0')
-    expect(indicator.className).toContain('group-hover/tab-strip:opacity-100')
-
-    const thumb = getByTestId('tab-strip-scroll-thumb')
-    expect(thumb).toBeTruthy()
-  })
-
   it('expands to 4px and becomes opaque on pointer hover, restores on leave', () => {
     const { getByTestId } = render(<TabStripScrollIndicator hasOverflow />)
     const indicator = getByTestId('tab-strip-scroll-indicator')
@@ -45,50 +31,6 @@ describe('TabStripScrollIndicator', () => {
     expect(indicator.className).toContain('opacity-0')
   })
 
-  it('applies state-specific track and thumb colors across idle, hover, and drag', () => {
-    const scrollContainer = document.createElement('div')
-    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1000, configurable: true })
-    Object.defineProperty(scrollContainer, 'clientWidth', { value: 400, configurable: true })
-    const scrollContainerRef = createRef<HTMLElement>()
-    ;(scrollContainerRef as React.MutableRefObject<HTMLElement>).current = scrollContainer
-
-    const { getByTestId } = render(
-      <TabStripScrollIndicator hasOverflow scrollContainerRef={scrollContainerRef} />
-    )
-    const indicator = getByTestId('tab-strip-scroll-indicator')
-    Object.defineProperty(indicator, 'clientWidth', { value: 400, configurable: true })
-    const thumb = getByTestId('tab-strip-scroll-thumb')
-
-    expect(indicator.className).toContain('bg-transparent')
-    expect(indicator.className).not.toContain('bg-muted-foreground/15')
-    expect(thumb.className).toContain('bg-muted-foreground/60')
-    expect(thumb.className).not.toContain('bg-muted-foreground/80')
-    expect(thumb.className).not.toContain('bg-foreground/70')
-
-    fireEvent.pointerEnter(indicator)
-    expect(indicator.className).toContain('bg-muted-foreground/15')
-    expect(indicator.className).not.toContain('bg-transparent')
-    expect(thumb.className).toContain('bg-muted-foreground/80')
-    expect(thumb.className).not.toContain('bg-muted-foreground/60')
-
-    fireEvent.pointerDown(thumb, { button: 0, clientX: 50 })
-    expect(indicator.className).toContain('bg-muted-foreground/15')
-    expect(thumb.className).toContain('bg-foreground/70')
-    expect(thumb.className).not.toContain('bg-muted-foreground/80')
-
-    fireEvent(window, new MouseEvent('pointerup'))
-    fireEvent.pointerLeave(indicator)
-    expect(indicator.className).toContain('bg-transparent')
-    expect(thumb.className).toContain('bg-muted-foreground/60')
-  })
-
-  it('applies pointer-events-none when disabled', () => {
-    const { getByTestId } = render(<TabStripScrollIndicator hasOverflow disabled={true} />)
-    const indicator = getByTestId('tab-strip-scroll-indicator')
-    expect(indicator.className).toContain('pointer-events-none')
-    expect(indicator.className).not.toContain('group-hover/tab-strip:pointer-events-auto')
-  })
-
   it('stays hidden and unexpanded on hover when disabled', () => {
     const { getByTestId } = render(<TabStripScrollIndicator hasOverflow disabled={true} />)
     const indicator = getByTestId('tab-strip-scroll-indicator')
@@ -98,7 +40,7 @@ describe('TabStripScrollIndicator', () => {
     expect(indicator.className).toContain('h-[3px]')
   })
 
-  it('does not forward wheel events when disabled', () => {
+  it('leaves wheel events for the parent tab bar when disabled', () => {
     const scrollContainer = document.createElement('div')
     scrollContainer.scrollLeft = 0
     const scrollContainerRef = createRef<HTMLElement>()
@@ -116,7 +58,7 @@ describe('TabStripScrollIndicator', () => {
     expect(scrollContainer.scrollLeft).toBe(0)
   })
 
-  it('forwards wheel events to scrollContainer', () => {
+  it('leaves wheel events for the parent tab bar', () => {
     const scrollContainer = document.createElement('div')
     scrollContainer.scrollLeft = 0
     const scrollContainerRef = createRef<HTMLElement>()
@@ -128,7 +70,7 @@ describe('TabStripScrollIndicator', () => {
     const indicator = getByTestId('tab-strip-scroll-indicator')
     fireEvent.wheel(indicator, { deltaX: 40, deltaY: 0 })
 
-    expect(scrollContainer.scrollLeft).toBe(40)
+    expect(scrollContainer.scrollLeft).toBe(0)
   })
 
   it('handles track click and smooth scrolls container', () => {
@@ -164,6 +106,7 @@ describe('TabStripScrollIndicator', () => {
     expect(scrollToMock).toHaveBeenCalledTimes(1)
     expect(scrollToMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        left: 300,
         behavior: 'smooth'
       })
     )

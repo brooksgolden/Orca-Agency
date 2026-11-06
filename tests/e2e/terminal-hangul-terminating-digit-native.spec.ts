@@ -260,7 +260,7 @@ test.describe('Hangul terminating digit @headful', () => {
         }
         const expectedLine = `${EXPECTED_LINE}\n`
         let accepted = 0
-        let trace: TerminalImeBoundaryTrace = { dom: [], onData: [] }
+        let trace: TerminalImeBoundaryTrace = { dom: [], onData: [], windowKeys: [] }
         for (let attempt = 0; attempt < MAX_ATTEMPTS && accepted < REPETITIONS; attempt += 1) {
           await installTerminalImeBoundaryProbe(page)
           injectKeys(KEY_TOKENS)

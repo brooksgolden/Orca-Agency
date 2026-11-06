@@ -107,11 +107,13 @@ afterEach(() => {
 })
 
 describe('restored working terminal without a mounted view', () => {
-  it('attaches when the graph becomes ready after the only startup inventory', async () => {
+  it('attaches before the graph is ready but confirms only fresh bytes after it becomes ready', async () => {
     const c = setup(false)
     await c.runtime.inventory()
     await new Promise<void>((resolve) => setImmediate(resolve))
-    expect(c.attach).not.toHaveBeenCalled()
+    expect(c.attach).toHaveBeenCalledExactlyOnceWith('pty-1')
+    c.runtime.onPtyData('pty-1', fixture.frames[0], Date.now())
+    expect(c.events).not.toHaveBeenCalled()
     c.runtime.syncWindowGraph(1, { tabs: [], leaves: [] })
     expect(c.attach).toHaveBeenCalledExactlyOnceWith('pty-1')
     expect(c.events).not.toHaveBeenCalled()
@@ -153,36 +155,45 @@ describe('restored working terminal without a mounted view', () => {
     'replacement',
     'missing-proof',
     'graph-unavailable'
-  ])('does not attach with %s evidence', async (kind) => {
-    const c = setup()
-    if (kind === 'idle') {
-      c.row.state = 'done'
+  ])(
+    'attaches the stream without confirming restored working status with %s evidence',
+    async (kind) => {
+      const c = setup()
+      if (kind === 'idle') {
+        c.row.state = 'done'
+      }
+      if (kind === 'confirmed') {
+        c.row.restoredUnconfirmed = false
+      }
+      if (kind === 'other-agent') {
+        c.row.agentType = 'claude'
+      }
+      if (kind === 'remote-row') {
+        c.row.connectionId = 'ssh-connection'
+      }
+      if (kind === 'wrong-handle') {
+        c.row.terminalHandle = 'term_other'
+      }
+      if (kind === 'replacement') {
+        c.process.incarnationId = '33333333-3333-4333-8333-333333333333'
+      }
+      if (kind === 'missing-proof') {
+        c.persisted.setSession({
+          ...c.persisted.getSession(),
+          terminalPtyIncarnationsByPaneKey: {}
+        })
+      }
+      if (kind === 'graph-unavailable') {
+        c.runtime.markGraphUnavailable(1)
+      }
+      await c.runtime.inventory()
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(c.attach).toHaveBeenCalledExactlyOnceWith('pty-1')
+      expect(c.events).not.toHaveBeenCalled()
+      c.runtime.onPtyData('pty-1', fixture.frames[1], Date.now())
+      expect(c.events.mock.calls.some(([event]) => event.confirmRestoredWorkingTitle)).toBe(false)
     }
-    if (kind === 'confirmed') {
-      c.row.restoredUnconfirmed = false
-    }
-    if (kind === 'other-agent') {
-      c.row.agentType = 'claude'
-    }
-    if (kind === 'remote-row') {
-      c.row.connectionId = 'ssh-connection'
-    }
-    if (kind === 'wrong-handle') {
-      c.row.terminalHandle = 'term_other'
-    }
-    if (kind === 'replacement') {
-      c.process.incarnationId = '33333333-3333-4333-8333-333333333333'
-    }
-    if (kind === 'missing-proof') {
-      c.persisted.setSession({ ...c.persisted.getSession(), terminalPtyIncarnationsByPaneKey: {} })
-    }
-    if (kind === 'graph-unavailable') {
-      c.runtime.markGraphUnavailable(1)
-    }
-    await c.runtime.inventory()
-    expect(c.attach).not.toHaveBeenCalled()
-    expect(c.events).not.toHaveBeenCalled()
-  })
+  )
 
   it.each([false, 'rejected'])(
     'retries failed attachment (%s) on the next inventory',

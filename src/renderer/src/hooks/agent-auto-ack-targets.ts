@@ -1,8 +1,11 @@
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
-import { isStructuredTab } from '@/components/native-chat/structured-agent-session-tabs'
-import type { Tab } from '../../../shared/tab-types'
+import { isOrcaWindowForegroundFocused } from '@/components/terminal-pane/terminal-notification-pane-visibility'
+import { isStructuredTab } from '../../../shared/agent-session/view/structured-agent-session-tab'
+import type { Tab, TabGroup, TabGroupLayoutNode } from '../../../shared/tab-types'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import type { SessionGridFilter } from '../../../shared/session-grid-types'
+import { collectTabGroupLayoutGroupIds } from '../../../shared/workspace-layout/tab-group-moves'
+import { isPresenceConfirmed } from './agent-auto-ack-presence'
 import {
   selectFloatingWorkspacePanelVisible,
   type FloatingWorkspacePanelVisibilityState
@@ -24,9 +27,13 @@ export type AutoAckTargetState = FloatingWorkspacePanelVisibilityState & {
   sessionsGridFilter: SessionGridFilter
   sessionsGridHiddenTabIds: readonly string[]
   tabsByWorktree: Record<string, TerminalTab[]>
-  getActiveTab: (worktreeId: string) => Tab | null
+  layoutByWorktree?: Readonly<Record<string, TabGroupLayoutNode | undefined>>
+  groupsByWorktree: Readonly<Record<string, readonly Pick<TabGroup, 'id' | 'activeTabId'>[]>>
+  activeGroupIdByWorktree: Readonly<Record<string, string | null | undefined>>
+  unifiedTabsByWorktree: Readonly<Record<string, readonly Tab[]>>
 }
 
+/** The one session-grid card on the board, owned by its worktree; hidden or filtered-out cards are not seen. */
 function sessionGridSelectionOnTheBoard(
   state: AutoAckTargetState,
   tabId: string
@@ -58,24 +65,27 @@ function sessionGridSelectionOnTheBoard(
   return { tabId, worktreeId, surfaceKind: 'terminal', viewOrigin: 'session-grid' }
 }
 
-/**
- * The one surface a workspace has on screen right now.
- *
- * Why the unified tab wins: a visible chat replaces the terminal in its group, but the
- * workspace's terminal tab id keeps naming the terminal that was there before — acknowledging
- * that id would clear a hidden terminal's unread.
- */
-function resolveWorkspaceAutoAckTarget(
+/** Collect visible split groups, focused first; unified selection wins because chat can replace a terminal whose legacy active ID still names hidden content. */
+function resolveWorkspaceAutoAckTargets(
   state: AutoAckTargetState,
   worktreeId: string
-): AutoAckTabTarget | null {
-  const activeTab = state.getActiveTab(worktreeId)
-  if (activeTab && isStructuredTab(activeTab)) {
-    return { tabId: activeTab.id, worktreeId, surfaceKind: 'structured' }
+): AutoAckTabTarget[] {
+  const groups = state.groupsByWorktree[worktreeId] ?? []
+  const focusedGroupId = state.activeGroupIdByWorktree[worktreeId] ?? groups[0]?.id
+  const groupIds = new Set(focusedGroupId ? [focusedGroupId] : [])
+  collectTabGroupLayoutGroupIds(state.layoutByWorktree?.[worktreeId], groupIds)
+  const tabs = state.unifiedTabsByWorktree[worktreeId] ?? []
+  const targets: AutoAckTabTarget[] = []
+  for (const groupId of groupIds) {
+    const activeTabId = groups.find((group) => group.id === groupId)?.activeTabId
+    const tab = activeTabId ? tabs.find((candidate) => candidate.id === activeTabId) : undefined
+    if (tab && isStructuredTab(tab)) {
+      targets.push({ tabId: tab.id, worktreeId, surfaceKind: 'structured' })
+    } else if (tab?.contentType === 'terminal') {
+      targets.push({ tabId: tab.entityId, worktreeId, surfaceKind: 'terminal' })
+    }
   }
-  return activeTab?.contentType === 'terminal'
-    ? { tabId: activeTab.entityId, worktreeId, surfaceKind: 'terminal' }
-    : null
+  return targets
 }
 
 /**
@@ -85,6 +95,7 @@ function resolveWorkspaceAutoAckTarget(
  * Why the floating workspace is gated on panel visibility rather than `activeView`: the panel is an
  * overlay that sits above every view and stays mounted while closed, and its active tab never
  * becomes the global `activeTabId` — so neither the view nor the tab id can stand in for "on screen".
+ * Session-grid cards add the one card the board shows, when the sessions view is active.
  */
 export function resolveAutoAckTabTargets(
   state: AutoAckTargetState,
@@ -92,18 +103,14 @@ export function resolveAutoAckTabTargets(
 ): AutoAckTabTarget[] {
   const targets: AutoAckTabTarget[] = []
   if (options?.floatingPanelVisible ?? selectFloatingWorkspacePanelVisible(state)) {
-    const floating = resolveWorkspaceAutoAckTarget(state, FLOATING_TERMINAL_WORKTREE_ID)
     // The floating pane is on top when two worktrees claim the same tab ID.
-    if (floating) {
-      targets.push(floating)
-    }
+    targets.push(...resolveWorkspaceAutoAckTargets(state, FLOATING_TERMINAL_WORKTREE_ID))
   }
-  if (state.activeView === 'terminal') {
-    const active = state.activeWorktreeId
-      ? resolveWorkspaceAutoAckTarget(state, state.activeWorktreeId)
-      : null
-    if (active && !targets.some((target) => target.tabId === active.tabId)) {
-      targets.push(active)
+  if (state.activeView === 'terminal' && state.activeWorktreeId) {
+    for (const target of resolveWorkspaceAutoAckTargets(state, state.activeWorktreeId)) {
+      if (!targets.some((existing) => existing.tabId === target.tabId)) {
+        targets.push(target)
+      }
     }
   }
   if (state.activeView === 'sessions' && state.activeSessionGridTabId) {
@@ -115,21 +122,45 @@ export function resolveAutoAckTabTargets(
   return targets
 }
 
-/**
- * Whether a tab of either kind is on a visible surface — the one "did the user see it" rule.
- * Attention dispatch and auto-ack both read it, so a surface the user is watching neither earns
- * an unread marker nor has one to clear.
- */
-export function isTabOnVisibleSurface(
+export function onScreenWorkspaceIds(state: AutoAckTargetState): string[] {
+  const workspaceIds = selectFloatingWorkspacePanelVisible(state)
+    ? [FLOATING_TERMINAL_WORKTREE_ID]
+    : []
+  if (state.activeView === 'terminal' && state.activeWorktreeId) {
+    workspaceIds.push(state.activeWorktreeId)
+  }
+  if (state.activeView === 'sessions' && state.activeSessionGridTabId) {
+    const selected = sessionGridSelectionOnTheBoard(state, state.activeSessionGridTabId)
+    if (selected?.worktreeId && !workspaceIds.includes(selected.worktreeId)) {
+      workspaceIds.push(selected.worktreeId)
+    }
+  }
+  return workspaceIds
+}
+
+export function isWorkspaceOnScreen(state: AutoAckTargetState, workspaceId: string): boolean {
+  return (
+    isOrcaWindowForegroundFocused() &&
+    isPresenceConfirmed() &&
+    onScreenWorkspaceIds(state).includes(workspaceId)
+  )
+}
+
+/** Use the scan’s visibility/focus/presence gate so marking skips exactly the attention the scan would immediately acknowledge. */
+export function isTabOnScreen(
   state: AutoAckTargetState,
   worktreeId: string,
   tabId: string,
   surfaceKind: AutoAckTabTarget['surfaceKind']
 ): boolean {
-  return resolveAutoAckTabTargets(state).some(
-    (target) =>
-      target.surfaceKind === surfaceKind &&
-      target.tabId === tabId &&
-      target.worktreeId === worktreeId
+  return (
+    isOrcaWindowForegroundFocused() &&
+    isPresenceConfirmed() &&
+    resolveAutoAckTabTargets(state).some(
+      (target) =>
+        target.surfaceKind === surfaceKind &&
+        target.tabId === tabId &&
+        target.worktreeId === worktreeId
+    )
   )
 }

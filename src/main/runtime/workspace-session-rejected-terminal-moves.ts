@@ -2,7 +2,7 @@ import type { TerminalTab } from '../../shared/terminal-tab-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { rebaseTabGroups } from './workspace-session-tab-group-membership'
 import { pruneTabGroupLayoutAfterRetirement } from './mobile-session-terminal-retirement'
-import { collectTabGroupLayoutGroupIds } from './headless-tab-group-split-layout'
+import { collectTabGroupLayoutGroupIds } from '../../shared/workspace-layout/tab-group-moves'
 
 /** Restore only contested tabs, leaving unrelated renderer membership changes intact. */
 export function restoreRejectedWorkspaceTerminalMoves(

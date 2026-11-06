@@ -1,0 +1,17 @@
+■ Selected model is at capacity. Please try a different model.
+
+  ↳ Recap: Matches-first UI, recommendations,
+    referral corrections, and salesperson
+    lookup are live and tested. Lookup access
+    was added; server validation is pending.
+    Account merge and multi-email login pass offline
+    checks but remain undeployed, blocked by
+    repository access. Attribution's root cause
+    remains unresolved; imports are paused. Workers remain stopped.
+    Next: Grant repository write access to unblock the login
+    endpoint.
+
+1 background terminal running · /ps to view · /stop to close
+
+› Ask Codex to do anything
+  G… Goal stalled (/goal resume)    ⚠ 4 warnings · f2 to view

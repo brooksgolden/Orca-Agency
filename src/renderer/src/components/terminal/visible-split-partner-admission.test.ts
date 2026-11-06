@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
-import { registerRuntimeTerminalTab } from '@/runtime/sync-runtime-graph'
+import { registerRuntimeTerminalTab } from '@/runtime/mounted-terminal-tab-registry'
 import { applyTerminalColdActivation } from '../terminal-cold-activation'
 import { shouldMountBackgroundWorktreeTab } from './background-terminal-worktree-mount'
 import {

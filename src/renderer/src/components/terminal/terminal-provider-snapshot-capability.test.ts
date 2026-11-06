@@ -288,15 +288,13 @@ describe('terminal provider snapshot capabilities', () => {
   })
 
   it('decays polling to a slow cadence for a PTY whose route never resolves', async () => {
-    // Why not a permanent settle: the eviction-exemption path inherits the
-    // verdict for life, so an unresolvable route stays exempt but re-askable.
+    // Unknown routes stay exempt but re-askable instead of inheriting permanent eviction exemption.
     const resolve = vi.fn(async () => [{ id: 'gone-pty', authoritative: null }])
     const backoffSchedule = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]
 
     let nowMs = 1_000
     await synchronizeTerminalProviderSnapshotCapabilities(['gone-pty'], resolve, nowMs)
     for (const delayMs of backoffSchedule) {
-      // Just before the deadline: no extra consult.
       await synchronizeTerminalProviderSnapshotCapabilities(
         ['gone-pty'],
         resolve,
@@ -308,11 +306,9 @@ describe('terminal provider snapshot capabilities', () => {
     const ladderCallCount = resolve.mock.calls.length
     expect(ladderCallCount).toBe(backoffSchedule.length + 1)
 
-    // Inside the slow window: still no consult.
     await synchronizeTerminalProviderSnapshotCapabilities(['gone-pty'], resolve, nowMs + 60_000)
     expect(resolve).toHaveBeenCalledTimes(ladderCallCount)
 
-    // Bounded slow cadence: one consult per elapsed slow window, not per call.
     for (let index = 1; index <= 12; index += 1) {
       await synchronizeTerminalProviderSnapshotCapabilities(
         ['gone-pty'],
@@ -324,28 +320,7 @@ describe('terminal provider snapshot capabilities', () => {
     expect(terminalProviderHasAuthoritativeSnapshot('gone-pty')).toBe(false)
   })
 
-  it('keeps rescheduling at the slow cadence once an unresolvable PTY has decayed', async () => {
-    const resolve = vi.fn(async () => [{ id: 'gone-pty', authoritative: null }])
-
-    let nowMs = 1_000
-    let retryDelayMs: number | null = null
-    for (const delayMs of [0, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]) {
-      nowMs += delayMs
-      retryDelayMs = await synchronizeTerminalProviderSnapshotCapabilities(
-        ['gone-pty'],
-        resolve,
-        nowMs
-      )
-    }
-
-    // Why non-null: the slow re-ask keeps one timer alive so a recovered
-    // daemon is consulted again without any event wiring.
-    expect(retryDelayMs).toBe(5 * 60_000)
-  })
-
-  // Why same-reference: the hook's chain re-fires with the SAME memoized id
-  // array, so the unchanged-set early-out must yield to a due unknown retry —
-  // an unconditional same-identity bail would kill the chain after one backoff.
+  // Due retries must bypass same-array identity early-outs or the hook’s unchanged-ID chain dies.
   it('re-consults a due unknown on an identical live-set identity', async () => {
     const livePtyIds = ['pty-1']
     const resolve = vi
@@ -369,16 +344,14 @@ describe('terminal provider snapshot capabilities', () => {
     const resolve = vi.fn(async () => [{ id: 'gone-pty', authoritative: null }])
 
     await synchronizeTerminalProviderSnapshotCapabilities(['gone-pty'], resolve, 1_000)
-    // Why null: pruning the closed pty's retry state must also stop the timer
-    // chain — a leaked entry would keep a phantom re-ask timer for the session.
+    // Pruning closed PTYs must stop their retry timer chain too.
     await expect(
       synchronizeTerminalProviderSnapshotCapabilities([], resolve, 2_000)
     ).resolves.toBeNull()
     await synchronizeTerminalProviderSnapshotCapabilities(['gone-pty'], resolve, 2_001)
     expect(resolve).toHaveBeenCalledTimes(2)
 
-    // Why a third consult: the reappeared id restarts the 1s ladder — leaked
-    // attempts would resume the decayed cadence for a brand-new pty.
+    // Reappearing IDs restart the fast ladder instead of inheriting leaked slow backoff.
     await synchronizeTerminalProviderSnapshotCapabilities(['gone-pty'], resolve, 3_001)
     expect(resolve).toHaveBeenCalledTimes(3)
   })

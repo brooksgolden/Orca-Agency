@@ -4,7 +4,7 @@ import type {
   ChatSidebarSessionSnapshot
 } from '../../../../shared/chat-sidebar-settings'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
-import type { AgentProviderSessionMetadata } from '../../../../shared/agent-session-resume'
+import type { AgentProviderSessionMetadata } from '../../../../shared/agent-session/lifecycle/agent-session-resume'
 import { isAiVaultTitleAgent } from '../../../../shared/ai-vault-session-title'
 import { isClaudeTranscriptInProjectBucket } from '../../../../shared/claude-project-path'
 import {

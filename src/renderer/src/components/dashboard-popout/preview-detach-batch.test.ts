@@ -89,4 +89,15 @@ describe('preview detach batching', () => {
 
     expect(detach).not.toHaveBeenCalled()
   })
+
+  it('unsubscribes a remote preview through its owning API instead of local detach', async () => {
+    const unsubscribe = vi.fn(async () => undefined)
+    const remoteApi = { unsubscribe } as unknown as typeof window.api.terminalPreview
+
+    queuePreviewDetach('remote-p1', 'surface-a', remoteApi)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('remote-p1', 'surface-a')
+    expect(detach).not.toHaveBeenCalled()
+  })
 })

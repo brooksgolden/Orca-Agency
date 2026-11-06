@@ -27,8 +27,6 @@ export type {
   TerminalArtifactAccessOptions
 } from './filesystem-provider-contract'
 
-export { FileRangeReadUnsupportedError } from './filesystem-provider-contract'
-
 // ─── Git Provider ───────────────────────────────────────────────────
 
 export type { GitProviderStatusOptions, IGitProvider } from './git-provider-contract'

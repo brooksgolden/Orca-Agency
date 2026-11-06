@@ -209,7 +209,7 @@ describe('connectPanePty', () => {
       expect.objectContaining({
         sessionId: 'lost-pty',
         command:
-          "codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'",
+          "codex '-c' 'disable_paste_burst=true' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'",
         resumeProviderSession: {
           key: 'session_id',
           id: 'codex-session-1',
@@ -299,7 +299,7 @@ describe('connectPanePty', () => {
     expect(transport.connect).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 'lost-pty',
-        command: `codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'"'"'s'`,
+        command: `codex '-c' 'disable_paste_burst=true' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'"'"'s'`,
         env: expect.objectContaining({
           ORCA_PANE_KEY: paneKey,
           ORCA_TAB_ID: 'tab-1',
@@ -387,7 +387,11 @@ describe('connectPanePty', () => {
         expect.any(Function)
       )
       const writeCalls = pane.terminal.write.mock.calls.map(([data]) => data)
-      expect(writeCalls.findIndex((data) => data.includes('--- session restored ---'))).toBe(-1)
+      expect(
+        writeCalls.findIndex(
+          (data) => typeof data === 'string' && data.includes('--- session restored ---')
+        )
+      ).toBe(-1)
       expect(deps.onShowSessionRestoredBanner).toHaveBeenCalledTimes(1)
       expect(deps.onShowSessionRestoredBanner).toHaveBeenCalledWith(1, 'restored')
       expect(transport.sendInput).not.toHaveBeenCalled()
@@ -395,7 +399,7 @@ describe('connectPanePty', () => {
         expect.objectContaining({
           sessionId: 'lost-pty',
           command:
-            "codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'",
+            "codex '-c' 'disable_paste_burst=true' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'",
           resumeProviderSession: {
             key: 'session_id',
             id: 'codex-session-1',
@@ -544,7 +548,7 @@ describe('connectPanePty', () => {
       expect.objectContaining({
         sessionId: 'lost-pty',
         command:
-          "codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'"
+          "codex '-c' 'disable_paste_burst=true' '-c' 'tui.resume_cwd=current' 'resume' 'codex-session-1'"
       })
     )
     expect(mockStoreState.clearSleepingAgentSession).toHaveBeenCalledWith(legacyPaneKey)

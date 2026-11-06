@@ -1,14 +1,15 @@
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
-import {
-  executeTerminalPastePlan,
-  planTerminalPasteWithYield,
-  type TerminalPasteSource,
-  type TerminalPasteTextOptions
-} from '@/components/terminal-pane/terminal-paste-coordinator'
+import { executeTerminalPastePlan } from '@/components/terminal-pane/terminal-paste-executor'
+import { planTerminalPasteWithYield } from '@/components/terminal-pane/terminal-paste-coordinator'
+import type {
+  TerminalPasteSource,
+  TerminalPasteTextOptions
+} from '@/components/terminal-pane/terminal-paste-model'
 import { resolveTerminalPasteRuntime } from '@/components/terminal-pane/terminal-paste-runtime'
 import { pasteTerminalText } from '@/components/terminal-pane/terminal-bracketed-paste'
 import { pasteTerminalClipboard } from '@/components/terminal-pane/terminal-clipboard-paste'
 import type { DashboardCardTerminalInput } from '../../../../shared/dashboard-snapshot'
+import { terminalPreviewApiFor } from './terminal-preview-api'
 
 type PreviewPasteTerminal = Parameters<typeof pasteTerminalText>[0]
 
@@ -21,7 +22,10 @@ export type PreviewTerminalPasteSource = 'keyboard' | 'app-menu' | 'right-click'
  * clipboard as a temp file on the pty's host — the same order as the pane.
  */
 export function createPreviewClipboardPaster(deps: {
+  /** Names the session for paste planning; a remote-runtime pty id routes as remote. */
   ptyId: string
+  /** Where pasted bytes go when they bypass xterm, e.g. a bracketed paste's closing marker. */
+  writeInput?: (data: string) => boolean | Promise<boolean>
   container: HTMLElement
   getTerminal: () => PreviewPasteTerminal | null
   getTerminalInput: () => DashboardCardTerminalInput | null
@@ -48,6 +52,7 @@ export function createPreviewClipboardPaster(deps: {
     }
     const pasteText = createPreviewTextPaster({
       ptyId: deps.ptyId,
+      writeInput: deps.writeInput,
       terminal: pasteTerminal,
       terminalInput,
       source,
@@ -68,6 +73,7 @@ export function createPreviewClipboardPaster(deps: {
 
 export function createPreviewTextPaster(deps: {
   ptyId: string
+  writeInput?: (data: string) => boolean | Promise<boolean>
   terminal: PreviewPasteTerminal
   terminalInput: DashboardCardTerminalInput | null
   source: TerminalPasteSource
@@ -100,7 +106,11 @@ export function createPreviewTextPaster(deps: {
     const execution = await executeTerminalPastePlan(plan, {
       // Why: stream large pastes so the renderer never emits one huge IPC payload.
       pasteText: (chunk, chunkOptions) => pasteTerminalText(deps.terminal, chunk, chunkOptions),
-      writePty: (data) => window.api.terminalPreview.input(deps.ptyId, data),
+      // Why: the standalone caller passes its own writer; the preview card keeps the terminal-preview IPC route.
+      writePty: (data) =>
+        deps.writeInput
+          ? deps.writeInput(data)
+          : terminalPreviewApiFor(deps.ptyId).input(deps.ptyId, data),
       isTargetCurrent: deps.isTargetCurrent,
       // Why: if focus changes mid-bracketed paste, the closing marker must still reach the live PTY.
       canContinue: () => true

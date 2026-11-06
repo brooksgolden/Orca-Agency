@@ -1,4 +1,5 @@
 import type { TerminalPreviewDataPayload } from '../../../../shared/terminal-preview'
+import { terminalPreviewApiFor } from './terminal-preview-api'
 
 type LivePayload = Extract<TerminalPreviewDataPayload, { type: 'data' }>
 
@@ -19,7 +20,7 @@ export function createPreviewLivePayloadWriter(args: {
       payload.data,
       () => {
         if (!args.isDisposed()) {
-          void window.api.terminalPreview.ack(args.ptyId, payload.bytes, args.surfaceId)
+          void terminalPreviewApiFor(args.ptyId).ack(args.ptyId, payload.bytes, args.surfaceId)
         }
       },
       true

@@ -1,0 +1,178 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installTerminalRendererGapProbe } from './terminal-renderer-gap-probe'
+
+const recordBreadcrumb = vi.hoisted(() => vi.fn())
+const queuePressure = vi.hoisted(() => vi.fn())
+vi.mock('./crash-breadcrumb-recorder', () => ({
+  recordRendererCrashBreadcrumb: recordBreadcrumb
+}))
+vi.mock('./pane-manager/pane-terminal-output-queue-registry', () => ({
+  getTerminalOutputQueuePressure: queuePressure
+}))
+
+describe('terminal renderer gap probe', () => {
+  let now = 0
+  let focused = true
+  let visible = true
+  let terminalCount = 2
+  const listeners = new Map<string, (event: Event) => void>()
+
+  function tick(elapsedMs: number): void {
+    now += elapsedMs
+    vi.advanceTimersByTime(100)
+  }
+
+  beforeEach(() => {
+    now = 0
+    focused = true
+    visible = true
+    terminalCount = 2
+    listeners.clear()
+    vi.useFakeTimers()
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    vi.stubGlobal('window', { setInterval, clearInterval })
+    vi.stubGlobal('PerformanceObserver', undefined)
+    class TerminalElement {
+      closest(selector: string): object | null {
+        return selector === '.xterm' ? this : null
+      }
+    }
+    vi.stubGlobal('Element', TerminalElement)
+    vi.stubGlobal('document', {
+      get visibilityState() {
+        return visible ? 'visible' : 'hidden'
+      },
+      hasFocus: () => focused,
+      querySelectorAll: () => Array.from({ length: terminalCount }),
+      addEventListener: (name: string, listener: (event: Event) => void) =>
+        listeners.set(name, listener),
+      removeEventListener: (name: string) => listeners.delete(name)
+    })
+    recordBreadcrumb.mockClear()
+    queuePressure.mockReturnValue({
+      queuedTerminalCount: 3,
+      queuedChars: 42_000,
+      highPriorityTerminalCount: 2,
+      heldForegroundTerminalCount: 1
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('records a foreground terminal stall without content and stops on dispose', () => {
+    const dispose = installTerminalRendererGapProbe()
+    tick(100)
+    tick(1_400)
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_renderer_gap',
+      expect.objectContaining({
+        gapMs: 1_300,
+        terminalPaneCount: 2,
+        queuedTerminalCount: 3,
+        queuedChars: 42_000,
+        highPriorityTerminalCount: 2,
+        heldForegroundTerminalCount: 1
+      })
+    )
+    dispose()
+    tick(2_000)
+    expect(recordBreadcrumb).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores hidden, focus-transition, and terminal-free timer gaps', () => {
+    const dispose = installTerminalRendererGapProbe()
+    visible = false
+    tick(2_000)
+    visible = true
+    tick(2_000)
+    focused = false
+    tick(2_000)
+    focused = true
+    tick(2_000)
+    terminalCount = 0
+    tick(2_000)
+    expect(recordBreadcrumb).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('records a subsecond renderer stall during a foreground terminal session', () => {
+    const dispose = installTerminalRendererGapProbe()
+    tick(100)
+    tick(350)
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_renderer_gap',
+      expect.objectContaining({ gapMs: 250, terminalPaneCount: 2 })
+    )
+    dispose()
+  })
+
+  it('captures delayed terminal input without recording the key or pasted text', () => {
+    const dispose = installTerminalRendererGapProbe()
+    const TerminalElement = globalThis.Element
+    const terminal = new TerminalElement()
+    const keyEvent = new Event('keydown')
+    Object.defineProperties(keyEvent, {
+      isTrusted: { value: true },
+      target: { value: terminal },
+      timeStamp: { value: 900 },
+      key: { value: 'secret key' }
+    })
+    now = 1_500
+    listeners.get('keydown')?.(keyEvent)
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_input_dispatch_delay',
+      expect.objectContaining({ delayMs: 600, kind: 'keydown', terminalPaneCount: 2 })
+    )
+    expect(JSON.stringify(recordBreadcrumb.mock.calls)).not.toContain('secret key')
+    now = 2_000
+    const wheelEvent = new Event('wheel')
+    Object.defineProperties(wheelEvent, {
+      isTrusted: { value: true },
+      target: { value: terminal },
+      timeStamp: { value: 1_500 }
+    })
+    listeners.get('wheel')?.(wheelEvent)
+    expect(recordBreadcrumb).toHaveBeenCalledTimes(1)
+    expect(listeners.has('input')).toBe(true)
+    dispose()
+    expect(listeners.size).toBe(0)
+  })
+
+  it('does not disrupt input or timer delivery if diagnostic sampling fails', () => {
+    const dispose = installTerminalRendererGapProbe()
+    queuePressure.mockImplementation(() => {
+      throw new Error('diagnostic failure')
+    })
+    tick(100)
+    expect(() => tick(350)).not.toThrow()
+    const terminal = new globalThis.Element()
+    const keyEvent = new Event('keydown')
+    Object.defineProperties(keyEvent, {
+      isTrusted: { value: true },
+      target: { value: terminal },
+      timeStamp: { value: 100 }
+    })
+    now = 1_000
+    expect(() => listeners.get('keydown')?.(keyEvent)).not.toThrow()
+    dispose()
+  })
+
+  it('disconnects the long-frame observer when the gap probe closes', () => {
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    class Observer {
+      static supportedEntryTypes = ['long-animation-frame']
+      observe = observe
+      disconnect = disconnect
+    }
+    vi.stubGlobal('PerformanceObserver', Observer)
+    const dispose = installTerminalRendererGapProbe()
+    expect(observe).toHaveBeenCalledWith({ type: 'long-animation-frame' })
+    dispose()
+    expect(disconnect).toHaveBeenCalledTimes(1)
+  })
+})

@@ -16,7 +16,7 @@ export function isWorkspaceHeaderDragTarget(target: EventTarget | null): boolean
 }
 
 /** Reuse sidebar placement without converting terminal input or native window drags. */
-export function useWorkspaceHeaderDrag(worktreeId: string) {
+export function useWorkspaceHeaderDrag(worktreeId: string, sourceGroupId?: string) {
   const cleanupRef = useRef<(() => void) | null>(null)
   useEffect(() => () => cleanupRef.current?.(), [])
   return (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -24,6 +24,7 @@ export function useWorkspaceHeaderDrag(worktreeId: string) {
       return
     }
     const header = event.currentTarget
+    const dragGroupId = sourceGroupId ?? header.dataset.workspaceDragGroupId
     const pointerId = event.pointerId
     const startX = event.clientX
     const startY = event.clientY
@@ -57,7 +58,12 @@ export function useWorkspaceHeaderDrag(worktreeId: string) {
       }
       next.preventDefault()
       next.stopPropagation()
-      dispatchWorkspacePanePointerMove({ sourceId: worktreeId, x: next.clientX, y: next.clientY })
+      dispatchWorkspacePanePointerMove({
+        sourceId: worktreeId,
+        sourceGroupId: dragGroupId,
+        x: next.clientX,
+        y: next.clientY
+      })
     }
     const end = (next: PointerEvent) => {
       if (next.pointerId !== pointerId) {
@@ -66,7 +72,12 @@ export function useWorkspaceHeaderDrag(worktreeId: string) {
       if (active) {
         next.preventDefault()
         next.stopPropagation()
-        dispatchWorkspacePanePointerDrop({ sourceId: worktreeId, x: next.clientX, y: next.clientY })
+        dispatchWorkspacePanePointerDrop({
+          sourceId: worktreeId,
+          sourceGroupId: dragGroupId,
+          x: next.clientX,
+          y: next.clientY
+        })
       }
       cleanup()
     }

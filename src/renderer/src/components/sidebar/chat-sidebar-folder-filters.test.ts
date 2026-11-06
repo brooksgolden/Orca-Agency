@@ -25,13 +25,45 @@ function items(settings: ChatSidebarSettings, query = '', collapsed = new Set<st
 }
 
 describe('chat sidebar folder filters', () => {
-  it('keeps a registered folder visible when Hide Done leaves no chat rows', () => {
+  it('collapses idle folder history independently of working chats in Split workspaces', () => {
+    const state = chatState({
+      tabsByWorktree: { [chatWorktree.id]: [chatTab('active')], other: [chatTab('other')] }
+    })
+    state.settings!.chatSidebar = { groupBy: 'folder', collapseFolders: { idle: true } }
+    const active = chatRow({ id: 'active', tabId: 'active', state: 'working' })
+    const history = chatRow({ id: 'history', tabId: null, state: 'idle' })
+    const other = chatRow({
+      id: 'other',
+      tabId: 'other',
+      folder: 'Other',
+      state: 'working',
+      worktree: { ...chatWorktree, id: 'other' }
+    })
+    const split = placeWorkspaceAtEdge([], chatWorktree.id, 'other', 'right', 'joined')
+    const grouped = chatSidebarListItems([active, history, other], state, '', split)
+    expect(grouped.find((item) => item.id === 'chat:folder:Acme')).toMatchObject({
+      collapsed: true
+    })
+    expect(grouped.some((item) => item.kind === 'chat' && item.id === 'history')).toBe(false)
+    expect(grouped.some((item) => item.kind === 'chat' && item.id === 'active')).toBe(true)
+    const detached = chatSidebarListItems([active, history, other], state, '')
+    expect(detached.find((item) => item.id === 'chat:folder:Acme')).toMatchObject({
+      collapsed: false
+    })
+    state.settings!.chatSidebar.expandedDoneFolders = ['Acme']
+    expect(
+      chatSidebarListItems([active, history, other], state, '', split).find(
+        (item) => item.id === 'chat:folder:Acme'
+      )
+    ).toMatchObject({ collapsed: false })
+  })
+  it('keeps a registered ExampleLocal folder visible when Hide Done leaves no chat rows', () => {
     const state = chatState({
       projectGroups: [
         {
-          id: 'example',
-          name: 'Example',
-          parentPath: '/clients/Example',
+          id: 'examplelocal',
+          name: 'ExampleLocal',
+          parentPath: '/clients/ExampleLocal',
           parentGroupId: null,
           createdFrom: 'manual',
           tabOrder: 0,
@@ -43,12 +75,17 @@ describe('chat sidebar folder filters', () => {
       ]
     })
     state.settings!.chatSidebar = { groupBy: 'folder', showOnlyInProgress: true }
-    const done = chatRow({ id: 'done-example', folder: 'Example', completed: true, tabId: null })
+    const done = chatRow({
+      id: 'done-examplelocal',
+      folder: 'ExampleLocal',
+      completed: true,
+      tabId: null
+    })
     expect(chatSidebarListItems([done], state, '')).toMatchObject([
-      { kind: 'heading', id: 'chat:folder:Example', label: 'Example (0)' }
+      { kind: 'heading', id: 'chat:folder:ExampleLocal', label: 'ExampleLocal (0)' }
     ])
     expect(chatSidebarListItems([], state, '')).toMatchObject([
-      { kind: 'heading', id: 'chat:folder:Example', label: 'Example (0)' }
+      { kind: 'heading', id: 'chat:folder:ExampleLocal', label: 'ExampleLocal (0)' }
     ])
     state.settings!.chatSidebar = { groupBy: 'folder', showOnlyOpenChats: true }
     expect(chatSidebarListItems([], state, '')).toEqual([])
@@ -58,7 +95,7 @@ describe('chat sidebar folder filters', () => {
       showOnlyInProgress: true
     }
     expect(chatSidebarListItems([], state, '')).toMatchObject([
-      { kind: 'heading', id: 'chat:folder:Example', label: 'Example (0)' }
+      { kind: 'heading', id: 'chat:folder:ExampleLocal', label: 'ExampleLocal (0)' }
     ])
   })
 

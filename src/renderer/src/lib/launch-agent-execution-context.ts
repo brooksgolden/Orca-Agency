@@ -1,15 +1,17 @@
+import { toast } from 'sonner'
 import type { AgentStartupShell } from '../../../shared/tui-agent-startup-shell'
-import { resolveLocalWindowsAgentStartupShell } from '../../../shared/windows-terminal-shell'
-import { CLIENT_PLATFORM } from '@/lib/new-workspace'
-import { getAgentLaunchPlatformForRepo } from '@/lib/agent-launch-platform'
+import { launchHostIsRemote } from '../../../shared/agent-launch-remote'
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import { getRepoSshConnectionId, parseExecutionHostId } from '../../../shared/execution-host'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { findRepoForHost } from '@/store/slices/repo-host-identity'
-import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
+import {
+  refineLocalLaunchPlatform,
+  resolveExecutionHostAgentStartupShell,
+  resolveWorktreeExecutionHostPlatform
+} from '@/lib/execution-host-facts'
 import type { useAppStore } from '@/store'
 
-/** Where a new-tab agent launch runs, and the quoting rules that follow from it. */
 export type AgentLaunchExecutionContext = {
   /** `undefined` means rival host rows disagree, which is not evidence of a remote. */
   worktreeSshConnectionId: string | null | undefined
@@ -19,6 +21,7 @@ export type AgentLaunchExecutionContext = {
   queuedShell: AgentStartupShell | undefined
 }
 
+/** `null` means the host's OS is unknown; the user has been told why the launch stopped. */
 export function resolveAgentLaunchExecutionContext(
   store: ReturnType<typeof useAppStore.getState>,
   args: {
@@ -26,7 +29,7 @@ export function resolveAgentLaunchExecutionContext(
     executionHostId?: ExecutionHostId
     launchPlatform?: NodeJS.Platform
   }
-): AgentLaunchExecutionContext {
+): AgentLaunchExecutionContext | null {
   const selectedHost = parseExecutionHostId(args.executionHostId)
   const worktree = args.executionHostId
     ? (store.getKnownWorktreeById?.(args.worktreeId, args.executionHostId) ?? null)
@@ -47,26 +50,31 @@ export function resolveAgentLaunchExecutionContext(
         ? getRepoSshConnectionId(repo)
         : null
     : getConnectionIdFromState(store, args.worktreeId)
-  const resolvedLaunchPlatform =
-    args.launchPlatform ??
-    (repo
-      ? getAgentLaunchPlatformForRepo(
-          repo,
-          worktreeSshConnectionId
-            ? undefined
-            : getLocalProjectExecutionRuntimeContext(store, args.worktreeId)
-        )
-      : CLIENT_PLATFORM)
-  // Why: SSH remotes deploy the shim as plain `orca`, so skip the Linux-only `orca-ide` rename for remote launches.
-  const isRemote = Boolean(worktreeSshConnectionId)
+  // Why getKnownWorktreeById: folder workspaces are not in allWorktrees, and their path marks WSL.
+  const workspacePath = (
+    store.getKnownWorktreeById?.(args.worktreeId, args.executionHostId) ??
+    store.allWorktrees?.().find((entry) => entry.id === args.worktreeId)
+  )?.path
+  // Why: the agent runs on the workspace's execution host, so its OS and shell decide quoting (#22204).
+  const fact = resolveWorktreeExecutionHostPlatform(
+    store,
+    args.worktreeId,
+    workspacePath,
+    undefined,
+    args.executionHostId
+  )
+  if (fact.kind === 'withheld') {
+    toast.error(fact.reason)
+    return null
+  }
+  const launchHost = refineLocalLaunchPlatform(fact, args.launchPlatform)
   return {
     worktreeSshConnectionId,
-    resolvedLaunchPlatform,
-    isRemote,
-    queuedShell: resolveLocalWindowsAgentStartupShell({
-      platform: resolvedLaunchPlatform,
-      isRemote,
-      terminalWindowsShell: store.settings?.terminalWindowsShell
-    })
+    resolvedLaunchPlatform: launchHost.platform,
+    isRemote: launchHostIsRemote(launchHost.hostKind, workspacePath),
+    queuedShell: resolveExecutionHostAgentStartupShell(
+      launchHost,
+      store.settings?.terminalWindowsShell
+    )
   }
 }

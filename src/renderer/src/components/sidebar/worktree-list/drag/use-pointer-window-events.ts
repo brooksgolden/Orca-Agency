@@ -11,11 +11,11 @@ import {
   dispatchWorkspacePanePointerDrop,
   dispatchWorkspacePanePointerMove
 } from '../../../workspace-split/workspace-pane-pointer-drag'
+import { addAppKeyListener, removeAppKeyListener } from '@/lib/app-keyboard-router'
 
 const SIDEBAR_POINTER_DRAG_THRESHOLD_PX = 4
 
-// Pointer drags escape the row that started them, so move/up/cancel are tracked on the
-// window in capture phase.
+// Capture move/up/cancel on window because drags escape their starting row.
 export function useWorktreePointerDragWindowEvents(args: {
   ctx: WorktreeDropCommitContext
   runtime: WorktreeDragRuntime
@@ -109,12 +109,12 @@ export function useWorktreePointerDragWindowEvents(args: {
       clearWorktreeDrag()
     }
 
-    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    addAppKeyListener('keydown', handleKeyDown)
     window.addEventListener('pointermove', handlePointerMove, { capture: true })
     window.addEventListener('pointerup', handlePointerUp, { capture: true })
     window.addEventListener('pointercancel', handlePointerCancel, { capture: true })
     return () => {
-      window.removeEventListener('keydown', handleKeyDown, { capture: true })
+      removeAppKeyListener('keydown', handleKeyDown)
       window.removeEventListener('pointermove', handlePointerMove, { capture: true })
       window.removeEventListener('pointerup', handlePointerUp, { capture: true })
       window.removeEventListener('pointercancel', handlePointerCancel, { capture: true })

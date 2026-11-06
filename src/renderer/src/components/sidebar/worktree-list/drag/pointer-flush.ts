@@ -11,7 +11,10 @@ import {
   isPointBesideSidebar,
   shouldPreferSidebarStatusDropTarget
 } from './status-target'
-import type { WorktreeDropCommitContext } from './drop-commit-context'
+import type {
+  ShouldShowWorkspaceBoardDropIndicator,
+  WorktreeDropCommitContext
+} from './drop-commit-context'
 import {
   applyWorktreeDropPreview,
   applyWorktreeLineageDropPreview,
@@ -31,16 +34,12 @@ export type WorktreePointerDragFrameArgs = {
   workspaceBoardOpen: boolean
   onWorkspaceBoardDragPreviewStart: () => void
   onWorkspaceBoardDragPreviewCommit: () => void
-  shouldShowWorkspaceBoardDropIndicator: (
-    worktreeIds: readonly string[],
-    status: WorkspaceStatus
-  ) => boolean
+  shouldShowWorkspaceBoardDropIndicator: ShouldShowWorkspaceBoardDropIndicator
   setWorktreeDragState: React.Dispatch<React.SetStateAction<WorktreeRowDragState>>
   setDragOverStatus: (status: WorkspaceStatus | null) => void
   setPinDragOver: (pinDragOver: boolean) => void
 }
 
-// Reflect a status/pin hover that has no insertion line of its own.
 function showStatusHoverWithoutInsertionLine(
   args: WorktreePointerDragFrameArgs,
   target: WorktreeSidebarLineageDropTarget
@@ -50,7 +49,7 @@ function showStatusHoverWithoutInsertionLine(
     ? ctx.computeWorktreeStatusDrop({
         pointerY: drag.currentY,
         status: target.status,
-        draggedIds: drag.reorderDraggedIds
+        draggedKeys: drag.reorderDraggedKeys
       })
     : null
   updateLatestWorktreeStatusDropTarget(drag, target, statusDrop)
@@ -81,8 +80,6 @@ function clearInsertionLine(args: WorktreePointerDragFrameArgs): void {
   )
 }
 
-// One animation frame of an in-flight pointer drag: move the floating preview, then decide
-// whether the pointer is over the workspace board, a status/pin section, or a reorder slot.
 export function flushWorktreePointerDragFrame(args: WorktreePointerDragFrameArgs): void {
   const { drag, ctx } = args
   drag.frameId = null
@@ -109,7 +106,11 @@ export function flushWorktreePointerDragFrame(args: WorktreePointerDragFrameArgs
     shouldShowDropIndicator: (target) =>
       Boolean(
         target.status &&
-        args.shouldShowWorkspaceBoardDropIndicator(drag.reorderDraggedIds, target.status)
+        args.shouldShowWorkspaceBoardDropIndicator(
+          drag.reorderDraggedIds,
+          target.status,
+          drag.draggedCopies
+        )
       )
   })
   drag.latestBoardDropTarget = {

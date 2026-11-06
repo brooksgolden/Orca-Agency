@@ -24,5 +24,7 @@ export type AgentTerminalPreviewProps = {
   detachBatched?: boolean
   /** Fired once main reports it knows no such pty; a host that can respawn the pane reacts here. */
   onPtyGone?: () => void
+  /** Dismisses the hosting dialog on the pane-close chord (Cmd/Ctrl+W). */
+  onRequestClose?: () => void
   className?: string
 }

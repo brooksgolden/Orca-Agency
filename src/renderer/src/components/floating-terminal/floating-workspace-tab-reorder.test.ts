@@ -8,16 +8,25 @@ import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { Tab, TabGroup } from '../../../../shared/tab-types'
 import { useAppStore } from '../../store'
 import { useTabDragSplit, type TabDragItemData } from '../tab-group/useTabDragSplit'
+import { findTabGroupStripUnderPointer } from '../tab-group/tab-group-strip-hit'
 import { isFloatingTerminalDragTarget } from './floating-terminal-titlebar-drag-target'
+import { layoutApplyTestTransport } from '@/runtime/layout-apply-test-transport.test-fixture'
+import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
+
+vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) =>
+  (
+    await import('@/runtime/layout-apply-test-transport.test-fixture')
+  ).runtimeRpcClientWithLayoutApply(await importOriginal())
+)
 
 vi.mock('../browser-pane/host-guest/webview-registry', () => ({
   acquireWebviewsDragPassthrough: vi.fn(() => vi.fn())
 }))
 
-vi.mock('../../runtime/web-runtime-session', () => ({
-  isWebRuntimeSessionActive: vi.fn(() => false),
-  moveWebRuntimeSessionTab: vi.fn()
+vi.mock('../../runtime/web-runtime-session-environment', () => ({
+  isWebRuntimeSessionActive: vi.fn(() => false)
 }))
+vi.mock('../../runtime/web-runtime-session-tab-move', () => ({ moveWebRuntimeSessionTab: vi.fn() }))
 
 const GROUP_ID = 'floating-group'
 const mounted: { container: HTMLDivElement; root: Root }[] = []
@@ -60,7 +69,6 @@ function makeDropEvent(
       ? {
           id: overData.visibleTabId,
           data: { current: overData },
-          // Tabs sit in a 100px-wide strip slot starting at x=200; midpoint is 250.
           rect: { left: 200, top: 0, width: 100, height: 32 }
         }
       : null,
@@ -103,6 +111,17 @@ function dropTab(from: string, over: string, pointerX: number): void {
   })
 }
 
+/** Assert the main-owned command or local mutation according to the build’s layout owner. */
+function expectReorder(tabId: string, order: string[]): void {
+  if (ORCA_LAYOUT_OWNER_IS_MAIN) {
+    expect(layoutApplyTestTransport.sentOfType('moveTab')).toEqual([
+      expect.objectContaining({ tabId, toGroupId: GROUP_ID, index: order.indexOf(tabId) })
+    ])
+  } else {
+    expect(floatingTabOrder()).toEqual(order)
+  }
+}
+
 function floatingTabOrder(): string[] {
   const groups: TabGroup[] =
     useAppStore.getState().groupsByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? []
@@ -110,6 +129,12 @@ function floatingTabOrder(): string[] {
 }
 
 beforeEach(() => {
+  layoutApplyTestTransport.reset()
+  const strip = document.createElement('div')
+  strip.dataset.tabGroupStripId = GROUP_ID
+  strip.dataset.worktreeId = FLOATING_TERMINAL_WORKTREE_ID
+  strip.getBoundingClientRect = () => new DOMRect(0, 0, 400, 36)
+  document.body.appendChild(strip)
   useAppStore.setState({
     // The floating workspace is never the active worktree; its tabs still reorder.
     activeWorktreeId: 'wt-main',
@@ -145,23 +170,70 @@ afterEach(() => {
 })
 
 describe('floating workspace tab reorder', () => {
-  it('moves a tab after the hovered tab when released on its right half', () => {
-    dropTab('tab-a', 'tab-c', 290)
-    expect(floatingTabOrder()).toEqual(['tab-b', 'tab-c', 'tab-a'])
+  it('finds blank titlebar strip space inside its outer drag button', () => {
+    const strip = document.querySelector<HTMLElement>('[data-tab-group-strip-id]')!
+    const titlebarButton = document.createElement('button')
+    const blank = document.createElement('div')
+    strip.replaceWith(titlebarButton)
+    titlebarButton.appendChild(strip)
+    strip.appendChild(blank)
+    const previous = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => blank
+    })
+    try {
+      expect(
+        findTabGroupStripUnderPointer(FLOATING_TERMINAL_WORKTREE_ID, { x: 250, y: 16 })?.groupId
+      ).toBe(GROUP_ID)
+    } finally {
+      if (previous) {
+        Object.defineProperty(document, 'elementFromPoint', previous)
+      } else {
+        Reflect.deleteProperty(document, 'elementFromPoint')
+      }
+    }
   })
 
-  it('moves a tab before the hovered tab when released on its left half', () => {
-    dropTab('tab-c', 'tab-a', 210)
+  it('keeps the marked insertion when release loses the tab with a different display ID', () => {
+    const drag = renderFloatingDragHook()
+    const activeData = makeDragData('tab-c')
+    const move = makeDropEvent(activeData, makeDragData('tab-a'), 210)
+    act(() => drag.onDragStart(move as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(move as unknown as Parameters<typeof drag.onDragMove>[0]))
+    act(() =>
+      drag.onDragEnd(
+        makeDropEvent(activeData, null, 210) as unknown as Parameters<typeof drag.onDragEnd>[0]
+      )
+    )
     expect(floatingTabOrder()).toEqual(['tab-c', 'tab-a', 'tab-b'])
   })
 
-  it('leaves the order alone when a tab is dropped on itself', () => {
+  it('moves a tab after the hovered tab when released on its right half', async () => {
+    dropTab('tab-a', 'tab-c', 290)
+    await layoutApplyTestTransport.settle()
+    expectReorder('tab-a', ['tab-b', 'tab-c', 'tab-a'])
+  })
+
+  it('moves a tab before the hovered tab when released on its left half', async () => {
+    dropTab('tab-c', 'tab-a', 210)
+    await layoutApplyTestTransport.settle()
+    expectReorder('tab-c', ['tab-c', 'tab-a', 'tab-b'])
+  })
+
+  it('leaves the order alone when a tab is dropped on itself', async () => {
     dropTab('tab-b', 'tab-b', 290)
+    await layoutApplyTestTransport.settle()
     expect(floatingTabOrder()).toEqual(['tab-a', 'tab-b', 'tab-c'])
   })
 
-  it('republishes sortOrder so the panel renders the committed order', () => {
+  it('republishes sortOrder so the panel renders the committed order', async () => {
     dropTab('tab-a', 'tab-c', 290)
+    await layoutApplyTestTransport.settle()
+    if (ORCA_LAYOUT_OWNER_IS_MAIN) {
+      expectReorder('tab-a', ['tab-b', 'tab-c', 'tab-a'])
+      return
+    }
     const tabs = useAppStore.getState().unifiedTabsByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? []
     expect(tabs.map((tab) => [tab.id, tab.sortOrder])).toEqual([
       ['tab-a', 2],

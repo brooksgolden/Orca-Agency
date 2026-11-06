@@ -12,20 +12,12 @@ import type {
 } from '../../../../shared/automations-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { AutomationDetail } from './AutomationDetail'
-import { HermesCronOutputView } from './HermesCronOutputView'
-import { AutomationRunPageFrame } from './AutomationRunPageFrame'
 import { AutomationRunHistory } from './AutomationRunHistory'
 import { ExternalAutomationManagers } from './ExternalAutomationManagers'
 import type { FetchExternalAutomationRuns } from './ExternalAutomationRunTable'
+import { HermesCronOutputView } from './HermesCronOutputView'
 import type { ExternalAutomationListEntry } from './external-automation-list-entries'
 import type { ExternalAutomationScope } from './external-automation-scope-client'
-import {
-  formatExternalDate,
-  getExternalProviderLabel,
-  getExternalRunContent,
-  getExternalRunStatusLabel,
-  getExternalRunStatusVariant
-} from './external-automation-display'
 import type { AutomationActionNotice } from './automation-row-action-dispatch'
 import type { AutomationHostRecoveryAction } from './automation-host-status-descriptors'
 import type { AutomationHostCatalogEntry } from './automation-host-catalog-types'
@@ -41,7 +33,20 @@ import { translate } from '@/i18n/i18n'
 type AutomationsDetailPaneProps = {
   selected: Automation | null
   selectedExternal: ExternalAutomationListEntry | null
-  selectedExternalRunPage: SelectedExternalRunPage | null
+  selectedExternalRunPage?: SelectedExternalRunPage | null
+  fetchExternalAutomationRuns?: FetchExternalAutomationRuns
+  onOpenExternalRun?: (
+    manager: ExternalAutomationManager,
+    job: ExternalAutomationJob,
+    run: ExternalAutomationRun,
+    scope: ExternalAutomationScope
+  ) => void
+  onClearExternalRun?: () => void
+  onEditExternal?: (
+    manager: ExternalAutomationManager,
+    job: ExternalAutomationJob,
+    scope: ExternalAutomationScope
+  ) => void
   selectedRuns: AutomationRun[]
   /** Set when the selected automation's history read failed; its runs are unknown. */
   selectedRunsNotice: AutomationActionNotice | null
@@ -56,23 +61,11 @@ type AutomationsDetailPaneProps = {
   hostLabelById: ReadonlyMap<string, string>
   selectedRunNowAvailability: AutomationTargetAvailability | null
   worktreeMap: ReadonlyMap<string, Worktree>
-  fetchExternalAutomationRuns: FetchExternalAutomationRuns
   onActivePaneTabChange: (tab: AutomationPaneTab) => void
-  onClearExternalRunPage: () => void
   requestExternalAction: (
     manager: ExternalAutomationManager,
     job: ExternalAutomationJob,
     action: ExternalAutomationAction,
-    scope: ExternalAutomationScope
-  ) => void
-  openExternalRunPage: (
-    manager: ExternalAutomationManager,
-    job: ExternalAutomationJob,
-    run: ExternalAutomationRun
-  ) => void
-  openEditExternalDialog: (
-    manager: ExternalAutomationManager,
-    job: ExternalAutomationJob,
     scope: ExternalAutomationScope
   ) => void
   runNow: (automation: Automation) => void
@@ -88,6 +81,10 @@ export function AutomationsDetailPane({
   selected,
   selectedExternal,
   selectedExternalRunPage,
+  fetchExternalAutomationRuns,
+  onOpenExternalRun,
+  onClearExternalRun,
+  onEditExternal,
   selectedRuns,
   selectedRunsNotice,
   activePaneTab,
@@ -100,12 +97,8 @@ export function AutomationsDetailPane({
   hostLabelById,
   selectedRunNowAvailability,
   worktreeMap,
-  fetchExternalAutomationRuns,
   onActivePaneTabChange,
-  onClearExternalRunPage,
   requestExternalAction,
-  openExternalRunPage,
-  openEditExternalDialog,
   runNow,
   openEditDialog,
   toggleAutomation,
@@ -119,10 +112,10 @@ export function AutomationsDetailPane({
       if (shouldHandleAutomationDetailEscapeKey(event)) {
         event.preventDefault()
         if (selectedExternalRunPage) {
-          onClearExternalRunPage()
-          return
+          onClearExternalRun?.()
+        } else {
+          onBackToList()
         }
-        onBackToList()
         return
       }
 
@@ -149,7 +142,7 @@ export function AutomationsDetailPane({
     activePaneTab,
     onActivePaneTabChange,
     onBackToList,
-    onClearExternalRunPage,
+    onClearExternalRun,
     selected,
     selectedExternal,
     selectedExternalRunPage
@@ -169,20 +162,28 @@ export function AutomationsDetailPane({
             </Button>
           </div>
           {selectedExternalRunPage ? (
-            <AutomationRunPageFrame
-              title={selectedExternalRunPage.job.name}
-              breadcrumbs={[
-                formatExternalDate(selectedExternalRunPage.run.runAt, relativeNow),
-                getExternalProviderLabel(selectedExternalRunPage.manager),
-                selectedExternalRunPage.manager.targetLabel
-              ]}
-              detail={selectedExternalRunPage.run.outputPath}
-              statusLabel={getExternalRunStatusLabel(selectedExternalRunPage.run)}
-              statusVariant={getExternalRunStatusVariant(selectedExternalRunPage.run)}
-              onBack={onClearExternalRunPage}
-            >
-              <HermesCronOutputView content={getExternalRunContent(selectedExternalRunPage.run)} />
-            </AutomationRunPageFrame>
+            <div className="rounded-md border border-border/50 p-4">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onClearExternalRun?.()}
+              >
+                <ArrowLeft className="size-4" />
+                {translate(
+                  'auto.components.automations.AutomationsPage.backToRuns',
+                  'Back to runs'
+                )}
+              </Button>
+              <HermesCronOutputView
+                content={
+                  selectedExternalRunPage.run.outputContent ??
+                  selectedExternalRunPage.run.error ??
+                  selectedExternalRunPage.run.outputPreview ??
+                  ''
+                }
+              />
+            </div>
           ) : (
             <ExternalAutomationManagers
               managers={[
@@ -200,8 +201,10 @@ export function AutomationsDetailPane({
               runningActionKey={externalActionKey}
               onAction={requestExternalAction}
               onFetchRuns={fetchExternalAutomationRuns}
-              onOpenRun={openExternalRunPage}
-              onEdit={openEditExternalDialog}
+              onOpenRun={(manager, job, run) =>
+                onOpenExternalRun?.(manager, job, run, selectedExternal.scope)
+              }
+              onEdit={onEditExternal}
             />
           )}
         </div>

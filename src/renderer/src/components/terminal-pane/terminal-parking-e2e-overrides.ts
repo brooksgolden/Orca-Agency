@@ -22,10 +22,7 @@ export type TerminalWorktreeParkingDebugVerdict = {
 
 let worktreeVerdicts: TerminalWorktreeParkingDebugVerdict[] = []
 
-// Why: ORCA_E2E_TERMINAL_PARKING_DELAY_MS must shrink BOTH the cold-park
-// hysteresis and the hot-retain window — recently hidden tabs otherwise sit
-// in the hot-retain working set for 5 minutes and never park within a test
-// run. Gated on exposeStore so packaged builds ignore stray env vars.
+// Shrink hysteresis and hot-retain together for timely E2E parks; exposeStore keeps packaged builds immune to stray env flags.
 export function getTerminalParkingPolicyOverrides(): TerminalColdParkPolicyOverrides {
   if (!e2eConfig.exposeStore) {
     return {}
@@ -33,13 +30,11 @@ export function getTerminalParkingPolicyOverrides(): TerminalColdParkPolicyOverr
   const delayMs = e2eConfig.terminalParkingDelayMs
   const retentionLimit = e2eConfig.terminalRetentionLimit
   return {
-    // Why the retention TTL keeps production timing: it is absolute (the
-    // last-active exemption does not spare it), so shrinking it here would
-    // evict the newest hidden worktree the cap specs assert stays mounted.
+    // Keep absolute retention TTL unchanged so count-cap tests retain their newest hidden worktree.
     ...(typeof delayMs === 'number' && Number.isFinite(delayMs) && delayMs > 0
       ? { coldParkDelayMs: delayMs, hotRetainMs: delayMs }
       : {}),
-    // Why: limit=1 lets a spec force-park with only two hidden un-parkable worktrees (production floor is 12).
+    // A test limit of one permits force-park with just two hidden unrestorable worktrees.
     ...(typeof retentionLimit === 'number' && Number.isInteger(retentionLimit) && retentionLimit > 0
       ? { retentionLimit }
       : {})
@@ -71,8 +66,5 @@ export function recordTerminalWorktreeParkingDebugVerdicts(
   }
 }
 
-// Why: the parking e2e spec gates on window.__terminalParkingDebug existing
-// shortly after launch. This module is statically imported by the park
-// wiring, so registering at module load makes the handle visible before any
-// tab parks.
+// Register debug at static import so E2E startup can see it before any tab parks.
 registerTerminalParkingDebugHandle()

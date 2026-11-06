@@ -1,11 +1,12 @@
+import type { ExecutionHostId } from '../../shared/execution-host'
 import { ipcRenderer } from 'electron'
 import type { ExternalAutomationManagerResult, PreloadApi } from '../api-types'
 import type {
   AutomationDispatchRequest,
   AutomationDispatchResult,
-  ExternalAutomationRunsPage,
   AutomationRun,
-  AutomationPrecheckResult
+  AutomationPrecheckResult,
+  ExternalAutomationRunsPage
 } from '../../shared/automations-types'
 import type { AutomationOwnerRef } from '../../shared/automation-owner-ref'
 import type {
@@ -22,9 +23,7 @@ export const automationsApi = {
     request: ScopedExternalManagerListRequest
   ): Promise<ExternalAutomationManagerResult> =>
     ipcRenderer.invoke('automations:listExternalManagerForOwner', request),
-  listExternalRunsForOwner: (
-    request: ScopedExternalManagerRunsRequest
-  ): Promise<ExternalAutomationRunsPage> =>
+  listExternalRunsForOwner: (request: ScopedExternalManagerRunsRequest): Promise<ExternalAutomationRunsPage> =>
     ipcRenderer.invoke('automations:listExternalRunsForOwner', request),
   createExternalForOwner: (request: ScopedExternalManagerCreateRequest): Promise<void> =>
     ipcRenderer.invoke('automations:createExternalForOwner', request),
@@ -41,8 +40,11 @@ export const automationsApi = {
     ipcRenderer.invoke('automations:runPrecheck', args),
   markDispatchResult: (result: AutomationDispatchResult): Promise<AutomationRun> =>
     ipcRenderer.invoke('automations:markDispatchResult', result),
-  snapshotWorkspaceName: (args: { workspaceId: string; displayName: string }): Promise<number> =>
-    ipcRenderer.invoke('automations:snapshotWorkspaceName', args),
+  snapshotWorkspaceName: (args: {
+    workspaceId: string
+    hostId: ExecutionHostId
+    displayName: string
+  }): Promise<number> => ipcRenderer.invoke('automations:snapshotWorkspaceName', args),
   rendererReady: (): Promise<void> => ipcRenderer.invoke('automations:rendererReady'),
   onDispatchRequested: (callback: (request: AutomationDispatchRequest) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, request: AutomationDispatchRequest) =>

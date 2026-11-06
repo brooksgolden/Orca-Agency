@@ -23,14 +23,17 @@ test('terminal tab drags reach all four quadrants and preserve full-window edges
       name: 'Quadrant smoke folder',
       parentPath: original.path
     })
-    await s.fetchProjectGroups()
+    await s.fetchProjectGroups({ runtimeEnvironmentId: null })
     const ids: { workspace: string; tab: string }[] = []
     for (const name of ['Dragged chat', 'Destination chat', 'Retained chat']) {
-      const folder = await s.createFolderWorkspace({
-        projectGroupId: group.id,
-        folderPath: original.path,
-        name
-      })
+      const folder = await s.createFolderWorkspace(
+        {
+          projectGroupId: group.id,
+          folderPath: original.path,
+          name
+        },
+        { runtimeEnvironmentId: null }
+      )
       if (!folder) {
         throw new Error('Could not create quadrant smoke workspace')
       }

@@ -31,7 +31,6 @@ export type ExternalAutomationRunPage = {
   runs: ExternalAutomationRun[]
   totalCount?: number
 }
-
 export type FetchExternalAutomationRuns = (input: {
   /** The host the rows are read from; a manager ID alone cannot name one. */
   scope: ExternalAutomationScope

@@ -28,6 +28,7 @@ const mockPasteDraftWhenAgentReady = vi.fn()
 const mockDispatchEvent = vi.fn()
 const mockGetAgentLaunchPlatformForRepo = vi.fn<() => NodeJS.Platform>()
 const mockRegisterAutomationChat = vi.hoisted(() => vi.fn())
+const mockHostKind = vi.fn<() => 'local' | 'runtime'>(() => 'local')
 const state = createAgentBackgroundSessionTestState({
   createTab: mockCreateTab,
   setTabCustomTitle: mockSetTabCustomTitle,
@@ -45,6 +46,9 @@ vi.mock('@/store', () => ({
   }
 }))
 
+// Why: the background mount's sleeping-agent scan reads store state these launches never seed.
+vi.mock('@/lib/sleeping-agent-wake-requests', () => ({ requestSleepingAgentWakeOnMount: vi.fn() }))
+
 vi.mock('@/lib/telemetry', () => ({
   track: vi.fn(),
   tuiAgentToAgentKind: (agent: string) => agent
@@ -54,9 +58,18 @@ vi.mock('@/lib/agent-paste-draft', () => ({
   pasteDraftWhenAgentReady: mockPasteDraftWhenAgentReady
 }))
 
-vi.mock('@/lib/agent-launch-platform', () => ({
-  getAgentLaunchPlatformForRepo: mockGetAgentLaunchPlatformForRepo
-}))
+vi.mock('@/lib/execution-host-facts', async (importOriginal) => {
+  const hostFact = () => ({
+    kind: 'known' as const,
+    platform: mockGetAgentLaunchPlatformForRepo(),
+    hostKind: mockHostKind()
+  })
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    resolveRepoExecutionHostPlatform: hostFact,
+    resolveWorktreeExecutionHostPlatform: hostFact
+  }
+})
 
 vi.mock('@/lib/register-automation-chat', () => ({
   registerAutomationChat: mockRegisterAutomationChat
@@ -132,7 +145,8 @@ describe('launchAgentBackgroundSession', () => {
         command: "claude '--dangerously-skip-permissions' 'run the automation'",
         env: expect.objectContaining({
           ORCA_TAB_ID: tabId,
-          ORCA_WORKTREE_ID: 'wt-1'
+          ORCA_WORKTREE_ID: 'wt-1',
+          DISABLE_AUTOUPDATER: '1'
         }),
         connectionId: null,
         worktreeId: 'wt-1',
@@ -167,8 +181,7 @@ describe('launchAgentBackgroundSession', () => {
       recordInteraction: false
     })
     expect(mockUpdateTabPtyId).toHaveBeenCalledWith(tabId, 'pty-1')
-    // The incarnation rides along so a relay-recycled id cannot drain the previous owner's exit
-    // into this handler and tear the session down right after launch.
+    // Keep incarnation so recycled relay IDs cannot deliver a prior owner’s exit into the new session.
     expect(mockRegisterEagerPtyBuffer).toHaveBeenCalledWith(
       'pty-1',
       expect.any(Function),
@@ -354,8 +367,7 @@ describe('launchAgentBackgroundSession', () => {
   })
 
   it('stamps hidden SSH status from renderer fallback when the kill switch is off', async () => {
-    // Why: with main side-effect authority disabled, this sidecar is the only
-    // OSC 9999 → store path for hidden SSH sessions.
+    // With main authority disabled, this hidden SSH sidecar is the sole OSC 9999 store writer.
     state.settings.terminalMainSideEffectAuthority = false
     state.repos = [{ id: 'repo-1', connectionId: 'ssh-a', path: '/repo' }]
     state.sshConnectionStates = new Map([['ssh-a', { status: 'connected' }]])
@@ -383,9 +395,7 @@ describe('launchAgentBackgroundSession', () => {
   })
 
   it('skips the duplicate OSC store write under main side-effect authority', async () => {
-    // Why: main already routes OSC 9999 through the hook server to the store
-    // (agentStatus:set); a second write here would race the authoritative
-    // path. The automation onAgentStatus callback must still fire.
+    // Main already owns OSC 9999 store writes; avoid races while retaining automation completion callbacks.
     const onAgentStatus = vi.fn()
     const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
 
@@ -468,9 +478,7 @@ describe('launchAgentBackgroundSession', () => {
   })
 
   it('keeps the tab bound to its PTY when contact was lost rather than observed', async () => {
-    // Same rule the terminal panes follow: a -1 sentinel retires the transport
-    // only. Clearing the binding would leave a reconnect with nothing to adopt
-    // and let orphan cleanup sweep a tab whose agent may still be running.
+    // Synthetic -1 loss retires transport only; retain bindings for reconnect adoption and orphan-cleanup protection.
     mockSubscribeToPtyExit.mockReturnValue(vi.fn())
     const onExit = vi.fn()
     const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
@@ -592,7 +600,9 @@ describe('launchAgentBackgroundSession', () => {
     })
 
     expect(mockSpawn).toHaveBeenCalledWith(
-      expect.objectContaining({ command: "aider '--yes-always'" })
+      expect.objectContaining({
+        command: "aider '--yes-always' '--no-check-update' '--no-show-release-notes'"
+      })
     )
     expect(mockPasteDraftWhenAgentReady).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -637,6 +647,25 @@ describe('launchAgentBackgroundSession', () => {
       expect.objectContaining({
         command: expect.stringContaining('powershell.exe -NoProfile -EncodedCommand'),
         env: expect.objectContaining({ ORCA_HERMES_STARTUP_QUERY: 'run the automation' })
+      })
+    )
+  })
+
+  it("keeps this client's Git Bash setting off a Windows Orca server's launch", async () => {
+    mockGetAgentLaunchPlatformForRepo.mockReturnValue('win32')
+    mockHostKind.mockReturnValueOnce('runtime')
+    Object.assign(state.settings, { terminalWindowsShell: 'bash.exe' })
+    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+
+    await launchAgentBackgroundSession({
+      agent: 'hermes',
+      worktreeId: 'wt-1',
+      prompt: 'run the automation'
+    })
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: expect.stringContaining('powershell.exe -NoProfile -EncodedCommand')
       })
     )
   })

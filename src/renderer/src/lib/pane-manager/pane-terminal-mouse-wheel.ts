@@ -177,8 +177,7 @@ function queueTerminalTuiWheelReports(
   }
 
   state.drainScheduled = true
-  // Why: dispatch after xterm returns from the original wheel handler, but do
-  // not frame-cap reports; fullscreen TUIs need the full wheel distance.
+  // Report after xterm’s wheel handler, without frame caps that lose fullscreen-TUI scroll distance.
   queueMicrotask(() => {
     drainTerminalTuiWheelReports(state, terminal)
   })
@@ -203,8 +202,7 @@ export function attachTerminalMouseWheelMultiplier(
       return true
     }
 
-    // Why: xterm dampens small pixel deltas before emitting mouse reports;
-    // line-mode replays let fullscreen TUIs receive one report per resolved row.
+    // Replay resolved rows in line mode; xterm dampens small pixel deltas before emitting reports.
     const reportCount = resolveTerminalTuiMouseWheelReportCount(
       event,
       normalizeTerminalTuiMouseWheelMultiplier(options.getTuiMouseWheelMultiplier?.()),

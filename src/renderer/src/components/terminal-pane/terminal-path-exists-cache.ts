@@ -15,8 +15,51 @@ export function wasTerminalPathExistsCacheRecentlyProbed(
   )
 }
 
-// Why: POSIX-looking SSH paths are only meaningful inside their connection;
-// local/runtime keys keep the legacy scope so existing hover probes stay hot.
+const NEGATIVE_PATH_EXISTS_TTL_MS = 10_000
+
+export type TerminalPathExistsProbe = { checkedAt: number; sequence: number }
+type TerminalPathExistsCacheEntry = TerminalPathExistsProbe & { exists: boolean }
+export type TerminalPathExistsCache = Map<string, TerminalPathExistsCacheEntry>
+
+let lastTerminalPathExistsProbeSequence = 0
+
+export function startTerminalPathExistsProbe(
+  checkedAt: number = Date.now()
+): TerminalPathExistsProbe {
+  lastTerminalPathExistsProbeSequence += 1
+  return { checkedAt, sequence: lastTerminalPathExistsProbeSequence }
+}
+
+export function readTerminalPathExistence(
+  cache: TerminalPathExistsCache,
+  key: string,
+  now: number = Date.now()
+): boolean | undefined {
+  const entry = cache.get(key)
+  if (entry === undefined) {
+    return undefined
+  }
+  // Keep expired entries to reject older probes that complete after a newer result.
+  if (!entry.exists && now - entry.checkedAt >= NEGATIVE_PATH_EXISTS_TTL_MS) {
+    return undefined
+  }
+  return readTerminalPathExistsCache(cache, key)?.exists
+}
+
+export function writeTerminalPathExistence(
+  cache: TerminalPathExistsCache,
+  key: string,
+  exists: boolean,
+  probe: TerminalPathExistsProbe = startTerminalPathExistsProbe()
+): void {
+  const existing = cache.get(key)
+  if (existing && existing.sequence > probe.sequence) {
+    return
+  }
+  writeTerminalPathExistsCache(cache, key, { exists, ...probe })
+}
+
+// Scope POSIX SSH paths by connection; local/runtime cache keys retain legacy scope.
 export function getTerminalPathExistsCacheKey({
   absolutePath,
   connectionId,
@@ -59,8 +102,7 @@ export function writeTerminalPathExistsCache<T>(
   if (cache.has(key)) {
     cache.delete(key)
   } else {
-    // Why: terminal output can contain unbounded unique paths during long
-    // sessions; keep recent link probes without retaining every path forever.
+    // Bound recent probes because terminal output can name unlimited unique paths.
     while (cache.size >= TERMINAL_PATH_EXISTS_CACHE_MAX_ENTRIES) {
       const oldestKey = cache.keys().next().value
       if (oldestKey === undefined) {

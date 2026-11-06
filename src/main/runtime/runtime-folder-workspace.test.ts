@@ -10,8 +10,6 @@ import {
   mergeRuntimeFolderWorkspace
 } from './runtime-folder-workspace'
 
-// characterization: current behavior
-
 function repo(overrides: Partial<Repo> = {}): Repo {
   return {
     id: 'repo-1',

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { hasTerminalDirectionPadSpace, type SideRailStrip } from '../layout/side-rail-strip'
 
 import {
-  TERMINAL_ACCESSORY_LAYOUT_STORAGE_KEY,
   createTerminalAccessoryLayoutPreference,
   getDefaultTerminalAccessoryBuiltInIds,
   getDefaultTerminalAccessoryLayout,
@@ -40,7 +40,7 @@ describe('terminal accessory layout', () => {
     expect(ids.indexOf('space')).toBeGreaterThan(ids.indexOf('shiftTab'))
     expect(ids.indexOf('space')).toBeLessThan(ids.indexOf('backspace'))
     expect(ids.indexOf('space')).toBeLessThan(ids.indexOf('delete'))
-    expect(ids.indexOf('space')).toBeLessThan(ids.indexOf('arrowUp'))
+    expect(ids.indexOf('space')).toBeGreaterThan(ids.indexOf('arrowRight'))
     expect(getVisibleTerminalAccessoryKeys(ids)).toContainEqual(
       expect.objectContaining({ id: 'space', bytes: ' ', accessibilityLabel: 'Space' })
     )
@@ -48,6 +48,7 @@ describe('terminal accessory layout', () => {
 
   it('default layout shows every built-in in canonical order', () => {
     expect(getDefaultTerminalAccessoryLayout()).toEqual({
+      directionPadEnabled: true,
       orderedBuiltInIds: getDefaultTerminalAccessoryBuiltInIds(),
       visibleBuiltInIds: getDefaultTerminalAccessoryBuiltInIds()
     })
@@ -78,6 +79,78 @@ describe('terminal accessory layout', () => {
 
     expect(restored.orderedBuiltInIds.slice(0, 2)).toEqual(['shiftArrowLeft', 'shiftTab'])
     expect(restored.visibleBuiltInIds.slice(0, 2)).toEqual(['shiftArrowLeft', 'shiftTab'])
+  })
+
+  it('upgrades the previous default order without resetting a custom order', () => {
+    const current = getDefaultTerminalAccessoryBuiltInIds()
+    const previous = [
+      'escape',
+      'tab',
+      'enter',
+      'shiftArrowLeft',
+      'shiftTab',
+      ...current.filter(
+        (id) =>
+          ![
+            'escape',
+            'tab',
+            'enter',
+            'shiftArrowLeft',
+            'shiftTab',
+            'ctrlU',
+            'arrowUp',
+            'arrowDown',
+            'arrowLeft',
+            'arrowRight'
+          ].includes(id)
+      ),
+      'ctrlU'
+    ]
+    previous.splice(previous.indexOf('ctrlC'), 0, 'arrowUp', 'arrowDown', 'arrowLeft', 'arrowRight')
+    const restore = (ids: string[]) =>
+      normalizeTerminalAccessoryLayoutPreference({
+        version: 2,
+        orderedBuiltInIds: ids,
+        visibleBuiltInIds: ids
+      })
+    expect(restore(previous).orderedBuiltInIds).toEqual(current)
+    const custom = ['ctrlU', ...previous.filter((id) => id !== 'ctrlU')]
+    expect(restore(custom).orderedBuiltInIds).toEqual(custom)
+    expect(
+      normalizeTerminalAccessoryLayoutPreference({
+        version: 3,
+        orderedBuiltInIds: previous,
+        visibleBuiltInIds: previous
+      }).orderedBuiltInIds
+    ).toEqual(previous)
+  })
+
+  it('upgrades the shipped v3 order once and preserves hidden keys and custom v4 order', () => {
+    const current = getDefaultTerminalAccessoryBuiltInIds()
+    const arrows = ['arrowUp', 'arrowDown', 'arrowLeft', 'arrowRight']
+    const previous = current.filter((id) => !arrows.includes(id))
+    previous.splice(previous.indexOf('ctrlC'), 0, ...arrows)
+    const hidden = ['arrowDown', 'tab']
+    const upgraded = normalizeTerminalAccessoryLayoutPreference({
+      version: 3,
+      orderedBuiltInIds: previous,
+      visibleBuiltInIds: previous.filter((id) => !hidden.includes(id)),
+      directionPadEnabled: false
+    })
+    expect(upgraded.version).toBe(4)
+    expect(upgraded.orderedBuiltInIds).toEqual(current)
+    expect(upgraded.visibleBuiltInIds).toEqual(current.filter((id) => !hidden.includes(id)))
+    expect(upgraded.directionPadEnabled).toBe(false)
+    expect(normalizeTerminalAccessoryLayoutPreference(upgraded)).toEqual(upgraded)
+    const custom = { ...upgraded, orderedBuiltInIds: previous }
+    expect(normalizeTerminalAccessoryLayoutPreference(custom).orderedBuiltInIds).toEqual(previous)
+    expect(
+      normalizeTerminalAccessoryLayoutPreference({
+        ...custom,
+        version: 3,
+        orderedBuiltInIds: previous.toReversed()
+      }).orderedBuiltInIds
+    ).toEqual(previous.toReversed())
   })
 
   it('normalizes invalid storage to defaults', () => {
@@ -120,7 +193,8 @@ describe('terminal accessory layout', () => {
         visibleBuiltInIds: ['tab', 'escape']
       })
     ).toEqual({
-      version: 2,
+      directionPadEnabled: true,
+      version: 4,
       orderedBuiltInIds: reversed,
       visibleBuiltInIds: ['tab', 'escape']
     })
@@ -139,7 +213,8 @@ describe('terminal accessory layout', () => {
         current
       )
     ).toEqual({
-      version: 2,
+      directionPadEnabled: true,
+      version: 4,
       orderedBuiltInIds: ['tab', 'escape', 'enter'],
       visibleBuiltInIds: ['tab', 'escape']
     })
@@ -158,7 +233,8 @@ describe('terminal accessory layout', () => {
         current
       )
     ).toEqual({
-      version: 2,
+      directionPadEnabled: true,
+      version: 4,
       // Why asserted: 'space' follows its canonical predecessor 'tab' even
       // though the user moved 'tab' into the middle of the bar.
       orderedBuiltInIds: ['enter', 'tab', 'space', 'escape'],
@@ -189,7 +265,8 @@ describe('terminal accessory layout', () => {
         knownBuiltInIds: getDefaultTerminalAccessoryBuiltInIds()
       })
     ).toEqual({
-      version: 2,
+      directionPadEnabled: true,
+      version: 4,
       orderedBuiltInIds: getDefaultTerminalAccessoryBuiltInIds(),
       visibleBuiltInIds: ['escape', 'tab']
     })
@@ -230,7 +307,7 @@ describe('terminal accessory layout', () => {
         visibleBuiltInIds: ['escape', 'tab', 'enter', 'shiftTab', 'backspace', 'delete'],
         knownBuiltInIds: oldBuiltInIds
       }).visibleBuiltInIds
-    ).toEqual(['escape', 'tab', 'enter', 'shiftTab', 'space', 'backspace', 'delete'])
+    ).toEqual(['escape', 'enter', 'tab', 'shiftTab', 'space', 'backspace', 'delete'])
   })
 
   it('shows Space once for an all-hidden old layout', () => {
@@ -277,6 +354,7 @@ describe('terminal accessory layout', () => {
     const layout = { orderedBuiltInIds: ['tab', 'escape'], visibleBuiltInIds: ['tab'] }
 
     expect(setTerminalAccessoryBuiltInVisible(layout, 'escape', true, ['escape', 'tab'])).toEqual({
+      directionPadEnabled: true,
       orderedBuiltInIds: ['tab', 'escape'],
       visibleBuiltInIds: ['tab', 'escape']
     })
@@ -289,6 +367,7 @@ describe('terminal accessory layout', () => {
       ).visibleBuiltInIds
     ).toEqual(['escape'])
     expect(setTerminalAccessoryBuiltInVisible(layout, 'unknown', true, ['escape', 'tab'])).toEqual({
+      directionPadEnabled: true,
       orderedBuiltInIds: ['tab', 'escape'],
       visibleBuiltInIds: ['tab']
     })
@@ -307,11 +386,12 @@ describe('terminal accessory layout', () => {
         ['escape', 'tab', 'enter']
       )
     ).toEqual({
+      directionPadEnabled: true,
       orderedBuiltInIds: ['enter', 'escape', 'tab'],
       visibleBuiltInIds: ['enter', 'escape']
     })
 
-    // Why asserted: a stale drag result missing an id must not drop that key.
+    // Stale drag results must not drop missing ids from the layout.
     expect(
       reorderTerminalAccessoryBuiltInIds(layout, ['enter', 'escape'], ['escape', 'tab', 'enter'])
         .orderedBuiltInIds
@@ -325,7 +405,7 @@ describe('terminal accessory layout', () => {
     ])
   })
 
-  it('saves the sanitized v2 preference', async () => {
+  it('saves the sanitized v3 preference', async () => {
     asyncStorageMock.setItem.mockResolvedValueOnce(undefined)
 
     await saveTerminalAccessoryLayout({
@@ -334,13 +414,13 @@ describe('terminal accessory layout', () => {
     })
 
     expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
-      TERMINAL_ACCESSORY_LAYOUT_STORAGE_KEY,
-      JSON.stringify(
-        createTerminalAccessoryLayoutPreference({
-          orderedBuiltInIds: getDefaultTerminalAccessoryBuiltInIds(),
-          visibleBuiltInIds: ['tab']
-        })
-      )
+      'orca:terminal-accessory-layout',
+      JSON.stringify({
+        version: 4,
+        directionPadEnabled: true,
+        orderedBuiltInIds: getDefaultTerminalAccessoryBuiltInIds(),
+        visibleBuiltInIds: ['tab']
+      })
     )
   })
 
@@ -360,4 +440,46 @@ describe('terminal accessory layout', () => {
       }).visibleBuiltInIds
     ).toEqual(['escape'])
   })
+})
+
+it('uses arrow-free Duo defaults only for an untouched layout and preserves explicit choices', async () => {
+  asyncStorageMock.getItem.mockResolvedValue(null)
+  const duo = await loadTerminalAccessoryLayout(true)
+  expect(duo.directionPadEnabled).toBe(true)
+  expect(duo.visibleBuiltInIds.filter((id) => id.startsWith('arrow'))).toEqual([])
+  const strips: (SideRailStrip | null)[] = [
+    null,
+    { side: 'right', width: 84, height: 200, top: 0, bottom: 0 },
+    { side: 'right', width: 59, height: 500, top: 0, bottom: 0 }
+  ]
+  for (const strip of strips) {
+    expect(
+      (await loadTerminalAccessoryLayout(hasTerminalDirectionPadSpace(strip))).visibleBuiltInIds
+    ).toContain('arrowUp')
+  }
+  for (const side of ['left', 'right'] as const) {
+    const strip = { side, width: 84, height: 500, top: 0, bottom: 0 }
+    expect(
+      (await loadTerminalAccessoryLayout(hasTerminalDirectionPadSpace(strip))).visibleBuiltInIds
+    ).not.toContain('arrowUp')
+  }
+  const explicit = setTerminalAccessoryBuiltInVisible(
+    { ...duo, directionPadEnabled: false },
+    'arrowUp',
+    true
+  )
+  asyncStorageMock.setItem.mockResolvedValue(undefined)
+  await saveTerminalAccessoryLayout(explicit)
+  const saved = asyncStorageMock.setItem.mock.calls.at(-1)![1]
+  asyncStorageMock.getItem.mockResolvedValue(saved)
+  expect((await loadTerminalAccessoryLayout(true)).visibleBuiltInIds).toContain('arrowUp')
+  expect((await loadTerminalAccessoryLayout(true)).directionPadEnabled).toBe(false)
+  expect((await loadTerminalAccessoryLayout(false)).visibleBuiltInIds).toContain('arrowUp')
+  const legacy = {
+    version: 2,
+    orderedBuiltInIds: getDefaultTerminalAccessoryBuiltInIds(),
+    visibleBuiltInIds: ['arrowDown', 'tab']
+  }
+  asyncStorageMock.getItem.mockResolvedValue(JSON.stringify(legacy))
+  expect((await loadTerminalAccessoryLayout(true)).visibleBuiltInIds).toEqual(['arrowDown', 'tab'])
 })

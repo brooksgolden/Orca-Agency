@@ -9,10 +9,9 @@ import { getKnownExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner
 import { agentResumeOriginNamesAnotherExecutionHost } from '@/lib/sleeping-record-execution-host-scope'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { getCachedWindowsTerminalCapabilities } from '@/lib/windows-terminal-capabilities'
-import { CODEX_ACCOUNT_RESTART_STARTUP } from '@/lib/codex-session-restart'
 import { isSameCodexRestartNoticeAccount } from '@/store/slices/codex-restart-notice-account-identity'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
-import { normalizeAgentProviderSession } from '../../../../shared/agent-session-resume'
+import { normalizeAgentProviderSession } from '../../../../shared/agent-session/lifecycle/agent-session-resume'
 import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
 import { buildAgentResumeLaunchCommand } from '../../../../shared/agent-resume-launch-command'
 import {
@@ -22,7 +21,13 @@ import {
 import type { PtyPaneStartup } from './pty-connection-types'
 import { savedTabResume } from './pty-connection/saved-tab-resume'
 import { savedResumePaths } from './pty-connection/saved-resume-paths'
-import { isRemoteRuntimePtyId } from './pty-connection/paired-parked-terminal-restore'
+import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
+
+const CODEX_ACCOUNT_RESTART_STARTUP = {
+  command: 'codex',
+  startupCommandDelivery: 'shell-ready',
+  launchAgent: 'codex'
+} as const
 
 /** Capture resume identity before restart clears the old PTY's pane binding. */
 export function codexRestartResumeStartup(
@@ -98,8 +103,13 @@ export function codexRestartResumeStartup(
   const launchArgs = {
     agent: 'codex' as const,
     cmdOverrides: state.settings?.agentCmdOverrides ?? {},
-    agentArgs: resolveTuiAgentLaunchArgs('codex', state.settings?.agentDefaultArgs),
-    agentEnv: resolveTuiAgentLaunchEnv('codex', state.settings?.agentDefaultEnv),
+    agentArgs: resolveTuiAgentLaunchArgs(
+      'codex',
+      state.settings,
+      undefined,
+      resolveStartupShell(target.platform, target.shell)
+    ),
+    agentEnv: resolveTuiAgentLaunchEnv('codex', state.settings, target.platform),
     platform: target.platform,
     shell: target.shell
   }

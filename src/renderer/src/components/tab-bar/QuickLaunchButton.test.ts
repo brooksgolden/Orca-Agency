@@ -1,6 +1,8 @@
 import React from 'react'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeWorktree, TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
 import { QuickLaunchAgentMenuItems, shouldShowLaunchWatchdogTimeout } from './QuickLaunchButton'
 
 const {
@@ -16,6 +18,11 @@ const {
       defaultTuiAgent: 'codex' as 'claude' | 'codex' | 'gemini' | 'blank' | null,
       disabledTuiAgents: [] as string[]
     },
+    runtimeStatusByEnvironmentId: new Map(),
+    detectedAgentIds: null,
+    localDetectedAgentIdsByContext: {},
+    remoteDetectedAgentIds: {},
+    runtimeDetectedAgentIds: {},
     worktreesByRepo: {} as Record<string, unknown[]>,
     repos: [] as unknown[],
     openSettingsPage: vi.fn(),
@@ -23,7 +30,9 @@ const {
   },
   openSettingsPageMock: vi.fn(),
   openSettingsTargetMock: vi.fn(),
-  useDetectedAgentsMock: vi.fn(() => ({ detectedIds: ['claude', 'codex', 'gemini'] }))
+  useDetectedAgentsMock: vi.fn((): { detectedIds: string[] | null; detectionFailed?: boolean } => ({
+    detectedIds: ['claude', 'codex', 'gemini']
+  }))
 }))
 
 vi.mock('@/hooks/useDetectedAgents', () => ({
@@ -71,7 +80,8 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
     DropdownMenuItem: ({ children, ...props }: { children: React.ReactNode }) =>
       ReactActual.createElement('div', props, children),
     DropdownMenuShortcut: ({ children }: { children: React.ReactNode }) =>
-      ReactActual.createElement('span', { 'data-dropdown-shortcut': 'true' }, children)
+      ReactActual.createElement('span', { 'data-dropdown-shortcut': 'true' }, children),
+    DropdownMenuSeparator: () => ReactActual.createElement('hr')
   }
 })
 
@@ -114,6 +124,8 @@ function rowMarkup(html: string, label: string): string {
 }
 
 beforeEach(() => {
+  // A host without chats lists every agent as a terminal.
+  setLocalRuntimeCapabilitiesForTests([])
   shortcutLabelMock.mockReset()
   shortcutLabelMock.mockReturnValue(null)
   useDetectedAgentsMock.mockClear()
@@ -121,8 +133,10 @@ beforeEach(() => {
   openSettingsTargetMock.mockReset()
   storeState.settings.defaultTuiAgent = 'codex'
   storeState.settings.disabledTuiAgents = []
-  storeState.worktreesByRepo = {}
-  storeState.repos = []
+  storeState.worktreesByRepo = {
+    [TEST_REPO.id]: [makeWorktree({ id: 'worktree-1', repoId: TEST_REPO.id, hostId: 'local' })]
+  }
+  storeState.repos = [TEST_REPO]
   storeState.openSettingsPage = openSettingsPageMock
   storeState.openSettingsTarget = openSettingsTargetMock
 })
@@ -148,8 +162,7 @@ describe('QuickLaunchAgentMenuItems', () => {
   })
 
   it('routes agent detection to the worktree-owning runtime host, not the local client', () => {
-    // Repro for the "Remote Server lists local agents" bug: a worktree owned by
-    // a paired runtime must probe that runtime, never the client's PATH.
+    // Detect agents on the workspace’s execution host; client PATH cannot describe a paired runtime.
     storeState.worktreesByRepo = {
       'repo-1': [{ id: 'worktree-1', repoId: 'repo-1', hostId: 'runtime:env-1' }]
     }
@@ -159,7 +172,8 @@ describe('QuickLaunchAgentMenuItems', () => {
 
     expect(useDetectedAgentsMock).toHaveBeenLastCalledWith({
       kind: 'runtime',
-      environmentId: 'env-1'
+      environmentId: 'env-1',
+      worktreeId: 'worktree-1'
     })
   })
 
@@ -179,7 +193,8 @@ describe('QuickLaunchAgentMenuItems', () => {
 
     expect(useDetectedAgentsMock).toHaveBeenLastCalledWith({
       kind: 'runtime',
-      environmentId: 'env-1'
+      environmentId: 'env-1',
+      worktreeId: 'worktree-1'
     })
   })
 
@@ -195,6 +210,16 @@ describe('QuickLaunchAgentMenuItems', () => {
       kind: 'ssh',
       connectionId: 'ssh-target-1'
     })
+  })
+
+  // Why (#25523): a host that never answered is not a host with nothing installed.
+  it('says the host is unreachable instead of reporting no agents', () => {
+    useDetectedAgentsMock.mockReturnValueOnce({ detectedIds: null, detectionFailed: true })
+
+    const html = renderAgentMenuItems()
+
+    expect(html).toContain('list terminal agents for this workspace')
+    expect(html).not.toContain('No agents detected')
   })
 
   it('does not label an auto-picked or blank default as configured', () => {

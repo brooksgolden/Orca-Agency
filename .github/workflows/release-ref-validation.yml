@@ -3,12 +3,12 @@ name: Release ref validation
 on:
   pull_request:
     paths:
-      - '.github/workflows/adhoc-mac-build.yml'
-      - '.github/workflows/dev-channel-win-build.yml'
-      - '.github/workflows/release-ref-validation.yml'
-      - 'config/scripts/workflow-ref-reachability.test.mjs'
-      - 'config/scripts/workflow-ref-mirror-case-safety.test.mjs'
-  workflow_dispatch:
+      - .github/workflows/adhoc-mac-build.yml
+      - .github/workflows/dev-channel-win-build.yml
+      - .github/workflows/release-ref-validation.yml
+      - config/scripts/workflow-ref-reachability.test.mjs
+      - config/scripts/workflow-ref-mirror-case-safety.test.mjs
+  workflow_dispatch: null
 
 permissions:
   contents: read
@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   validate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:

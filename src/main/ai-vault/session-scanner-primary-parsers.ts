@@ -16,7 +16,6 @@ import type {
 import type { TranscriptMessageSink } from './session-transcript-consumers'
 import {
   accumulatorSessionIdentity,
-  addPreviewContent,
   createAccumulator,
   finalizeSession,
   sessionIdFromFileName,
@@ -24,6 +23,7 @@ import {
   updateLatestLocation,
   updateTimeline
 } from './session-scanner-accumulator'
+import { addSessionContent } from './session-scanner-messages'
 import { countSubagentTranscripts } from './session-scanner-subagent-transcripts'
 import {
   asRecord,
@@ -123,11 +123,17 @@ export function cloneClaudeSessionParseState(
 }
 
 export function consumeClaudeSessionLine(state: ClaudeSessionParseState, line: string): void {
-  const { accumulator } = state
   const record = parseJsonObject(line)
-  if (!record) {
-    return
+  if (record) {
+    consumeClaudeSessionRecord(state, record)
   }
+}
+
+export function consumeClaudeSessionRecord(
+  state: ClaudeSessionParseState,
+  record: Record<string, unknown>
+): void {
+  const { accumulator } = state
 
   if (record.entrypoint === 'sdk-cli') {
     state.sawSdkCli = true
@@ -158,7 +164,6 @@ export function consumeClaudeSessionLine(state: ClaudeSessionParseState, line: s
   if (record.type === 'ai-title') {
     const title = normalizeTitleText(extractString(record.aiTitle) ?? '')
     if (title) {
-      // Claude can revise generated names; AI Vault should mirror the current one.
       state.generatedTitle = title
     }
     return
@@ -170,13 +175,7 @@ export function consumeClaudeSessionLine(state: ClaudeSessionParseState, line: s
   }
 
   if (record.type === 'queue-operation') {
-    // Enqueued prompts hold real content (e.g. queued subagent messages) that
-    // survives even when the conversation was never persisted — recoverable
-    // signal for an otherwise-empty session, but not a conversation turn.
-    // Count net of remove/dequeue: consumed or user-removed prompts are written
-    // as later queue-operation records and are no longer queued. Accepted gap:
-    // a dequeue/remove of an uncounted empty-content enqueue can undercount,
-    // which only hides the recoverable badge — it never fabricates one.
+    // Track recoverable queued content separately from turns; uncounted empty enqueues can make removals undercount.
     if (record.operation === 'enqueue' && (extractString(record.content)?.trim().length ?? 0) > 0) {
       accumulator.queuedMessageCount++
     } else if (record.operation === 'remove' || record.operation === 'dequeue') {
@@ -208,7 +207,7 @@ export function consumeClaudeSessionLine(state: ClaudeSessionParseState, line: s
         state.lastHumanTurnAt = at
       }
     }
-    addPreviewContent(accumulator, 'user', content, record.timestamp, {
+    addSessionContent(accumulator, 'user', content, record.timestamp, {
       seedFirstUserPrompt: !isMetaUserTurn
     })
     if (title) {
@@ -224,7 +223,7 @@ export function consumeClaudeSessionLine(state: ClaudeSessionParseState, line: s
   if (record.type === 'assistant') {
     accumulator.messageCount++
     const message = asRecord(record.message)
-    addPreviewContent(accumulator, 'assistant', message?.content, record.timestamp)
+    addSessionContent(accumulator, 'assistant', message?.content, record.timestamp)
     const model = extractString(message?.model)
     if (model) {
       accumulator.model = model
@@ -238,20 +237,12 @@ export async function finalizeClaudeSessionParseState(
   platform: NodeJS.Platform,
   options: ParserSessionOptions = {}
 ): Promise<AiVaultSession | null> {
-  // Finalize a snapshot: the live state (and its preview array) may keep
-  // accumulating appended lines after this session object is handed out.
+  // Detach previews so later appends cannot mutate a published session.
   const snapshot = cloneClaudeSessionParseState(state)
-  // Why: a user-set custom-title (accumulator.title) wins, but Claude's generated
-  // session name (ai-title) should outrank the raw first prompt when present.
+  // Explicit custom titles win, then generated names, real prompts and injected-context fallbacks.
   snapshot.accumulator.fallbackTitle =
     snapshot.generatedTitle ?? snapshot.firstUserTitle ?? snapshot.metaTitle
-  // Every session's sibling subagent transcripts are counted (one readdir):
-  // the row UI shows the count without expanding details, and for zero-turn
-  // transcripts it doubles as the recoverable-content signal. The sibling dir
-  // lives on the host that owns the transcript, so content fetched from a
-  // remote (SSH) host must not readdir this machine's disk. Runtime hosts scan
-  // their own local disk (their host id is stamped after parse), so they are
-  // already covered by the undefined-executionHostId branch.
+  // Count only on the transcript-owning host; runtime hosts stamp identity after parsing, while SSH walks supply counts.
   const ownsTranscriptDisk =
     !options.executionHostId || options.executionHostId === LOCAL_EXECUTION_HOST_ID
   if (ownsTranscriptDisk) {

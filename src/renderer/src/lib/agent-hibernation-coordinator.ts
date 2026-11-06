@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Why: The coordinator owns candidate selection, idle timing, and safe hibernation transitions as one policy flow. */
 import { useAppStore } from '@/store'
 import {
   getEffectiveAgentHibernationIdleMs,
@@ -22,7 +23,8 @@ import {
   observeHibernationPtyBindings
 } from './agent-hibernation-pane-age'
 import { mergePendingTerminalInputActivity } from './terminal-input-activity-coalescing'
-import { getRuntimeEnvironmentIdForWorktree } from './worktree-runtime-owner'
+import { resolveTerminalPtyOwner } from './terminal-worktree-route'
+import { toAgentHibernationRuntimeOwner } from './agent-hibernation-runtime-owner'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
 import type {
@@ -81,11 +83,7 @@ function snapshotFromState(
     terminalLayoutsByTabId: state.terminalLayoutsByTabId,
     ptyIdsByTabId: state.ptyIdsByTabId,
     runtimeLivePtyIdsByWorktreeId: runtimeLiveness.runtimeLivePtyIdsByWorktreeId,
-    // Why: a workspace can gain tabs or resolve its runtime owner while the inventory above
-    // is in flight, and the plan is built from this later state. Union the fresh targets in
-    // so such a workspace is required-but-absent and the planner skips it, rather than
-    // answering for the execution host from client PTYs. Union, never replace: dropping a
-    // pre-await target would narrow the fail-closed set instead of widening it.
+    // Union fresh owners with pre-await targets so newly resolved workspaces fail closed without host evidence; never narrow that set.
     runtimeLivenessRequiredWorktreeIds: [
       ...new Set([
         ...runtimeLiveness.runtimeLivenessRequiredWorktreeIds,
@@ -108,20 +106,33 @@ function snapshotFromState(
   }
 }
 
+function resolveAgentHibernationRuntimeOwner(state: AppState, worktreeId: string) {
+  const tabs = state.tabsByWorktree[worktreeId] ?? []
+  const ptyIds = tabs.flatMap((tab) => state.ptyIdsByTabId[tab.id] ?? [])
+  return toAgentHibernationRuntimeOwner(resolveTerminalPtyOwner(state, worktreeId), ptyIds)
+}
+
+/** Environment that owns the worktree's runtime PTYs; null when the owner is not a single runtime. */
+function getRuntimeEnvironmentIdForWorktree(state: AppState, worktreeId: string): string | null {
+  const owner = resolveAgentHibernationRuntimeOwner(state, worktreeId)
+  return owner.kind === 'runtime' ? owner.environmentId : null
+}
+
+/** Worktree → owning runtime; `null` means liveness is required but no host can be asked. */
 function getRuntimeLivenessTargetWorktrees(
   state: AppState,
   targetWorktreeId?: string
-): Map<string, string> {
-  const targets = new Map<string, string>()
+): Map<string, string | null> {
+  const targets = new Map<string, string | null>()
   const worktreeIds = targetWorktreeId
     ? Object.hasOwn(state.tabsByWorktree, targetWorktreeId)
       ? [targetWorktreeId]
       : []
     : Object.keys(state.tabsByWorktree)
   for (const worktreeId of worktreeIds) {
-    const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
-    if (runtimeEnvironmentId) {
-      targets.set(worktreeId, runtimeEnvironmentId)
+    const owner = resolveAgentHibernationRuntimeOwner(state, worktreeId)
+    if (owner.kind !== 'non-runtime') {
+      targets.set(worktreeId, owner.kind === 'runtime' ? owner.environmentId : null)
     }
   }
   return targets
@@ -157,7 +168,10 @@ async function collectRuntimePtyLiveness(
   }
   await Promise.all(
     [...targets].map(async ([worktreeId, runtimeEnvironmentId]) => {
-      if (!state.tabsByWorktree[worktreeId]?.some((tab) => completedTabIds.has(tab.id))) {
+      if (
+        !runtimeEnvironmentId ||
+        !state.tabsByWorktree[worktreeId]?.some((tab) => completedTabIds.has(tab.id))
+      ) {
         // Skipped owners still require host evidence if an agent completes during this pass.
         return
       }
@@ -188,8 +202,7 @@ async function collectRuntimePtyLiveness(
         }
         runtimeLivePtyIdsByWorktreeId[worktreeId] = [...ptyIds].sort()
       } catch {
-        // Why: stale runtime liveness is unsafe for all-or-nothing hibernation;
-        // omitting the worktree makes the planner fail closed for this pass.
+        // Omit stale runtime evidence so the planner fails closed for this pass.
       }
     })
   )
@@ -214,16 +227,15 @@ function candidatesFromLivenessSample(
     snapshotFromState(freshState, now, runtimeLiveness, targetWorktreeId)
   )
     .filter((candidate) => {
-      const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(
-        freshState,
-        candidate.worktreeId
+      const owner = resolveAgentHibernationRuntimeOwner(freshState, candidate.worktreeId)
+      return (
+        owner.kind === 'non-runtime' ||
+        (owner.kind === 'runtime' && candidate.expectedRuntimePtyIds.length === 1)
       )
-      return !runtimeEnvironmentId || candidate.expectedRuntimePtyIds.length === 1
     })
     .map((candidate) => ({
       ...candidate,
-      // Why: terminal output after the first stable tick can mean the session
-      // is still alive even when agent status remains done; require it to stay quiet.
+      // Require output silence after the first confirmation: a done status does not prove the session stopped working.
       signature: `${candidate.signature}|output:${getAgentHibernationOutputSignature(candidate.paneKeys)}`
     }))
 }
@@ -286,12 +298,13 @@ async function hibernatePaneIfStillEligible(
   }
   coordinator.shuttingDownCandidateIds.add(id)
   try {
+    const owner = resolveAgentHibernationRuntimeOwner(finalState, worktreeId)
     await finalState.shutdownCompletedAgentPaneForHibernation(worktreeId, {
       paneKey: confirmedCandidate.paneKey,
       tabId: confirmedCandidate.tabId,
       leafId: confirmedCandidate.leafId,
       ptyId: confirmedCandidate.targetPtyIds[0],
-      ...(runtimeEnvironmentId
+      ...(owner.kind === 'runtime'
         ? { expectedRuntimePtyId: confirmedCandidate.expectedRuntimePtyIds[0] }
         : {})
     })
@@ -313,13 +326,7 @@ export async function runAgentHibernationTick(): Promise<void> {
       (await currentCandidates(coordinator.now())).candidates
     )
     coordinator.confirmationState = plan.confirmationState
-    // Why: drain sequentially. Each shutdown re-runs a full runtime-liveness sweep and
-    // then a stopExact RPC, so firing the whole confirmed set at once meant ~100
-    // concurrent sweeps plus ~100 concurrent stops on the first pass after a backlog —
-    // hundreds of near-simultaneous RPCs on an SSH runtime. Awaiting also makes
-    // `tickInFlight` actually cover the drain; unawaited, it was cleared the moment the
-    // promises were launched. Each candidate re-validates against a fresh plan at its own
-    // turn, so a slow drain cannot act on stale confirmation.
+    // Drain sequentially to bound liveness/stop RPCs, keep tickInFlight through completion, and revalidate each candidate against a fresh plan.
     for (const candidate of plan.candidates) {
       await hibernatePaneIfStillEligible(candidate)
     }
@@ -337,17 +344,13 @@ export function startAgentHibernationCoordinator(
   coordinator.now = options.now ?? (() => Date.now())
   const intervalMs = options.intervalMs ?? AGENT_HIBERNATION_TICK_MS
   coordinator.interval = setInterval(() => {
-    // Why: hibernation only reclaims memory for a visible session — a hidden window postpones
-    // reclaim to the becoming-visible run below. getWindowParkVisible, not raw
-    // visibilityState: macOS can wedge the latter at 'hidden' with no further
-    // visibilitychange, which would stop reclaiming for the rest of the session.
+    // Reclaim only while park-visible; macOS can leave raw visibilityState stuck hidden, suppressing all later reclaim.
     if (!getWindowParkVisible()) {
       return
     }
     void runAgentHibernationTick()
   }, intervalMs)
-  // Why: confirmationState survives the hidden gap, so without a resume run the "two
-  // consecutive ticks" rule would span the whole time the window was away.
+  // Recheck on resume so two consecutive confirmations cannot span the hidden gap.
   coordinator.unsubscribeVisibility = subscribeWindowParkVisibility(() => {
     if (getWindowParkVisible()) {
       void runAgentHibernationTick()

@@ -1,9 +1,12 @@
-import type { OrcaRuntimeWithReconcileRestoredWorkingTitleMonitor } from './orca-runtime-reconcile-restored-working-title-monitor'
+import type { OrcaRuntimeWithGetUnpersistedTrackedTitleForPty } from './terminal/output/terminal-title-tracker'
 
-const pendingByOwner = new WeakMap<object, Map<string, ReturnType<typeof setTimeout>>>()
+const pendingByOwner = new WeakMap<
+  OrcaRuntimeWithGetUnpersistedTrackedTitleForPty,
+  Map<string, ReturnType<typeof setTimeout>>
+>()
 
 export function scheduleNativeIdleTitleSettlement(
-  owner: OrcaRuntimeWithReconcileRestoredWorkingTitleMonitor,
+  owner: OrcaRuntimeWithGetUnpersistedTrackedTitleForPty,
   ptyId: string,
   delayMs: number,
   settle: () => void

@@ -8,7 +8,7 @@ import type { DeliveredNotificationIdentity } from '../../shared/mobile-notifica
 import {
   isStructuredAttentionOrigin,
   type StructuredAttentionOrigin
-} from '../../shared/agent-session-attention'
+} from '../../shared/agent-session/agent-session-attention'
 
 export type { DeliveredNotificationIdentity } from '../../shared/mobile-notification-identity'
 export type DeliveredNotificationRecord = DeliveredNotificationIdentity & {
@@ -146,6 +146,11 @@ export class MobileNotificationDismissalStore {
     }
   }
 
+  /** Committed exits: wait for the pending dismissal write before the process exits. */
+  close(): Promise<void> {
+    return this.flush()
+  }
+
   liveDeliveries(prefix = ''): DeliveredNotificationRecord[] {
     const now = Date.now()
     return this.entries
@@ -178,7 +183,7 @@ export class MobileNotificationDismissalStore {
   }
 }
 
-/** An origin this build cannot read (a newer cause kind) degrades to none; the record survives. */
+/** Keep records with unknown future origin kinds, degrading only their origin to none. */
 function readEntry(value: unknown): RecordEntry[] {
   if (!isEntry(value)) {
     return []

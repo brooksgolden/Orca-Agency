@@ -42,10 +42,7 @@ export function resolveProtectedMultilinePasteOptionsForPane({
   try {
     paneKey = makePaneKey(tabId, leafId)
   } catch {
-    // Why: unreachable today (pane.leafId is a minted UUID), but a legacy/malformed
-    // layout must degrade to the pre-fix path, not throw out of the paste handler --
-    // the throw would escape before pasteTerminalClipboard's catch is attached and
-    // the paste would be a silent no-op with no error surface.
+    // Malformed legacy pane keys must fall back; throwing here escapes the paste handler’s later catch.
     return isWindowsClient ? { forceBracketedPasteForMultiline: true } : undefined
   }
   return resolveProtectedMultilinePasteOptionsForAgentEvidence({

@@ -65,7 +65,9 @@ export function AutomationWorkspaceField({
           worktrees={worktrees}
           value={draft.workspaceId}
           triggerClassName={pickerTriggerClassName}
-          onValueChange={(workspaceId) => onDraftChange((current) => ({ ...current, workspaceId }))}
+          onValueChange={(workspaceId) =>
+            onDraftChange((current) => ({ ...current, workspaceMode: 'existing', workspaceId }))
+          }
         />
       ) : (
         <div className="grid gap-2">
@@ -108,8 +110,7 @@ export function AutomationWorkspaceField({
             />
           ) : (
             <CreateFromPicker
-              // Why: branch search state belongs to the selected project,
-              // so repo switches should reset it before the next paint.
+              // Reset project-specific branch search before paint when the project changes.
               key={draft.projectId}
               repoId={draft.projectId}
               repoMap={repoMap}

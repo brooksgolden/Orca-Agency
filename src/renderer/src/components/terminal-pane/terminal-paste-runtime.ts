@@ -1,7 +1,12 @@
 import type { TerminalPasteRuntime } from './terminal-paste-model'
 import { parseWslUncPath } from '../../../../shared/wsl-paths'
-
-const REMOTE_PTY_ID_PREFIX = 'remote:'
+import {
+  isRemoteRuntimePtyId,
+  parseRemoteRuntimePtyId
+} from '../../../../shared/remote-runtime/remote-runtime-pty-id'
+import { runtimeEnvironmentIdOrLocalUnlessTwin } from '@/lib/worktree-runtime-owner'
+import type { WorktreeRuntimeOwnerState } from '@/lib/worktree-runtime-owner-state'
+import type { PtyTransport } from './pty-transport-types'
 
 type TerminalPasteRuntimeTransport = {
   getConnectionId?: () => string | null | undefined
@@ -34,7 +39,7 @@ export function resolveTerminalPasteRuntime({
 }: ResolveTerminalPasteRuntimeArgs): TerminalPasteRuntime {
   const windowsConpty = isWindowsConpty === undefined ? {} : { isWindowsConpty }
 
-  if (isRemoteRuntimePastePtyId(ptyId)) {
+  if (isRemoteRuntimePtyId(ptyId)) {
     return { platform, runtimeKey: `remote:${ptyId}`, kind: 'remote-runtime', ...windowsConpty }
   }
 
@@ -60,10 +65,6 @@ export function resolveTerminalPasteRuntime({
   }
 
   return { platform, runtimeKey: `local:${platform}`, kind: 'local', ...windowsConpty }
-}
-
-export function isRemoteRuntimePastePtyId(ptyId: string | null | undefined): boolean {
-  return typeof ptyId === 'string' && ptyId.startsWith(REMOTE_PTY_ID_PREFIX)
 }
 
 function resolveWslRuntimeKey(
@@ -132,4 +133,17 @@ function getShellOverridePathSegmentStart(token: string): number {
 
 function isShellOverrideWhitespace(code: number): boolean {
   return code === 32 || (code >= 9 && code <= 13)
+}
+
+/** The server a paste uploads images to: the one its PTY id names, else the workspace owner's. */
+export function resolveTerminalPasteRuntimeEnvironmentId(
+  state: WorktreeRuntimeOwnerState,
+  worktreeId: string,
+  transport: Pick<PtyTransport, 'getPtyId'> | null | undefined
+): string | null {
+  const ptyId = transport?.getPtyId() ?? null
+  return (
+    (ptyId ? parseRemoteRuntimePtyId(ptyId)?.environmentId : null) ??
+    runtimeEnvironmentIdOrLocalUnlessTwin(state, worktreeId)
+  )
 }

@@ -1,5 +1,4 @@
 import type { UISlice, UISliceGet, UISliceSet } from './ui-slice-contract'
-import { placeWorkspacePane } from '@/lib/workspace-pane-placement'
 import { findPrevLiveNonTaskStackHistoryIndex } from '../worktree-nav-history'
 import { hasFeatureInteraction } from '../../../../../shared/feature-interactions'
 import {
@@ -9,67 +8,15 @@ import {
 } from '../../../../../shared/task-providers'
 import { PER_REPO_FETCH_LIMIT } from '../../../../../shared/work-items'
 import { isGitRepoKind } from '../../../../../shared/repo-kind'
-import { createBrowserUuid } from '@/lib/browser-uuid'
 import { presetToQuery } from './ui-slice-hydration-sanitizers'
-import {
-  placeWorkspaceAtEdge,
-  readWorkspaceSplitGroups,
-  removeWorkspaceFromSplit,
-  setWorkspaceSplitRatio,
-  writeWorkspaceSplitGroups
-} from '@/lib/workspace-split-layout'
+import { createUiWorkspaceSurfaceActions } from './ui-workspace-surface-actions'
 
 const LINEAR_TASK_PREFETCH_LIMIT = 36
 
 export function createUiTaskActions(set: UISliceSet, get: UISliceGet): Partial<UISlice> {
   return {
     activeView: 'terminal',
-    workspaceSplitGroups: readWorkspaceSplitGroups(),
-    placeWorkspacePane: (source, target, placement) =>
-      set((state) => {
-        const workspaceSplitGroups = placeWorkspacePane(
-          state.workspaceSplitGroups,
-          source,
-          target,
-          placement,
-          createBrowserUuid()
-        )
-        writeWorkspaceSplitGroups(workspaceSplitGroups)
-        return { workspaceSplitGroups }
-      }),
-    placeWorkspaceAtEdge: (source, target, edge, wholeWindow) =>
-      set((state) => {
-        const workspaceSplitGroups = placeWorkspaceAtEdge(
-          state.workspaceSplitGroups,
-          source,
-          target,
-          edge,
-          createBrowserUuid(),
-          wholeWindow
-        )
-        writeWorkspaceSplitGroups(workspaceSplitGroups)
-        return { workspaceSplitGroups }
-      }),
-    unsplitWorkspace: (workspaceId) =>
-      set((state) => {
-        const workspaceSplitGroups = removeWorkspaceFromSplit(
-          state.workspaceSplitGroups,
-          workspaceId
-        )
-        writeWorkspaceSplitGroups(workspaceSplitGroups)
-        return { workspaceSplitGroups }
-      }),
-    setWorkspaceSplitRatio: (groupId, path, ratio) =>
-      set((state) => {
-        const workspaceSplitGroups = setWorkspaceSplitRatio(
-          state.workspaceSplitGroups,
-          groupId,
-          path,
-          ratio
-        )
-        writeWorkspaceSplitGroups(workspaceSplitGroups)
-        return { workspaceSplitGroups }
-      }),
+    ...createUiWorkspaceSurfaceActions(set),
     previousViewBeforeTasks: 'terminal',
     previousViewBeforeSettings: 'terminal',
     previousViewBeforeActivity: 'terminal',
@@ -171,7 +118,7 @@ export function createUiTaskActions(set: UISliceSet, get: UISliceGet): Partial<U
           state.activeView === 'tasks' ? state.previousViewBeforeTasks : state.activeView,
         taskPageData: data
       }))
-      // Why: prefetch the work-item list during first render so the page's effect hits a warm/in-flight SWR cache (~300–800ms win).
+      // Warm work-item SWR cache during first render so the page effect joins it (~300–800ms saved).
       const state = get()
       const preferredVisibleTaskProviders = normalizeVisibleTaskProviders(
         state.settings?.visibleTaskProviders
@@ -257,7 +204,7 @@ export function createUiTaskActions(set: UISliceSet, get: UISliceGet): Partial<U
     setGithubTaskDrawerWorkItem: (item) => set({ githubTaskDrawerWorkItem: item }),
     closeTaskPage: () =>
       set((state) => {
-        // Why: if parked on a 'tasks' entry, rewind the history index so Back/Forward aren't no-ops; keep 0 if it's the only entry.
+        // Leaving Tasks must rewind its parked history entry or Back/Forward does nothing; retain index zero if alone.
         const currentEntry = state.worktreeNavHistory[state.worktreeNavHistoryIndex]
         let nextHistoryIndex = state.worktreeNavHistoryIndex
         if (

@@ -53,7 +53,12 @@ export function NewChatFolderDialog({
         }
         registered = group
       }
-      if (!(await state.moveProjectToGroup(worktree.repoId, registered.id))) {
+      if (
+        !(await state.moveProjectToGroup(
+          { id: worktree.repoId, executionHostId: row.hostId },
+          registered.id
+        ))
+      ) {
         throw new Error('Folder created, but could not be organized. Please retry.')
       }
       await setChatFolder(row, worktree)

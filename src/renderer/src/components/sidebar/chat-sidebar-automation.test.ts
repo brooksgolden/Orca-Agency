@@ -95,6 +95,37 @@ describe('automation runs in Chats', () => {
     expect(buildChatSidebarRows(state, [], 6_000)).toEqual([])
   })
 
+  it('keeps an agent-started chat once a person has messaged in it, even after its tab closes', () => {
+    const state = chatState({ tabsByWorktree: { [chatWorktree.id]: [chatTab('worker')] } })
+    const session = chatSession('session-worker')
+    state.settings!.chatSidebar = {
+      historySince: 0,
+      automationChats: [chatFallbackId('local', 'worker')],
+      humanChats: [chatFallbackId('local', 'worker')]
+    }
+    expect(buildChatSidebarRows(state, [session], 5_000).map((row) => row.tabId)).toEqual([
+      'worker'
+    ])
+    state.tabsByWorktree = {}
+    expect(buildChatSidebarRows(state, [session], 6_000)).toHaveLength(1)
+  })
+
+  it('removes an agent-started chat from the sidebar once its tab closes without a human message', () => {
+    const state = chatState({ tabsByWorktree: { [chatWorktree.id]: [chatTab('worker')] } })
+    const session = chatSession('session-worker')
+    state.settings!.chatSidebar = {
+      historySince: 0,
+      // Why: the runtime records the provider session key once the agent's session is observed.
+      automationChats: [
+        chatFallbackId('local', 'worker'),
+        chatSessionKey('local', 'codex', 'session-worker')
+      ]
+    }
+    expect(buildChatSidebarRows(state, [session], 5_000)).toEqual([])
+    state.tabsByWorktree = {}
+    expect(buildChatSidebarRows(state, [session], 6_000)).toEqual([])
+  })
+
   it('does not hide the same provider identity on another host', () => {
     const state = chatState({ tabsByWorktree: { [chatWorktree.id]: [chatTab('scheduled')] } })
     state.settings!.chatSidebar = {

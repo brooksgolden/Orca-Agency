@@ -23,8 +23,7 @@ export function workspacePaneDropTarget(
     paneCount >= 3 &&
     spansRoot &&
     (rootX <= 0.15 || rootX >= 0.85) &&
-    (rootY <= 0.15 || rootY >= 0.85) &&
-    !target.wholeWindow
+    (rootY <= 0.15 || rootY >= 0.85)
   ) {
     const quadrant: WorkspaceQuadrant =
       rootY < 0.5

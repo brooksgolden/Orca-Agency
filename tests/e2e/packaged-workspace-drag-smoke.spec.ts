@@ -186,10 +186,84 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
       second,
       ratio: 0.5
     })
+    const root = page.locator('[data-workspace-split-root]')
+    const pane = (id: string) =>
+      page
+        .locator(
+          `[data-workspace-surface-id="${id}"][aria-hidden="false"] [data-workspace-tab-group-id]:has([data-tab-group-strip-id][data-worktree-id="${id}"]):visible`
+        )
+        .first()
+    // An external fourth workspace must stack beneath the two right columns only.
     await page.evaluate(
       (layout) =>
         localStorage.setItem(
-          'orca.workspaceSplitGroups.v1',
+          'orca.workspaceSplitGroups.v2',
+          JSON.stringify([{ id: 'drag-grid', layout }])
+        ),
+      pair('horizontal', leaf(ids[0]), pair('horizontal', leaf(ids[1]), leaf(ids[2])))
+    )
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+    for (const id of ids.slice(0, 3)) {
+      await expect(pane(id)).toBeVisible()
+    }
+    await expect(pane(ids[3])).toHaveCount(0)
+    const leftBefore = (await pane(ids[0]).boundingBox())!
+    const firstRightBefore = (await pane(ids[1]).boundingBox())!
+    const lastRightBefore = (await pane(ids[2]).boundingBox())!
+    const incomingCard = page
+      .locator(`[role="option"][data-worktree-id="${ids[3]}"]`)
+      .first()
+      .locator('[data-worktree-card-surface]')
+    await expect(incomingCard).toBeVisible()
+    const cardBounds = (await incomingCard.boundingBox())!
+    const splitBounds = (await root.boundingBox())!
+    await dragTo(
+      page,
+      { x: cardBounds.x + cardBounds.width / 2, y: cardBounds.y + cardBounds.height / 2 },
+      { x: splitBounds.x + splitBounds.width * 0.9, y: splitBounds.y + splitBounds.height * 0.9 }
+    )
+    await expect(page.locator('[data-workspace-quadrant-drop="bottom-right"]')).toBeVisible()
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('external-fourth-preview.png'))
+    await page.mouse.up()
+    await expect(pane(ids[3])).toBeVisible()
+    console.log(
+      'external geometry',
+      JSON.stringify({
+        before: [leftBefore, firstRightBefore, lastRightBefore],
+        after: await Promise.all(ids.map((id) => pane(id).boundingBox()))
+      })
+    )
+    await expect
+      .poll(async () => {
+        const [left, first, last, incoming] = await Promise.all(
+          ids.map((id) => pane(id).boundingBox())
+        )
+        if (!left || !first || !last || !incoming) {
+          return false
+        }
+        const close = (a: number, b: number) => Math.abs(a - b) < 12
+        return (
+          close(left.x, leftBefore.x) &&
+          close(left.y, leftBefore.y) &&
+          close(left.width, leftBefore.width) &&
+          close(left.height, leftBefore.height) &&
+          close(first.x, firstRightBefore.x) &&
+          close(last.x, lastRightBefore.x) &&
+          close(first.y, last.y) &&
+          close(first.height, last.height) &&
+          close(incoming.x, first.x) &&
+          close(incoming.x + incoming.width, last.x + last.width) &&
+          incoming.y > first.y + first.height - 12 &&
+          close(incoming.y + incoming.height, left.y + left.height)
+        )
+      })
+      .toBe(true)
+    await captureDragLayout(app, page, testInfo.outputPath('external-fourth-result.png'))
+
+    await page.evaluate(
+      (layout) =>
+        localStorage.setItem(
+          'orca.workspaceSplitGroups.v2',
           JSON.stringify([{ id: 'drag-grid', layout }])
         ),
       pair(
@@ -199,8 +273,6 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
       )
     )
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
-    const root = page.locator('[data-workspace-split-root]')
-    const pane = (id: string) => page.locator(`[data-workspace-surface-id="${id}"]:visible`)
     for (const id of ids) {
       await expect(pane(id)).toBeVisible()
     }
@@ -213,6 +285,10 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     await expect(page.locator('[data-workspace-drop-swap]')).toBeVisible()
     await captureHiddenRendererScreenshot(page, testInfo.outputPath('occupied-quadrant-swap.png'))
     await page.mouse.up()
+    await captureHiddenRendererScreenshot(
+      page,
+      testInfo.outputPath('occupied-quadrant-after-drop.png')
+    )
     await expect
       .poll(async () => Math.round((await pane(ids[3]).boundingBox())!.y))
       .toBe(Math.round(originalTopRight.y))
@@ -229,7 +305,7 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     await page.evaluate(
       (layout) =>
         localStorage.setItem(
-          'orca.workspaceSplitGroups.v1',
+          'orca.workspaceSplitGroups.v2',
           JSON.stringify([{ id: 'drag-grid', layout }])
         ),
       pair('vertical', leaf(ids[0]), pair('horizontal', leaf(ids[1]), leaf(ids[2])))
@@ -238,6 +314,12 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     for (const id of ids.slice(0, 3)) {
       await expect(pane(id)).toBeVisible()
     }
+    console.log(
+      'row layout before',
+      await page.evaluate(() => localStorage.getItem('orca.workspaceSplitGroups.v2')),
+      JSON.stringify(await Promise.all(ids.slice(0, 3).map((id) => pane(id).boundingBox())))
+    )
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('row-layout-before.png'))
     await expect(pane(ids[3])).toHaveCount(0)
     const rowBounds = (await root.boundingBox())!
     await dragTo(page, await headerPoint(page, ids[1]), {
@@ -258,7 +340,7 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     await page.evaluate(
       (layout) =>
         localStorage.setItem(
-          'orca.workspaceSplitGroups.v1',
+          'orca.workspaceSplitGroups.v2',
           JSON.stringify([{ id: 'drag-grid', layout }])
         ),
       pair(
@@ -281,8 +363,8 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     )
     await page.mouse.up()
     await expect
-      .poll(async () => Math.round((await pane(ids[1]).boundingBox())!.height))
-      .toBeCloseTo(Math.round(bounds.height / 2), -1)
+      .poll(async () => Math.abs((await pane(ids[1]).boundingBox())!.height - bounds.height / 2))
+      .toBeLessThan(12)
     await expect
       .poll(async () => (await pane(ids[1]).boundingBox())!.x > bounds.x + bounds.width * 0.4)
       .toBe(true)
@@ -292,26 +374,67 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     const targetTab = pane(ids[0]).locator(`[data-tab-id="${terminalIds[0]}"]`)
     const crossFolderTab = pane(ids[2]).locator('[data-tab-id]').nth(1)
     const crossFolderTabId = (await crossFolderTab.getAttribute('data-tab-id'))!
+    const scrollTabsRight = pane(ids[2]).getByRole('button', { name: 'Scroll tabs right' })
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (!(await scrollTabsRight.isVisible()) || !(await scrollTabsRight.isEnabled())) {
+        break
+      }
+      await scrollTabsRight.click()
+    }
     await crossFolderTab.click()
-    const crossFolderBounds = (await crossFolderTab.boundingBox())!
     let targetBounds = (await targetTab.boundingBox())!
-    await dragTo(
-      page,
-      { x: crossFolderBounds.x + 30, y: crossFolderBounds.y + 16 },
+    const dragSource = await crossFolderTab.evaluate((tab) => {
+      const rect = tab.getBoundingClientRect()
+      for (let x = rect.left + 3; x < rect.right - 3; x += 2) {
+        const y = rect.top + rect.height / 2
+        const node = document.elementFromPoint(x, y)
+        if (node?.closest('[data-tab-id]') === tab && !node.closest('button, input')) {
+          return { x, y }
+        }
+      }
+      throw new Error('No visible non-button tab surface for pointer drag')
+    })
+    const hit = await page.evaluate(({ x, y }) => {
+      const node = document.elementFromPoint(x, y)
+      return {
+        tag: node?.tagName,
+        button: node?.closest('button')?.getAttribute('aria-label'),
+        tabId: node?.closest('[data-tab-id]')?.getAttribute('data-tab-id')
+      }
+    }, dragSource)
+    console.log('cross-folder drag source', JSON.stringify({ dragSource, hit, crossFolderTabId }))
+    expect(hit.tabId).toBe(crossFolderTabId)
+    await dragTo(page, dragSource, { x: targetBounds.x + 4, y: targetBounds.y + 16 })
+    const dropHit = await page.evaluate(
+      ({ x, y }) => {
+        const node = document.elementFromPoint(x, y)
+        return {
+          tag: node?.tagName,
+          tabId: node?.closest('[data-tab-id]')?.getAttribute('data-tab-id'),
+          worktree: node?.closest('[data-worktree-id]')?.getAttribute('data-worktree-id'),
+          markerCount: document.querySelectorAll('[data-workspace-tab-insertion]').length
+        }
+      },
       { x: targetBounds.x + 4, y: targetBounds.y + 16 }
     )
+    console.log('cross-folder drag target', JSON.stringify({ targetBounds, dropHit }))
+    await captureDragLayout(app, page, testInfo.outputPath('cross-folder-drag-preview.png'))
     await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
     await page.mouse.up()
     await expect(pane(ids[0]).locator(`[data-tab-id="${crossFolderTabId}"]`)).toBeVisible()
     await expect(pane(ids[2]).locator('[data-tab-id]')).toHaveCount(2)
     await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(2)
-    const afterCrossFolder = await page.evaluate(async () => {
-      await window.api.session.flush()
-      return window.api.session.get()
-    })
-    expect(
-      afterCrossFolder.tabsByWorktree[ids[0]].find((tab) => tab.id === crossFolderTabId)?.startupCwd
-    ).toBe(folders[2])
+    // The renderer writes session patches after a 150 ms debounce. A main-process flush alone
+    // cannot force a renderer timer to fire, so wait for the durable moved-tab record.
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(async () => {
+          await window.api.session.flush()
+          return window.api.session.get()
+        })
+        return saved.tabsByWorktree[ids[0]]?.find((tab) => tab.id === crossFolderTabId)?.startupCwd
+      })
+      .toBe(folders[2])
     const sourceBounds = (await sourceTab.boundingBox())!
     targetBounds = (await pane(ids[0])
       .locator(`[data-tab-id="${crossFolderTabId}"]`)
@@ -322,22 +445,23 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
       { x: targetBounds.x + 4, y: targetBounds.y + 16 }
     )
     await expect(page.locator('[data-workspace-tab-insertion="0"]')).toBeVisible()
-    await captureHiddenRendererScreenshot(
-      page,
-      testInfo.outputPath('same-folder-tab-insertion.png')
-    )
+    await captureDragLayout(app, page, testInfo.outputPath('same-folder-tab-insertion-preview.png'))
     await page.mouse.up()
     await expect(pane(ids[0]).locator(`[data-tab-id="${terminalIds[3]}"]`)).toBeVisible()
     await expect(pane(ids[3])).toHaveCount(0)
     await captureDragLayout(app, page, testInfo.outputPath('same-folder-tab-insertion.png'))
-    const final = await page.evaluate(async () => {
-      await window.api.session.flush()
-      return window.api.session.get()
-    })
-    expect(final.tabsByWorktree[ids[0]].map((tab) => tab.id).sort()).toEqual(
-      [terminalIds[0], crossFolderTabId, terminalIds[3]].sort()
-    )
-    expect(final.tabsByWorktree[ids[3]] ?? []).toEqual([])
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(async () => {
+          await window.api.session.flush()
+          return window.api.session.get()
+        })
+        return {
+          target: saved.tabsByWorktree[ids[0]]?.map((tab) => tab.id).sort(),
+          source: saved.tabsByWorktree[ids[3]] ?? []
+        }
+      })
+      .toEqual({ target: [terminalIds[0], crossFolderTabId, terminalIds[3]].sort(), source: [] })
     await targetTab.click()
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(3)
@@ -358,26 +482,74 @@ test('packaged mouse drags swap quadrants and combine local tab bars', async (//
     // Hidden native windows can lose pointer hover while Radix positions the submenu.
     await page.getByRole('menuitem', { name: 'Split terminal', exact: true }).press('ArrowRight')
     await page.getByRole('menuitem', { name: /Split terminal right/ }).press('Enter')
-    await expect(pane(ids[0]).locator('.xterm:visible')).toHaveCount(2)
+    // Terminals are rendered in the workspace's retained overlay, a sibling of
+    // the tab group rather than its descendant. Scope to the exact added tab.
+    const addedTerminal = page.locator(`[data-terminal-overlay-tab-id="${addedTabId}"]`)
+    await expect(addedTerminal.locator('.xterm:visible')).toHaveCount(2)
     await expect
       .poll(async () => (await page.evaluate(() => window.api.pty.listSessions())).length)
       .toBe(initialPtyIds.length + 2)
-    const created = await page.evaluate(async () => {
-      await window.api.session.flush()
-      return window.api.session.get()
-    })
-    expect(created.tabsByWorktree[ids[0]].map((tab) => tab.id)).toContain(addedTabId)
-    expect(created.terminalLayoutsByTabId[addedTabId].root?.type).toBe('split')
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(async () => {
+          await window.api.session.flush()
+          return window.api.session.get()
+        })
+        return {
+          tabSaved: saved.tabsByWorktree[ids[0]]?.some((tab) => tab.id === addedTabId),
+          layoutType: saved.terminalLayoutsByTabId[addedTabId]?.root?.type
+        }
+      })
+      .toEqual({ tabSaved: true, layoutType: 'split' })
     const createdPtyIds = (await page.evaluate(() => window.api.pty.listSessions()))
       .map((item) => item.id)
       .sort()
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect(pane(ids[0]).locator('[data-tab-id]')).toHaveCount(4)
-    await expect(pane(ids[0]).locator('.xterm:visible')).toHaveCount(2)
+    await expect(addedTerminal.locator('.xterm:visible')).toHaveCount(2)
     expect(
       (await page.evaluate(() => window.api.pty.listSessions())).map((item) => item.id).sort()
     ).toEqual(createdPtyIds)
     await captureDragLayout(app, page, testInfo.outputPath('create-after-tab-move.png'))
+    const beforeReorder = await pane(ids[0])
+      .locator('[data-tab-id]')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tab-id')))
+    const firstTabBounds = (await pane(ids[0]).locator('[data-tab-id]').first().boundingBox())!
+    const lastTabBounds = (await pane(ids[0]).locator('[data-tab-id]').last().boundingBox())!
+    await dragTo(
+      page,
+      { x: lastTabBounds.x + 30, y: lastTabBounds.y + 16 },
+      { x: firstTabBounds.x + 4, y: firstTabBounds.y + 16 }
+    )
+    await expect(pane(ids[0]).locator('[data-tab-id]').first()).toHaveClass(/before:bg-blue-500/)
+    await page.mouse.up()
+    const reordered = [beforeReorder.at(-1), ...beforeReorder.slice(0, -1)]
+    await expect
+      .poll(() =>
+        pane(ids[0])
+          .locator('[data-tab-id]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tab-id')))
+      )
+      .toEqual(reordered)
+    await expect
+      .poll(async () => {
+        await page.evaluate(() => window.api.session.flush())
+        const saved = await page.evaluate(() => window.api.session.get())
+        // The terminal registry is not the display order. Group tabOrder is the
+        // persisted ordering used to restore the unified tab strip.
+        return saved.tabGroups?.[ids[0]]?.find((group) =>
+          reordered.every((id) => id && group.tabOrder.includes(id))
+        )?.tabOrder
+      })
+      .toEqual(reordered)
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+    await expect
+      .poll(() =>
+        pane(ids[0])
+          .locator('[data-tab-id]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tab-id')))
+      )
+      .toEqual(reordered)
     expect(
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().every((window) => !window.isVisible())

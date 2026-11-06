@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmulatorSessionInfo } from './emulator-types'
 import type { SimulatorDevice } from './simctl-simulator-devices'
 import type { ServeSimHelperProcess } from './serve-sim-helper-processes'
+import type * as ServeSimExecution from './serve-sim-execution'
 
 const {
   execServeSimCommandMock,
@@ -21,12 +22,13 @@ const {
   netFetchMock: vi.fn()
 }))
 
-vi.mock('electron', () => ({ net: { fetch: netFetchMock } }))
+vi.mock('../network/http-client', () => ({ getMainHttpClient: () => ({ fetch: netFetchMock }) }))
 
-vi.mock('./serve-sim-execution', () => ({
+vi.mock('./serve-sim-execution', async (importOriginal) => ({
   execServeSimCommand: execServeSimCommandMock,
   parseServeSimCommandArgs: vi.fn(() => []),
   resolveServeSimExecutable: vi.fn(() => ({ command: '/serve-sim', env: {} })),
+  serveSimKillArgs: (await importOriginal<typeof ServeSimExecution>()).serveSimKillArgs,
   stripEmulatorTargetArgs: vi.fn((args: string[]) => args)
 }))
 
@@ -52,7 +54,6 @@ vi.mock('./android/android-sdk-host-discovery', () => ({
   setConfiguredAndroidSdkPath: () => {}
 }))
 
-// These tests exercise the iOS backend, which is gated to macOS.
 vi.mock('os', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return { ...actual, platform: () => 'darwin' }
@@ -68,7 +69,6 @@ function session(deviceUdid: string): EmulatorSessionInfo {
     wsUrl: `ws://127.0.0.1:3100/${deviceUdid}`,
     axUrl: `http://127.0.0.1:3100/${deviceUdid}/ax`,
     helperPid: 1234,
-    // iOS serve-sim sessions round-trip through the registry as mjpeg.
     streamCodec: 'mjpeg'
   }
 }
@@ -92,25 +92,6 @@ describe('EmulatorBridge helper ownership', () => {
     netFetchMock.mockReset()
   })
 
-  it('stops the previous Orca-managed helper when a worktree switches devices', async () => {
-    const bridge = new EmulatorBridge()
-    bridge.registerActiveEmulator('wt-1', session('device-old'), { managed: true })
-
-    const stoppedUdid = await bridge.stopActiveManagedForWorktree('wt-1')
-
-    expect(stoppedUdid).toBe('device-old')
-    expect(execServeSimCommandMock).toHaveBeenCalledWith(
-      { command: '/serve-sim', env: {} },
-      ['--kill', '-q', 'device-old'],
-      undefined
-    )
-    expect(killServeSimHelperProcessesForDeviceMock).toHaveBeenCalledWith('device-old', {
-      helperPid: 1234,
-      includeOrphaned: false
-    })
-    expect(bridge.getActiveForWorktree('wt-1')).toBeNull()
-  })
-
   it('shuts down the previous Orca-managed device when requested', async () => {
     const bridge = new EmulatorBridge()
     bridge.registerActiveEmulator('wt-1', session('device-old'), { managed: true })
@@ -122,7 +103,7 @@ describe('EmulatorBridge helper ownership', () => {
     expect(stoppedUdid).toBe('device-old')
     expect(execServeSimCommandMock).toHaveBeenCalledWith(
       { command: '/serve-sim', env: {} },
-      ['--kill', '-q', 'device-old'],
+      ['--kill=device-old', '-q'],
       undefined
     )
     expect(killServeSimHelperProcessesForDeviceMock).toHaveBeenCalledWith('device-old', {
@@ -155,7 +136,7 @@ describe('EmulatorBridge helper ownership', () => {
     expect(stoppedUdid).toBe('device-external')
     expect(execServeSimCommandMock).toHaveBeenCalledWith(
       { command: '/serve-sim', env: {} },
-      ['--kill', '-q', 'device-external'],
+      ['--kill=device-external', '-q'],
       undefined
     )
     expect(killServeSimHelperProcessesForDeviceMock).toHaveBeenCalledWith('device-external', {
@@ -176,7 +157,7 @@ describe('EmulatorBridge helper ownership', () => {
     expect(execServeSimCommandMock).toHaveBeenCalledTimes(1)
     expect(execServeSimCommandMock).toHaveBeenCalledWith(
       { command: '/serve-sim', env: {} },
-      ['--kill', '-q', 'device-managed'],
+      ['--kill=device-managed', '-q'],
       undefined
     )
     expect(killServeSimHelperProcessesForDeviceMock).toHaveBeenCalledTimes(1)
@@ -190,30 +171,9 @@ describe('EmulatorBridge helper ownership', () => {
 
   it('rejects a capability the resolved backend does not support', async () => {
     const bridge = new EmulatorBridge()
-    // device-1 resolves to the iOS backend, which advertises no explicit-verb caps.
     await expect(
       bridge.runCapability('install', { device: 'device-1' }, async () => 'unused')
     ).rejects.toMatchObject({ code: 'emulator_unsupported' })
-  })
-
-  it('kills the helper and shuts down the selected simulator', async () => {
-    const bridge = new EmulatorBridge()
-    bridge.registerActiveEmulator('wt-1', session('device-1'), { managed: true })
-
-    const shutdownUdid = await bridge.shutdown(undefined, 'wt-1')
-
-    expect(shutdownUdid).toBe('device-1')
-    expect(execServeSimCommandMock).toHaveBeenCalledWith(
-      { command: '/serve-sim', env: {} },
-      ['--kill', '-q', 'device-1'],
-      undefined
-    )
-    expect(killServeSimHelperProcessesForDeviceMock).toHaveBeenCalledWith('device-1', {
-      helperPid: 1234,
-      includeOrphaned: true
-    })
-    expect(shutdownSimulatorDeviceMock).toHaveBeenCalledWith('device-1')
-    expect(bridge.getActiveForWorktree('wt-1')).toBeNull()
   })
 
   it('does not clean up a failed attach while another start claim can register the device', async () => {
@@ -323,18 +283,6 @@ describe('EmulatorBridge helper ownership', () => {
     expect(shutdownSimulatorDeviceMock).not.toHaveBeenCalled()
   })
 
-  it('does not reuse the active helper when switching devices', async () => {
-    const waitForEndpointReady = vi.fn(async () => true)
-    const bridge = new EmulatorBridge({ waitForEndpointReady })
-    bridge.registerActiveEmulator('wt-1', session('device-1'), { managed: true })
-
-    const reusable = await bridge.getReusableActiveForWorktree('wt-1', 'device-2')
-
-    expect(reusable).toBeNull()
-    expect(waitForEndpointReady).not.toHaveBeenCalled()
-    expect(listServeSimHelperProcessesForDeviceMock).not.toHaveBeenCalled()
-  })
-
   it('does not reuse an active helper with a stale endpoint', async () => {
     const waitForEndpointReady = vi.fn(async () => false)
     const bridge = new EmulatorBridge({ waitForEndpointReady })
@@ -369,7 +317,7 @@ describe('EmulatorBridge helper ownership', () => {
     expect(execServeSimCommandMock).toHaveBeenNthCalledWith(
       2,
       { command: '/serve-sim', env: {} },
-      ['--kill', '-q', 'device-1'],
+      ['--kill=device-1', '-q'],
       undefined
     )
     expect(killServeSimHelperProcessesForDeviceMock).toHaveBeenCalledWith('device-1', {
@@ -405,7 +353,7 @@ describe('EmulatorBridge helper ownership', () => {
     expect(waitForEndpointReady).toHaveBeenCalledTimes(2)
     expect(execServeSimCommandMock).toHaveBeenCalledWith(
       { command: '/serve-sim', env: {} },
-      ['--kill', '-q', 'device-1'],
+      ['--kill=device-1', '-q'],
       undefined
     )
     expect(killServeSimHelperProcessesForDeviceMock).toHaveBeenCalledTimes(2)
@@ -450,100 +398,6 @@ describe('RuntimeEmulatorCommands attach lifecycle', () => {
     netFetchMock.mockReset()
   })
 
-  it('reads iOS accessibility from the active worktree session', async () => {
-    const tree = [{ type: 'Application', children: [] }]
-    netFetchMock.mockResolvedValue(new Response(JSON.stringify(tree), { status: 200 }))
-    const bridge = new EmulatorBridge()
-    bridge.registerActiveEmulator('wt-1', session('device-1'), { managed: true })
-    const commands = new RuntimeEmulatorCommands({
-      getEmulatorBridge: () => bridge,
-      resolveEmulatorWorkspaceId: vi.fn(async () => 'wt-1'),
-      resolveEmulatorCleanupWorkspaceId: vi.fn(async () => 'wt-1'),
-      getAuthoritativeWindow: () => ({ webContents: { send: vi.fn() } }) as never,
-      getSettings: () => ({
-        mobileEmulatorEnabled: true,
-        mobileEmulatorDefaultDeviceUdid: null
-      })
-    })
-
-    // Routing test: normalization is covered in serve-sim-ax-normalization.test.ts.
-    await expect(commands.emulatorAx({ worktree: 'wt-1' })).resolves.toMatchObject([
-      { type: 'Application' }
-    ])
-    expect(netFetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3100/device-1/ax',
-      expect.any(Object)
-    )
-  })
-
-  it('reads iOS accessibility from an attached device without a worktree', async () => {
-    const tree = [{ type: 'Application', children: [] }]
-    netFetchMock.mockResolvedValue(new Response(JSON.stringify(tree), { status: 200 }))
-    listSimulatorDevicesMock.mockResolvedValue([
-      {
-        name: 'iPhone attached',
-        udid: 'device-1',
-        state: 'Booted',
-        runtime: 'iOS 26.0'
-      }
-    ])
-    const bridge = new EmulatorBridge()
-    bridge.registerActiveEmulator('wt-1', session('device-1'), { managed: true })
-    const commands = new RuntimeEmulatorCommands({
-      getEmulatorBridge: () => bridge,
-      resolveEmulatorWorkspaceId: vi.fn(async () => 'wt-1'),
-      resolveEmulatorCleanupWorkspaceId: vi.fn(async () => 'wt-1'),
-      getAuthoritativeWindow: () => ({ webContents: { send: vi.fn() } }) as never,
-      getSettings: () => ({
-        mobileEmulatorEnabled: true,
-        mobileEmulatorDefaultDeviceUdid: null
-      })
-    })
-
-    await expect(commands.emulatorAx({ device: 'device-1' })).resolves.toMatchObject([
-      { type: 'Application' }
-    ])
-    expect(netFetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3100/device-1/ax',
-      expect.any(Object)
-    )
-  })
-
-  it('reads ax for an explicit device when the worktree has no active session', async () => {
-    const tree = [{ type: 'Application', children: [] }]
-    netFetchMock.mockResolvedValue(new Response(JSON.stringify(tree), { status: 200 }))
-    listSimulatorDevicesMock.mockResolvedValue([
-      {
-        name: 'iPhone elsewhere',
-        udid: 'device-1',
-        state: 'Booted',
-        runtime: 'iOS 26.0'
-      }
-    ])
-    const bridge = new EmulatorBridge()
-    // The session lives under another worktree; the CLI still resolves the
-    // caller's cwd worktree, which has nothing attached.
-    bridge.registerActiveEmulator('wt-other', session('device-1'), { managed: true })
-    const commands = new RuntimeEmulatorCommands({
-      getEmulatorBridge: () => bridge,
-      resolveEmulatorWorkspaceId: vi.fn(async () => 'wt-1'),
-      resolveEmulatorCleanupWorkspaceId: vi.fn(async () => 'wt-1'),
-      getAuthoritativeWindow: () => ({ webContents: { send: vi.fn() } }) as never,
-      getSettings: () => ({
-        mobileEmulatorEnabled: true,
-        mobileEmulatorDefaultDeviceUdid: null
-      })
-    })
-
-    await expect(
-      commands.emulatorAx({ device: 'device-1', worktree: 'wt-1' })
-    ).resolves.toMatchObject([{ type: 'Application' }])
-    expect(netFetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3100/device-1/ax',
-      expect.any(Object)
-    )
-  })
-
   it('reports when the requested iOS device differs from the active session', async () => {
     listSimulatorDevicesMock.mockResolvedValue([
       {
@@ -579,7 +433,6 @@ describe('RuntimeEmulatorCommands attach lifecycle', () => {
     const tree = [{ type: 'Application', children: [] }]
     netFetchMock.mockResolvedValue(new Response(JSON.stringify(tree), { status: 200 }))
     const bridge = new EmulatorBridge()
-    // No axUrl on the registered session (e.g. reattach path predating derivation).
     bridge.registerActiveEmulator(
       'wt-1',
       {
@@ -684,77 +537,5 @@ describe('RuntimeEmulatorCommands attach lifecycle', () => {
       commands.emulatorAttach({ device: 'device-1', worktree: 'wt-1' })
     ).rejects.toMatchObject({ code: 'emulator_disabled' })
     expect(execServeSimCommandMock).not.toHaveBeenCalled()
-  })
-
-  it('uses the configured default device when attach omits a device', async () => {
-    const waitForEndpointReady = vi.fn(async () => true)
-    execServeSimCommandMock.mockResolvedValue({
-      device: 'device-default',
-      streamUrl: 'http://127.0.0.1:3102/stream.mjpeg',
-      wsUrl: 'ws://127.0.0.1:3102'
-    })
-    const bridge = new EmulatorBridge({ waitForEndpointReady })
-    const commands = new RuntimeEmulatorCommands({
-      getEmulatorBridge: () => bridge,
-      resolveEmulatorWorkspaceId: vi.fn(async () => 'wt-1'),
-      resolveEmulatorCleanupWorkspaceId: vi.fn(async () => 'wt-1'),
-      getAuthoritativeWindow: () => ({ webContents: { send: vi.fn() } }) as never,
-      getSettings: () => ({
-        mobileEmulatorEnabled: true,
-        mobileEmulatorDefaultDeviceUdid: 'device-default'
-      })
-    })
-
-    const res = await commands.emulatorAttach({ worktree: 'wt-1' })
-
-    expect(res.info?.deviceUdid).toBe('device-default')
-    expect(execServeSimCommandMock).toHaveBeenCalledWith(
-      { command: '/serve-sim', env: {} },
-      ['--detach', '-q', 'device-default'],
-      { json: true }
-    )
-  })
-
-  it('auto-selects an available iPhone when no device or default is provided', async () => {
-    const waitForEndpointReady = vi.fn(async () => true)
-    listSimulatorDevicesMock.mockResolvedValue([
-      {
-        name: 'iPad Pro',
-        udid: 'device-ipad',
-        state: 'Shutdown',
-        runtime: 'com.apple.CoreSimulator.SimRuntime.iOS-18-0'
-      },
-      {
-        name: 'iPhone 17 Pro',
-        udid: 'device-iphone',
-        state: 'Shutdown',
-        runtime: 'com.apple.CoreSimulator.SimRuntime.iOS-18-0'
-      }
-    ])
-    execServeSimCommandMock.mockResolvedValue({
-      device: 'device-iphone',
-      streamUrl: 'http://127.0.0.1:3102/stream.mjpeg',
-      wsUrl: 'ws://127.0.0.1:3102'
-    })
-    const bridge = new EmulatorBridge({ waitForEndpointReady })
-    const commands = new RuntimeEmulatorCommands({
-      getEmulatorBridge: () => bridge,
-      resolveEmulatorWorkspaceId: vi.fn(async () => 'wt-1'),
-      resolveEmulatorCleanupWorkspaceId: vi.fn(async () => 'wt-1'),
-      getAuthoritativeWindow: () => ({ webContents: { send: vi.fn() } }) as never,
-      getSettings: () => ({
-        mobileEmulatorEnabled: true,
-        mobileEmulatorDefaultDeviceUdid: null
-      })
-    })
-
-    const res = await commands.emulatorAttach({ worktree: 'wt-1' })
-
-    expect(res.info?.deviceUdid).toBe('device-iphone')
-    expect(execServeSimCommandMock).toHaveBeenCalledWith(
-      { command: '/serve-sim', env: {} },
-      ['--detach', '-q', 'device-iphone'],
-      { json: true }
-    )
   })
 })

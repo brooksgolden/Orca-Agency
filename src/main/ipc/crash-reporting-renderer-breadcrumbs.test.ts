@@ -63,6 +63,11 @@ vi.mock('../observability/tracer', () => ({
 }))
 
 import { registerCrashReportingHandlers } from './crash-reporting'
+import {
+  recordTerminalProducerFlowTransition,
+  setTerminalLatencyCapture,
+  setTerminalProducerFlowCapture
+} from './crash-reporting-renderer-breadcrumbs'
 
 function registerHandlersWithStubStore(): void {
   registerCrashReportingHandlers({
@@ -85,6 +90,8 @@ function emitRendererBreadcrumb(args: unknown, senderId?: number): void {
 
 describe('renderer breadcrumb IPC routing', () => {
   beforeEach(() => {
+    setTerminalLatencyCapture(undefined)
+    setTerminalProducerFlowCapture(undefined)
     listeners.clear()
     recordCoalescedCrashBreadcrumbMock.mockReset()
     recordCoalescedCrashBreadcrumbMock.mockReturnValue({ suppressedSinceLast: 0 })
@@ -92,6 +99,283 @@ describe('renderer breadcrumb IPC routing', () => {
     startSpanMock.mockClear()
     spanEndMock.mockClear()
     registerHandlersWithStubStore()
+  })
+
+  it('persists every slow terminal event with metrics only, even when the crash ring coalesces it', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb(
+      {
+        name: 'terminal_renderer_gap',
+        data: { gapMs: 1_250, queuedChars: 512, message: 'private terminal text' }
+      },
+      42
+    )
+    emitRendererBreadcrumb({ name: 'terminal_renderer_gap', data: { gapMs: 2_750 } }, 42)
+    emitRendererBreadcrumb({ name: 'renderer_error', data: { message: 'private error' } }, 42)
+
+    expect(capture).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_renderer_gap',
+      origin: 'renderer:42',
+      metrics: { gapMs: 1_250, queuedChars: 512 }
+    })
+    expect(JSON.parse(capture.mock.calls[1][0])).toMatchObject({
+      name: 'terminal_renderer_gap',
+      metrics: { gapMs: 2_750 }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private terminal text')
+    expect(capture.mock.calls[0][0]).not.toContain('private error')
+  })
+
+  it('retains numeric long frame attribution without source paths or script text', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_renderer_long_frame',
+      data: {
+        at: '2026-10-20T04:00:00.000Z',
+        durationMs: 800,
+        topScriptSourceChar: 432,
+        topScriptAssetHash: 12345,
+        sourceURL: 'file:///private/asset.js?secret',
+        message: 'private terminal text'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_renderer_long_frame',
+      rendererAt: '2026-10-20T04:00:00.000Z',
+      metrics: { durationMs: 800, topScriptSourceChar: 432, topScriptAssetHash: 12345 }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private')
+    expect(capture.mock.calls[0][0]).not.toContain('secret')
+  })
+
+  it('keeps fixed paste labels and event time without retaining terminal content', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_paste_slow',
+      data: {
+        at: '2026-10-18T20:00:00.000Z',
+        source: 'keyboard',
+        mode: 'windows-input-record',
+        runtime: 'local',
+        status: 'pending',
+        dispatchDelayMs: -1,
+        rawPtyAfterDispatchMs: 12,
+        queueAfterDispatchMs: 15,
+        xtermWriteAfterDispatchMs: 1_015,
+        matchedParseAfterDispatchMs: 1_035,
+        matchedPaintAfterDispatchMs: 1_055,
+        queuedCoalesce: true,
+        firstPaintDelayMs: 800,
+        message: 'private terminal text'
+      }
+    })
+
+    const row = JSON.parse(capture.mock.calls[0][0])
+    expect(row).toMatchObject({
+      name: 'terminal_paste_slow',
+      rendererAt: '2026-10-18T20:00:00.000Z',
+      labels: {
+        source: 'keyboard',
+        mode: 'windows-input-record',
+        runtime: 'local',
+        status: 'pending'
+      },
+      metrics: {
+        dispatchDelayMs: -1,
+        rawPtyAfterDispatchMs: 12,
+        queueAfterDispatchMs: 15,
+        xtermWriteAfterDispatchMs: 1_015,
+        matchedParseAfterDispatchMs: 1_035,
+        matchedPaintAfterDispatchMs: 1_055,
+        queuedCoalesce: true,
+        firstPaintDelayMs: 800
+      }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private terminal text')
+  })
+
+  it('records input dispatch delay with a fixed event label and no input text', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_input_dispatch_delay',
+      data: {
+        kind: 'keydown',
+        delayMs: 1_200,
+        queuedChars: 64,
+        key: 'private key',
+        message: 'private terminal text'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_input_dispatch_delay',
+      labels: { kind: 'keydown' },
+      metrics: { delayMs: 1_200, queuedChars: 64 }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private')
+    emitRendererBreadcrumb({
+      name: 'terminal_input_dispatch_delay',
+      data: { kind: 'private key text', delayMs: 900 }
+    })
+    expect(JSON.parse(capture.mock.calls[1][0])).toEqual(
+      expect.objectContaining({ metrics: { delayMs: 900 } })
+    )
+    expect(capture.mock.calls[1][0]).not.toContain('private key text')
+    emitRendererBreadcrumb({
+      name: 'terminal_input_dispatch_delay',
+      data: { kind: 'input', delayMs: 400, text: 'private dictated words' }
+    })
+    expect(JSON.parse(capture.mock.calls[2][0]).labels).toEqual({ kind: 'input' })
+    expect(capture.mock.calls[2][0]).not.toContain('private dictated words')
+  })
+
+  it('records streamed input counts and output pressure without terminal text', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_input_stream',
+      data: {
+        events: 20,
+        codeUnits: 80,
+        multiUnitEvents: 18,
+        maxEventGapMs: 2_000,
+        maxForwardMs: 7,
+        deferredEvents: 3,
+        queuedChars: 24,
+        text: 'private dictated words'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_input_stream',
+      metrics: {
+        events: 20,
+        codeUnits: 80,
+        multiUnitEvents: 18,
+        maxEventGapMs: 2_000,
+        maxForwardMs: 7,
+        deferredEvents: 3,
+        queuedChars: 24
+      }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private dictated words')
+  })
+
+  it('captures rounded bulk-input timing without dictated content', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_input_bulk',
+      data: {
+        codeUnitsRoundedUp64: 1472,
+        dispatchCallMs: 3,
+        deferred: true,
+        queuedChars: 24,
+        text: 'private dictated words'
+      }
+    })
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_input_bulk',
+      metrics: {
+        codeUnitsRoundedUp64: 1472,
+        dispatchCallMs: 3,
+        deferred: true,
+        queuedChars: 24
+      }
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private dictated words')
+  })
+
+  it('drops unexpected paste labels and noncanonical timestamps', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({
+      name: 'terminal_paste_slow',
+      data: { source: 'private clipboard text', at: 'private timestamp', writeMs: 600 }
+    })
+
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({ metrics: { writeMs: 600 } })
+    expect(capture.mock.calls[0][0]).not.toContain('private clipboard text')
+    expect(capture.mock.calls[0][0]).not.toContain('private timestamp')
+  })
+
+  it('records dropped output backlog and ignores unrelated event names', () => {
+    const capture = vi.fn()
+    setTerminalLatencyCapture(capture)
+    emitRendererBreadcrumb({ name: 'constructor', data: { message: 'not a latency event' } })
+    emitRendererBreadcrumb({
+      name: 'terminal_output_backlog_dropped',
+      data: { foreground: true, droppedChars: 4096, capChars: 2048 }
+    })
+
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_output_backlog_dropped',
+      metrics: { foreground: true, droppedChars: 4096, capChars: 2048 }
+    })
+  })
+
+  it('captures producer flow requests without PTY content or full handles', () => {
+    const capture = vi.fn()
+    setTerminalProducerFlowCapture(capture)
+    recordTerminalProducerFlowTransition(
+      {
+        event: 'reassert-request',
+        id: 'private-prefix-1234567890',
+        pendingChars: 300_000,
+        sinceInitialRequestMs: 9_000,
+        sinceLastRequestMs: 5_000,
+        trackedPausePtyCount: 2,
+        requestStatus: 'method-invoked-unconfirmed'
+      },
+      { scope: 'local', rendererInFlightChars: 100_000, msSinceLastRendererAck: 4_000 }
+    )
+
+    expect(JSON.parse(capture.mock.calls[0][0])).toMatchObject({
+      name: 'terminal_producer_flow',
+      event: 'reassert-request',
+      sequence: 1,
+      ptyIdSuffix: '1234567890',
+      scope: 'local',
+      pendingChars: 300_000,
+      rendererInFlightChars: 100_000,
+      msSinceLastRendererAck: 4_000,
+      sinceInitialRequestMs: 9_000,
+      sinceLastRequestMs: 5_000,
+      trackedPausePtyCount: 2,
+      requestStatus: 'method-invoked-unconfirmed'
+    })
+    expect(capture.mock.calls[0][0]).not.toContain('private-prefix')
+  })
+
+  it('keeps producer flow records separate from renderer latency and disables cleanly', () => {
+    const latency = vi.fn()
+    const flow = vi.fn()
+    const transition = {
+      event: 'pause-request' as const,
+      id: 'pty-1234567890',
+      pendingChars: 300_000,
+      sinceInitialRequestMs: null,
+      sinceLastRequestMs: null,
+      trackedPausePtyCount: 1,
+      requestStatus: 'unsupported' as const
+    }
+    const context = {
+      scope: 'ssh' as const,
+      rendererInFlightChars: 0,
+      msSinceLastRendererAck: null
+    }
+    setTerminalLatencyCapture(latency)
+    recordTerminalProducerFlowTransition(transition, context)
+    expect(latency).not.toHaveBeenCalled()
+    setTerminalProducerFlowCapture(flow)
+    recordTerminalProducerFlowTransition(transition, context)
+    setTerminalProducerFlowCapture(undefined)
+    recordTerminalProducerFlowTransition(transition, context)
+    expect(flow).toHaveBeenCalledTimes(1)
   })
 
   it('sanitizes and coalesces renderer error breadcrumbs', () => {
@@ -236,6 +520,49 @@ describe('renderer breadcrumb IPC routing', () => {
     expect(spanEndMock).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps every slow paste in the durable trace while bounding crash ring entries', () => {
+    recordCoalescedCrashBreadcrumbMock
+      .mockReturnValueOnce({ suppressedSinceLast: 0 })
+      .mockReturnValue(undefined)
+    emitRendererBreadcrumb({ name: 'terminal_paste_slow', data: { firstPaintDelayMs: 700 } })
+    emitRendererBreadcrumb({ name: 'terminal_paste_slow', data: { firstPaintDelayMs: 900 } })
+
+    expect(recordCoalescedCrashBreadcrumbMock).toHaveBeenCalledTimes(2)
+    for (const call of recordCoalescedCrashBreadcrumbMock.mock.calls) {
+      expect(call[0].coalesceKey).toBe('terminal_paste_slow')
+    }
+    expect(startSpanMock).toHaveBeenCalledTimes(2)
+    expect(spanEndMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('coalesces bulk-input crash entries while retaining each durable trace', () => {
+    recordCoalescedCrashBreadcrumbMock
+      .mockReturnValueOnce({ suppressedSinceLast: 0 })
+      .mockReturnValue(undefined)
+    emitRendererBreadcrumb({ name: 'terminal_input_bulk', data: { codeUnitsRoundedUp64: 512 } })
+    emitRendererBreadcrumb({ name: 'terminal_input_bulk', data: { codeUnitsRoundedUp64: 1024 } })
+    expect(recordCoalescedCrashBreadcrumbMock).toHaveBeenCalledTimes(2)
+    for (const call of recordCoalescedCrashBreadcrumbMock.mock.calls) {
+      expect(call[0].coalesceKey).toBe('terminal_input_bulk')
+    }
+    expect(startSpanMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('preserves each foreground renderer gap in the trace while coalescing the crash ring', () => {
+    recordCoalescedCrashBreadcrumbMock
+      .mockReturnValueOnce({ suppressedSinceLast: 0 })
+      .mockReturnValue(undefined)
+    emitRendererBreadcrumb({ name: 'terminal_renderer_gap', data: { gapMs: 1_250 } })
+    emitRendererBreadcrumb({ name: 'terminal_renderer_gap', data: { gapMs: 2_750 } })
+
+    expect(recordCoalescedCrashBreadcrumbMock).toHaveBeenCalledTimes(2)
+    for (const call of recordCoalescedCrashBreadcrumbMock.mock.calls) {
+      expect(call[0].coalesceKey).toBe('terminal_renderer_gap')
+    }
+    expect(startSpanMock).toHaveBeenCalledTimes(2)
+    expect(spanEndMock).toHaveBeenCalledTimes(2)
+  })
+
   it('includes the suppressed count when durable tracing resumes', () => {
     recordCoalescedCrashBreadcrumbMock.mockReturnValueOnce({ suppressedSinceLast: 999 })
 
@@ -250,8 +577,7 @@ describe('renderer breadcrumb IPC routing', () => {
     })
   })
 
-  // Why: park-churn notices are per-tab but the ring is process-wide, so many
-  // tabs churning at once would otherwise evict the pre-crash trail.
+  // Per-tab churn must not evict the process-wide pre-crash trail.
   it('coalesces park-verdict churn notices by trigger across tabs', () => {
     emitRendererBreadcrumb({
       name: 'terminal_park_verdict_churn',
@@ -269,9 +595,7 @@ describe('renderer breadcrumb IPC routing', () => {
     }
   })
 
-  // Why: `burst` means damping engaged a commit short of React #185 while
-  // `window` is slow benign churn. A shared key would drop the near-crash
-  // signal into the slow-churn slot.
+  // Keep near-crash burst evidence separate from slow window churn.
   it('keeps burst and window park-verdict churn triggers in separate slots', () => {
     emitRendererBreadcrumb({
       name: 'terminal_park_verdict_churn',
@@ -287,9 +611,7 @@ describe('renderer breadcrumb IPC routing', () => {
     ).toEqual(['terminal_park_verdict_churn:burst', 'terminal_park_verdict_churn:window'])
   })
 
-  // Why: every hidden pane is 0x0, so one post-reload reattach wave exhausts
-  // the fit budget once per mounted pane inside ~60ms. Windows crash
-  // F0BKR84AHEH lost 26-90% of its 30-entry ring to two such bursts.
+  // Hidden panes exhaust fit retries together; coalesce their burst without losing pane counts.
   it('coalesces fit-retry exhaustion by name, not by pane', () => {
     emitRendererBreadcrumb({
       name: 'terminal_safe_fit_retry_exhausted',
@@ -307,8 +629,7 @@ describe('renderer breadcrumb IPC routing', () => {
     }
   })
 
-  // Why kind-scoped: a routine post-wake atlas reset must never suppress the
-  // context-loss crumb that says the driver gave up on this renderer.
+  // Routine atlas resets must not suppress GPU context-loss evidence.
   it('coalesces WebGL diagnostics per kind so one kind cannot mask another', () => {
     emitRendererBreadcrumb({
       name: 'terminal_webgl_diagnostic',
@@ -350,8 +671,7 @@ describe('renderer breadcrumb IPC routing', () => {
     ])
   })
 
-  // Why: the renderer guard is once per tab-id/verdict, so one stale worktree
-  // map can emit enough crumbs to evict the pre-crash trail.
+  // A stale worktree map can emit once per tab; bound the resulting storm.
   it('coalesces duplicate-tab-owner notices across tabs', () => {
     emitRendererBreadcrumb({
       name: 'terminal_tab_id_owned_by_multiple_worktrees',
@@ -371,8 +691,7 @@ describe('renderer breadcrumb IPC routing', () => {
     }
   })
 
-  // Why flag-scoped: coalescing keeps only the newest payload, and the verdict
-  // flips under a persisting duplicate, so one would erase the other.
+  // Last-write coalescing must preserve both convergence verdicts.
   it('keeps a non-converging duplicate-tab-owner notice out of the converging one', () => {
     emitRendererBreadcrumb({
       name: 'terminal_tab_id_owned_by_multiple_worktrees',
@@ -393,8 +712,7 @@ describe('renderer breadcrumb IPC routing', () => {
     ])
   })
 
-  // Why: a #185 crash loop emits a cascade notice per cascade, back to back,
-  // and uncoalesced they would flush the 30-entry ring holding the trail.
+  // Back-to-back React cascades must not flush the 30-entry ring.
   it('coalesces react commit cascade notices from one driver into one slot', () => {
     emitRendererBreadcrumb({
       name: 'react_commit_cascade',
@@ -416,8 +734,7 @@ describe('renderer breadcrumb IPC routing', () => {
     ])
   })
 
-  // Why keyed and not name-only: coalescing keeps only the newest payload, so
-  // one surface or driver would erase the other's evidence.
+  // Last-write coalescing must preserve distinct surfaces and drivers.
   it('keeps different cascade surfaces and drivers in separate slots', () => {
     emitRendererBreadcrumb({
       name: 'react_commit_cascade',
@@ -441,8 +758,7 @@ describe('renderer breadcrumb IPC routing', () => {
     ).toBe(3)
   })
 
-  // Why asserted here: the key ends in `stack`, which is what buys the driver
-  // frames the 4000-char budget instead of the 240-char one details get.
+  // The stack key permits a 4000-character budget instead of ordinary detail truncation.
   it('keeps the full driver stack on a react commit cascade notice', () => {
     const driverStack = `tabs.ts:12:3 bump\n${'tabs.ts:99:1 other\n'.repeat(60)}`
     emitRendererBreadcrumb({
@@ -456,8 +772,7 @@ describe('renderer breadcrumb IPC routing', () => {
     expect(recorded?.data.driverStack.length).toBeGreaterThan(240)
   })
 
-  // Why uncoalesced: it fires at most once per renderer, and it is the signal
-  // that the diagnostic itself never wired up.
+  // A once-per-renderer diagnostic installation failure does not need coalescing.
   it('records the uninstalled self-check notice directly', () => {
     emitRendererBreadcrumb({ name: 'react_commit_cascade_uninstalled' })
 

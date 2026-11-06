@@ -1,12 +1,5 @@
-/**
- * Turns a saved record back into the editor's draft shape.
- *
- * Both builders are total: a schedule the editor cannot represent produces a
- * warning rather than a silently rewritten one, because saving would otherwise
- * replace a working cron the user never chose to change.
- */
-
 import type { Automation, ExternalAutomationJob } from '../../../../shared/automations-types'
+import { translate } from '@/i18n/i18n'
 import { getAutomationRunRepoId } from '../../../../shared/automation-run-identity'
 import {
   isRunnableAutomationCronSchedule,
@@ -24,6 +17,7 @@ export function buildAutomationEditDraft(automation: Automation): AutomationDraf
     name: automation.name,
     prompt: automation.prompt,
     agentId: automation.agentId,
+    surface: automation.launchSetup?.surface ?? automation.surface ?? 'terminal',
     extraAgentArgs: automation.extraAgentArgs ?? '',
     projectId: getAutomationRunRepoId(automation),
     workspaceMode: automation.workspaceMode,
@@ -45,7 +39,10 @@ export function buildAutomationEditDraft(automation: Automation): AutomationDraf
     scheduleWarning:
       schedule || hasCustomSchedule
         ? null
-        : 'This automation has an unsupported saved schedule. Pick a supported schedule before saving changes.'
+        : translate(
+            'auto.components.automations.editDraft.unsupportedSchedule',
+            'This automation has an unsupported saved schedule. Pick a supported schedule before saving changes.'
+          )
   }
 }
 
@@ -59,6 +56,7 @@ export function buildExternalAutomationEditDraft(
     name: job.name,
     prompt: job.prompt ?? job.promptPreview,
     agentId: 'hermes',
+    surface: 'terminal',
     extraAgentArgs: '',
     projectId: placement.projectId,
     workspaceMode: 'existing',
@@ -76,6 +74,9 @@ export function buildExternalAutomationEditDraft(
     missedRunGraceMinutes: '720',
     scheduleWarning: hasCustomSchedule
       ? null
-      : 'This Hermes automation has an unsupported saved schedule. Pick a supported schedule before saving changes.'
+      : translate(
+          'auto.components.automations.editDraft.unsupportedHermesSchedule',
+          'This Hermes automation has an unsupported saved schedule. Pick a supported schedule before saving changes.'
+        )
   }
 }

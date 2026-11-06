@@ -9,8 +9,7 @@ function resolveParkWaitTimeoutMs(parkDelayMs?: number): number {
   return Math.max(20_000, delay * 10)
 }
 
-// Why: TerminalPane unmount deletes its entry from window.__paneManagers, so a
-// missing manager is the observable signal that the tab's xterm was parked.
+// PaneManager unregisters on unmount, making its absence the observable parking signal.
 export async function waitForTabParked(
   page: Page,
   tabId: string,
@@ -97,8 +96,6 @@ export async function parkHiddenTabBehindDecoy(
   targetTabId: string,
   options?: { parkDelayMs?: number; requireRestorableDecoy?: boolean }
 ): Promise<number> {
-  // An active target needs one decoy to become old and another to take the
-  // last-active exemption; already-hidden targets need only the latter.
   if ((await getActiveTabId(page)) === targetTabId) {
     if (options?.requireRestorableDecoy) {
       let foundRestorableDecoy = false

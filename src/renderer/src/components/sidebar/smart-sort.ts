@@ -10,14 +10,14 @@ import type {
   AgentStatusEntry,
   MigrationUnsupportedPtyEntry
 } from '../../../../shared/agent-status-types'
-import { tabHasLivePty } from '@/lib/tab-has-live-pty'
+import { tabHasLivePty } from '../../../../shared/tab-has-live-pty'
 import { basename } from '@/lib/path'
 import {
   IDLE,
   buildAttentionByWorktree,
   hasFreshAttributedAgentStatus,
   type WorktreeAttention
-} from './smart-attention'
+} from '../../../../shared/sidebar-list/smart-attention'
 
 export type SortBy = 'name' | 'smart' | 'recent' | 'repo' | 'manual'
 

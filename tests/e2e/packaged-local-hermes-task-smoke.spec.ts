@@ -53,7 +53,7 @@ test('packaged local Hermes scheduled task appears in Automations', async (// ox
     const name = page.getByText('Hermes workspace mirror', { exact: true })
     await expect(name).toBeVisible({ timeout: 60_000 })
     const row = name.locator('xpath=ancestor::*[@role="button"][1]')
-    await expect(row).toContainText('Every 15 minutes')
+    await expect(row).toContainText('Hourly, only while idle')
     await expect(row).toContainText('this computer')
   } finally {
     await closeElectronAppForE2E(app)

@@ -7,7 +7,6 @@ import type {
   ScopedExternalManagerActionRequest,
   ScopedExternalManagerCreateRequest,
   ScopedExternalManagerListRequest,
-  ScopedExternalManagerMutationFields,
   ScopedExternalManagerRunsRequest,
   ScopedExternalManagerUpdateRequest
 } from '../../shared/external-automation-scope'
@@ -22,20 +21,16 @@ import {
   type ExternalAutomationManagerCacheEntry
 } from './external-automation-manager-cache'
 import type { ExternalAutomationProbeScheduler } from './external-automation-probe-scheduler'
-import { listLocalManager, listRemoteManager } from './external-manager-discovery'
+import { listLocalManager } from './external-manager-discovery'
+import { SshHostNotServedError } from '../providers/ssh-host-not-served-error'
+import { listExternalAutomationRuns } from './external-manager-runs'
 import {
   createExternalAutomation,
   runExternalAutomationAction,
   updateExternalAutomation
 } from './external-manager-mutations'
-import { listExternalAutomationRuns } from './external-manager-runs'
 
-export {
-  createExternalAutomation,
-  listExternalAutomationRuns,
-  runExternalAutomationAction,
-  updateExternalAutomation
-}
+export { runExternalAutomationAction }
 
 export type ScopedExternalAutomationDeps = {
   registry: DesktopSshTargetRegistry
@@ -53,19 +48,20 @@ export type ScopedExternalAutomations = {
   runAction: (request: ScopedExternalManagerActionRequest) => Promise<void>
 }
 
-/**
- * Scoped entry points: one captured desktop owner in, one host's managers out.
- * Every call re-resolves its scope before any probe, so a host that changed under
- * a held-open dialog fails closed instead of acting on the new incarnation.
- */
+/** Revalidate captured owners on each call so stale dialogs cannot act on replacement hosts. */
 export function createScopedExternalAutomations(
   deps: ScopedExternalAutomationDeps
 ): ScopedExternalAutomations {
   const resolve = (request: ScopedExternalAutomationRequest): ResolvedExternalAutomationScope =>
     resolveExternalAutomationScope(request, deps.registry)
+  const requireLocal = (scope: ResolvedExternalAutomationScope): void => {
+    if (scope.sshTarget) {
+      throw new SshHostNotServedError(scope.sshTarget.id)
+    }
+  }
   const mutationInput = (
     scope: ResolvedExternalAutomationScope,
-    fields: ScopedExternalManagerMutationFields
+    fields: ScopedExternalManagerCreateRequest
   ): ExternalAutomationCreateInput => ({
     managerId: scope.managerId,
     provider: scope.provider,
@@ -75,7 +71,6 @@ export function createScopedExternalAutomations(
     schedule: fields.schedule,
     workdir: fields.workdir
   })
-
   return {
     async listManager(request) {
       const scope = resolve(request)
@@ -88,7 +83,7 @@ export function createScopedExternalAutomations(
             scopeKey: scope.ownerKey,
             run: () =>
               scope.sshTarget
-                ? listRemoteManager(scope.sshTarget, scope.provider)
+                ? Promise.reject(new SshHostNotServedError(scope.sshTarget.id))
                 : listLocalManager(scope.provider)
           }),
         { refresh: request.refresh }
@@ -96,6 +91,7 @@ export function createScopedExternalAutomations(
     },
     async listRuns(request) {
       const scope = resolve(request)
+      requireLocal(scope)
       return await listExternalAutomationRuns({
         managerId: scope.managerId,
         provider: scope.provider,
@@ -107,11 +103,13 @@ export function createScopedExternalAutomations(
     },
     async create(request) {
       const scope = resolve(request)
+      requireLocal(scope)
       await createExternalAutomation(mutationInput(scope, request))
       deps.cache.invalidateOwner(scope.ownerKey)
     },
     async update(request) {
       const scope = resolve(request)
+      requireLocal(scope)
       await updateExternalAutomation({ ...mutationInput(scope, request), jobId: request.jobId })
       deps.cache.invalidateOwner(scope.ownerKey)
     },

@@ -1,12 +1,12 @@
 import type { TabsSlice, TabsSliceGet, TabsSliceSet } from './tabs-slice-contract'
 import { findTabAndWorktree, pickNextActiveTab, sanitizeRecentTabIds } from '../tab-group-state'
-import { collapseGroupLayout } from './tabs-layout'
+import { collapseGroupLayout } from '../../../../../shared/workspace-layout/tab-group-layout-tree'
 import { buildActiveSurfacePatch } from './tabs-surface'
 import { parsePaneKey } from '../../../../../shared/stable-pane-id'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { moveParkedTerminalTabWorkspace } from '@/components/terminal-pane/terminal-parked-watcher-registry'
 import { getConnectionIdFromState } from '@/lib/connection-owner-resolution'
-import { applyTabOrderSortValues } from './tabs-tab-order'
+import { applyTabOrderSortValues } from '../../../../../shared/workspace-layout/tab-order'
 
 /** Move the surface, retaining its terminal, pane identities, drafts and provider session. */
 export function createTabsWorkspaceTransferActions(

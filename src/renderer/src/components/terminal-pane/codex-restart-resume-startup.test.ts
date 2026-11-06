@@ -5,7 +5,7 @@ import { chatState, chatTab, chatWorktree } from '../sidebar/chat-sidebar-test-f
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { AppState } from '@/store'
 import { savedTabResume } from './pty-connection/saved-tab-resume'
-import { REMOTE_PTY_ID_PREFIX } from './pty-connection/pty-connect-limits'
+import { toRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import { getKnownExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 
 const platform = vi.hoisted((): { value: NodeJS.Platform } => ({ value: 'linux' }))
@@ -79,7 +79,7 @@ describe('Codex restart resumes its own conversation', () => {
     source.settings!.agentDefaultArgs = { codex: '--model current-model' }
     const startup = codexRestartResumeStartup(source, chatWorktree.id, 'a', leafId)
     expect(startup.command).toBe(
-      "current-codex '--model' 'current-model' '--cd' '.' '-c' 'tui.resume_cwd=current' 'resume' 'exact-session'"
+      "current-codex '--model' 'current-model' '-c' 'tui.resume_cwd=current' 'resume' 'exact-session'"
     )
     expect(startup.resumeProviderSession).toEqual({ key: 'session_id', id: 'exact-session' })
     expect(source.agentStatusByPaneKey[paneKey].state).toBe('done')
@@ -123,7 +123,7 @@ describe('Codex restart resumes its own conversation', () => {
       'a',
       leafId,
       '/project',
-      `${REMOTE_PTY_ID_PREFIX}server:old-pty`
+      toRemoteRuntimePtyId('server:old-pty')
     )
     expect(startup.command).toMatch(/'resume'$/)
     expect(startup.resumeProviderSession).toBeUndefined()

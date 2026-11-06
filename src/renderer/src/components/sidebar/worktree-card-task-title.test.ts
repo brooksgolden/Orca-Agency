@@ -17,7 +17,7 @@ function agent(
     rowSource,
     agentType: 'codex',
     paneKey: `tab-${title.length}:${LEAF_A}`,
-    tab: { id: `tab-${title.length}`, title, customTitle: title },
+    tab: { id: `tab-${title.length}`, worktreeId: 'wt-1', title, customTitle: title },
     entry: { prompt: title, updatedAt, stateStartedAt: updatedAt },
     startedAt: updatedAt
   }
@@ -65,7 +65,7 @@ describe('latest workspace agent title', () => {
       agentType: 'claude',
       paneKey: `tab-1:${leafId}`,
       // The tab title follows the focused pane (A); pane B's agent must not inherit it.
-      tab: { id: 'tab-1', title: 'Linear work log', customTitle: null },
+      tab: { id: 'tab-1', worktreeId: 'wt-1', title: 'Linear work log', customTitle: null },
       entry: { prompt: 'prompt', updatedAt, stateStartedAt: updatedAt },
       startedAt: updatedAt
     })

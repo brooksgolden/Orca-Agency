@@ -8,21 +8,28 @@ export const TERMINAL_ACCESSORY_LAYOUT_STORAGE_KEY = 'orca:terminal-accessory-la
 export type TerminalAccessoryLayout = {
   orderedBuiltInIds: string[]
   visibleBuiltInIds: string[]
+  directionPadEnabled?: boolean
 }
 
 export type TerminalAccessoryLayoutPreference = TerminalAccessoryLayout & {
-  version: 2
+  version: 4
 }
 
 function builtInIds(): string[] {
   return TERMINAL_ACCESSORY_KEYS.map((key) => key.id)
 }
 
-function defaultPreference(ids = builtInIds()): TerminalAccessoryLayoutPreference {
+function defaultPreference(
+  ids = builtInIds(),
+  directionPadAvailable = false
+): TerminalAccessoryLayoutPreference {
   return {
-    version: 2,
+    version: 4,
     orderedBuiltInIds: [...ids],
-    visibleBuiltInIds: [...ids]
+    visibleBuiltInIds: directionPadAvailable
+      ? ids.filter((id) => !id.startsWith('arrow'))
+      : [...ids],
+    directionPadEnabled: true
   }
 }
 
@@ -46,8 +53,7 @@ function dedupeKnownIds(ids: string[], builtInSet: Set<string>): string[] {
   return out
 }
 
-// Why: built-ins added after the user saved a custom order should land next
-// to their canonical neighbors, not dangle at the end of the bar.
+// Place newly added built-ins beside canonical neighbors in saved custom layouts.
 function insertMissingBuiltInIds(
   ordered: string[],
   currentBuiltInIds: string[]
@@ -89,36 +95,80 @@ export function getDefaultTerminalAccessoryBuiltInIds(): string[] {
   return builtInIds()
 }
 
-export function getDefaultTerminalAccessoryLayout(): TerminalAccessoryLayout {
-  const ids = builtInIds()
-  return { orderedBuiltInIds: ids, visibleBuiltInIds: [...ids] }
+export function getDefaultTerminalAccessoryLayout(
+  directionPadAvailable = false
+): TerminalAccessoryLayout {
+  const { orderedBuiltInIds, visibleBuiltInIds, directionPadEnabled } = defaultPreference(
+    builtInIds(),
+    directionPadAvailable
+  )
+  return { orderedBuiltInIds, visibleBuiltInIds, directionPadEnabled }
 }
 
 export function normalizeTerminalAccessoryLayoutPreference(
   value: unknown,
-  currentBuiltInIds = builtInIds()
+  currentBuiltInIds = builtInIds(),
+  directionPadAvailable = false
 ): TerminalAccessoryLayoutPreference {
-  const fallback = defaultPreference(currentBuiltInIds)
+  const fallback = defaultPreference(currentBuiltInIds, directionPadAvailable)
   if (!value || typeof value !== 'object') {
     return fallback
   }
 
-  const candidate = value as {
-    version?: unknown
-    orderedBuiltInIds?: unknown
-    visibleBuiltInIds?: unknown
-    knownBuiltInIds?: unknown
+  const candidate = {
+    version: 'version' in value ? value.version : undefined,
+    orderedBuiltInIds: 'orderedBuiltInIds' in value ? value.orderedBuiltInIds : undefined,
+    visibleBuiltInIds: 'visibleBuiltInIds' in value ? value.visibleBuiltInIds : undefined,
+    knownBuiltInIds: 'knownBuiltInIds' in value ? value.knownBuiltInIds : undefined,
+    directionPadEnabled: 'directionPadEnabled' in value ? value.directionPadEnabled : undefined
   }
   const builtInSet = new Set(currentBuiltInIds)
 
-  if (candidate.version === 2) {
+  if (candidate.version === 2 || candidate.version === 3 || candidate.version === 4) {
     const orderedInput = stringArray(candidate.orderedBuiltInIds)
     const visibleInput = stringArray(candidate.visibleBuiltInIds)
     if (!orderedInput || !visibleInput) {
       return fallback
     }
+    const knownOrder = dedupeKnownIds(orderedInput, builtInSet)
+    const legacyDefault = [
+      'escape',
+      'tab',
+      'enter',
+      'shiftArrowLeft',
+      'shiftTab',
+      'space',
+      'backspace',
+      'delete',
+      'arrowUp',
+      'arrowDown',
+      'arrowLeft',
+      'arrowRight',
+      'ctrlC',
+      'ctrlD',
+      'ctrlL',
+      'ctrlZ',
+      'ctrlR',
+      'ctrlA',
+      'ctrlE',
+      'ctrlW',
+      'ctrlU'
+    ]
+    const previousDefault = [
+      'escape',
+      'enter',
+      'shiftArrowLeft',
+      'ctrlU',
+      ...legacyDefault.filter((id) => !['escape', 'enter', 'shiftArrowLeft', 'ctrlU'].includes(id))
+    ]
+    const shippedDefault = candidate.version === 2 ? legacyDefault : previousDefault
+    // Upgrade former defaults once while preserving custom order and visibility.
+    const wasDefault =
+      candidate.version !== 4 &&
+      knownOrder.length === shippedDefault.length &&
+      knownOrder.every((id, index) => id === shippedDefault[index])
     const { ordered, inserted } = insertMissingBuiltInIds(
-      dedupeKnownIds(orderedInput, builtInSet),
+      wasDefault ? currentBuiltInIds : knownOrder,
       currentBuiltInIds
     )
     const visibleSet = new Set(dedupeKnownIds(visibleInput, builtInSet))
@@ -126,7 +176,8 @@ export function normalizeTerminalAccessoryLayoutPreference(
       visibleSet.add(id)
     }
     return {
-      version: 2,
+      version: 4,
+      directionPadEnabled: candidate.directionPadEnabled !== false,
       orderedBuiltInIds: ordered,
       visibleBuiltInIds: ordered.filter((id) => visibleSet.has(id))
     }
@@ -145,9 +196,10 @@ export function normalizeTerminalAccessoryLayoutPreference(
         visibleSet.add(id)
       }
     }
-    // Why: v1 layouts never had a custom order, so migrate to canonical order.
+    // Version-one layouts had no custom order; migrate them to canonical order.
     return {
-      version: 2,
+      version: 4,
+      directionPadEnabled: candidate.directionPadEnabled !== false,
       orderedBuiltInIds: [...currentBuiltInIds],
       visibleBuiltInIds: currentBuiltInIds.filter((id) => visibleSet.has(id))
     }
@@ -167,7 +219,8 @@ export function createTerminalAccessoryLayoutPreference(
   )
   const visibleSet = new Set(dedupeKnownIds(layout.visibleBuiltInIds, builtInSet))
   return {
-    version: 2,
+    version: 4,
+    directionPadEnabled: layout.directionPadEnabled !== false,
     orderedBuiltInIds: ordered,
     visibleBuiltInIds: ordered.filter((id) => visibleSet.has(id))
   }
@@ -182,6 +235,7 @@ export function setTerminalAccessoryBuiltInVisible(
   const preference = createTerminalAccessoryLayoutPreference(layout, currentBuiltInIds)
   if (!new Set(currentBuiltInIds).has(id)) {
     return {
+      directionPadEnabled: preference.directionPadEnabled,
       orderedBuiltInIds: preference.orderedBuiltInIds,
       visibleBuiltInIds: preference.visibleBuiltInIds
     }
@@ -193,6 +247,7 @@ export function setTerminalAccessoryBuiltInVisible(
     visibleSet.delete(id)
   }
   return {
+    directionPadEnabled: preference.directionPadEnabled,
     orderedBuiltInIds: preference.orderedBuiltInIds,
     visibleBuiltInIds: preference.orderedBuiltInIds.filter((builtInId) => visibleSet.has(builtInId))
   }
@@ -204,41 +259,50 @@ export function reorderTerminalAccessoryBuiltInIds(
   currentBuiltInIds = builtInIds()
 ): TerminalAccessoryLayout {
   const preference = createTerminalAccessoryLayoutPreference(
-    { orderedBuiltInIds, visibleBuiltInIds: layout.visibleBuiltInIds },
+    { ...layout, orderedBuiltInIds },
     currentBuiltInIds
   )
   return {
+    directionPadEnabled: preference.directionPadEnabled,
     orderedBuiltInIds: preference.orderedBuiltInIds,
     visibleBuiltInIds: preference.visibleBuiltInIds
   }
 }
 
 export function getVisibleTerminalAccessoryKeys(
-  visibleBuiltInIds: string[]
+  visibleBuiltInIds: string[],
+  includeDirectionKeys = false
 ): TerminalAccessoryKey[] {
+  const ids = includeDirectionKeys
+    ? [...visibleBuiltInIds, ...builtInIds().filter((id) => id.startsWith('arrow'))]
+    : visibleBuiltInIds
   const byId = new Map(TERMINAL_ACCESSORY_KEYS.map((key) => [key.id, key]))
-  return dedupeKnownIds(visibleBuiltInIds, new Set(byId.keys())).flatMap((id) => {
+  return dedupeKnownIds(ids, new Set(byId.keys())).flatMap((id) => {
     const key = byId.get(id)
     return key ? [key] : []
   })
 }
 
-export async function loadTerminalAccessoryLayout(): Promise<TerminalAccessoryLayoutPreference> {
+export async function loadTerminalAccessoryLayout(
+  directionPadAvailable = false
+): Promise<TerminalAccessoryLayoutPreference> {
   try {
     const raw = await AsyncStorage.getItem(TERMINAL_ACCESSORY_LAYOUT_STORAGE_KEY)
     if (!raw) {
-      return defaultPreference()
+      return defaultPreference(builtInIds(), directionPadAvailable)
     }
-    return normalizeTerminalAccessoryLayoutPreference(JSON.parse(raw))
+    return normalizeTerminalAccessoryLayoutPreference(
+      JSON.parse(raw),
+      builtInIds(),
+      directionPadAvailable
+    )
   } catch {
-    return defaultPreference()
+    return defaultPreference(builtInIds(), directionPadAvailable)
   }
 }
 
 export async function saveTerminalAccessoryLayout(layout: TerminalAccessoryLayout): Promise<void> {
   const preference = createTerminalAccessoryLayoutPreference(layout)
   const value = JSON.stringify(preference)
-  // Through the one write path: the hybrid shell hands this key to the page on every `init`,
-  // built synchronously, and what it reads is noted there on an accepted write (ruling 35).
   await persistMirrored(TERMINAL_ACCESSORY_LAYOUT_STORAGE_KEY, value)
 }

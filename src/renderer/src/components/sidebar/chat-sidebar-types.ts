@@ -6,6 +6,7 @@ import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { AiVaultSessionTitle } from '../../../../shared/ai-vault-session-title'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { ChatSidebarResumeLauncher } from '../../../../shared/chat-sidebar-settings'
+import type { StructuredChatTabNames } from '@/runtime/structured-chat-tab-name'
 
 export type ChatSidebarRow = {
   id: string
@@ -74,7 +75,7 @@ export type ChatSidebarState = Pick<
   | 'runtimeAgentOrchestrationByPaneKey'
   | 'migrationUnsupportedByPtyId'
   | 'sleepingAgentSessionsByPaneKey'
->
+> & { chatNames?: StructuredChatTabNames }
 
 export function chatSessionKey(hostId: string, agent: string, sessionId: string): string {
   return JSON.stringify([hostId, agent, sessionId])

@@ -32,6 +32,12 @@ const store = vi.hoisted(() => ({
   settings: { chatSidebar: {} }
 }))
 
+vi.mock('@/lib/agent-session/structured-agent-session-busy', async () => ({
+  admitStructuredAgentSession: (
+    await import('@/store/slices/store-session-test-harness')
+  ).admissionFromBusy(() => false)
+}))
+
 vi.mock('react', async () => {
   const actual = await vi.importActual<typeof ReactModule>('react')
   return {
@@ -63,29 +69,24 @@ vi.mock('@/lib/chat-sidebar-tab-close', () => ({
   captureClosedChatTabCompletion: mocks.captureClosedChatTabCompletion
 }))
 
-vi.mock('../../runtime/web-runtime-session', () => ({
-  closeWebRuntimeSessionTab: vi.fn(),
-  isWebRuntimeSessionActive: vi.fn(() => false)
+vi.mock('../../runtime/web-runtime-session-tab-lifecycle', () => ({
+  closeWebRuntimeSessionTab: vi.fn()
 }))
-
-vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: () => null
+vi.mock('../../runtime/web-runtime-session-environment', () => ({
+  isWebRuntimeSessionActive: vi.fn(() => false)
 }))
 
 vi.mock('@/runtime/remote-browser-tab-ownership', () => ({
   browserWorkspaceHasRemoteOwner: () => false
 }))
 
-vi.mock('@/runtime/runtime-rpc-client', () => ({
-  callRuntimeRpc: mocks.callRuntimeRpc,
-  getActiveRuntimeTarget: () => ({ kind: 'local' })
-}))
+vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc: mocks.callRuntimeRpc }))
 
 vi.mock('@/runtime/structured-agent-session-close', () => ({
   closeStructuredAgentSession: mocks.closeStructuredAgentSession
 }))
 
-vi.mock('@/lib/structured-agent-session-launch', () => ({
+vi.mock('@/lib/agent-session/launch/structured-agent-session-launch', () => ({
   cancelStructuredAgentLaunch: mocks.cancelStructuredAgentLaunch
 }))
 
@@ -122,10 +123,12 @@ beforeEach(() => {
   mocks.closeStructuredAgentSession.mockResolvedValue('closed')
   mocks.callRuntimeRpc.mockResolvedValue({ ok: true })
   mocks.captureClosedChatTabCompletion.mockReturnValue(mocks.completeCapturedChat)
+  // Why: the close path reports Done only when closeUnifiedTab succeeds, so the mock must report success.
+  mocks.closeUnifiedTab.mockReturnValue(true)
 })
 
 describe('structured agent-session close ordering', () => {
-  it('removes the local tab synchronously while host retirement runs independently', async () => {
+  it('dispatches local structured-session tab removal synchronously', async () => {
     const { closeItem } = useTabGroupTabCloseCommands({ worktreeId: 'wt-1' })
     closeItem(AGENT_TAB.id)
 
@@ -157,14 +160,7 @@ describe('structured agent-session close ordering', () => {
     expect(mocks.completeCapturedChat).toHaveBeenCalledOnce()
   })
 
-  it('returns immediately for an unadopted launch tab', async () => {
-    const { closeItem } = useTabGroupTabCloseCommands({ worktreeId: 'wt-1' })
-    closeItem(AGENT_TAB.id)
-
-    expect(mocks.closeUnifiedTab).toHaveBeenCalledWith(AGENT_TAB.id)
-  })
-
-  it('closes reconciling launches through the same synchronous path during bulk close', async () => {
+  it('dispatches local structured-session tab removal synchronously during bulk close', async () => {
     const { closeMany } = useTabGroupTabCloseCommands({ worktreeId: 'wt-1' })
 
     closeMany([AGENT_TAB.id])

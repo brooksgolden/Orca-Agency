@@ -110,7 +110,7 @@ async function setup(launchToken?: string, agent: 'codex' | 'claude' = 'codex') 
     runtime.setRetainedLaunchToken(launchToken)
   }
   wiring.statusStore.setListener((event) =>
-    recordObservedAgentStatusPaneIdentity(identities, event.paneKey, runtime)
+    recordObservedAgentStatusPaneIdentity(identities, event, runtime)
   )
   await wiring.statusStore.start({ env: 'production' })
   const response = await postHookEvent(

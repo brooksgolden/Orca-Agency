@@ -1,17 +1,16 @@
 import type { DragEndEvent, DragMoveEvent, DragOverEvent } from '@dnd-kit/core'
 import type { TabGroup, TabGroupLayoutNode } from '../../../../shared/tab-types'
-import { isPaneColumnSplitDropNoOp } from '../../store/slices/pane-column-split-drop-no-op'
+import { isPaneColumnSplitDropNoOp } from '../../../../shared/workspace-layout/pane-column-split-drop-no-op'
 import {
   resolvePaneColumnEdgeZone,
   TAB_GROUP_TAB_STRIP_HEIGHT_PX,
   type PaneColumnSplitTarget
 } from './tab-drop-zone'
+import { canDropTabIntoPaneBody, isTabDragData, type TabDragItemData } from './tab-drag-data'
 import {
-  canDropTabIntoPaneBody,
-  isPaneDropData,
-  isTabDragData,
-  type TabDragItemData
-} from './tab-drag-data'
+  isDesktopCreatedTabInFrameDrawnServerWorkspace,
+  serverTabCount
+} from '@/lib/frame-drawn-desktop-created-tabs'
 
 export type TabGroupPanelGeometryEntry = {
   groupId: string
@@ -28,7 +27,7 @@ export type ActivePaneColumnSplitTarget = PaneColumnSplitTarget & {
   panelRect?: DOMRect
 }
 
-function escapeCssAttrValue(value: string): string {
+export function escapeCssAttrValue(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
     return CSS.escape(value)
   }
@@ -49,6 +48,24 @@ export function getTabGroupPanelRect(groupId: string, worktreeId: string): DOMRe
 
 export function getTabGroupBodyRect(groupId: string, worktreeId: string): DOMRect | null {
   return getTabGroupBodyElement(groupId, worktreeId)?.getBoundingClientRect() ?? null
+}
+
+function isPanelTopmostAtPointer(
+  groupId: string,
+  worktreeId: string,
+  pointer: { x: number; y: number }
+): boolean {
+  const panel = getTabGroupBodyElement(groupId, worktreeId)?.parentElement
+  const topElement = document.elementFromPoint?.(pointer.x, pointer.y)
+  if (!topElement || panel?.contains(topElement)) {
+    return true
+  }
+  // Terminal and agent content is retained in a sibling overlay above the pane body.
+  const retainedHost = topElement.closest<HTMLElement>('[data-retained-pane-host]')
+  return (
+    retainedHost?.dataset.retainedPaneGroupId === groupId &&
+    retainedHost.dataset.retainedPaneWorktreeId === worktreeId
+  )
 }
 
 export function captureTabGroupPanelGeometrySnapshot(
@@ -93,7 +110,8 @@ export function findTabGroupPanelUnderPointer(
         pointer.x >= panelRect.left &&
         pointer.x <= panelRect.right &&
         pointer.y >= panelRect.top &&
-        pointer.y <= panelRect.bottom
+        pointer.y <= panelRect.bottom &&
+        isPanelTopmostAtPointer(entry.groupId, worktreeId, pointer)
       ) {
         return { groupId: entry.groupId, panelRect }
       }
@@ -119,7 +137,8 @@ export function findTabGroupPanelUnderPointer(
       pointer.x >= panelRect.left &&
       pointer.x <= panelRect.right &&
       pointer.y >= panelRect.top &&
-      pointer.y <= panelRect.bottom
+      pointer.y <= panelRect.bottom &&
+      isPanelTopmostAtPointer(groupId, worktreeId, pointer)
     ) {
       return { groupId, panelRect }
     }
@@ -146,12 +165,15 @@ export function resolvePanelEdgePaneColumnSplit({
   panelRect?: DOMRect | null
   bodyRect?: DOMRect | null
 }): PaneColumnSplitTarget | null {
+  // A tab this desktop created has no place of its own in the server's groups: no split.
+  if (isDesktopCreatedTabInFrameDrawnServerWorkspace(worktreeId, activeDrag.unifiedTabId)) {
+    return null
+  }
   const panelRect = providedPanelRect ?? getTabGroupPanelRect(targetGroupId, worktreeId)
   if (!panelRect) {
     return null
   }
-  // Why: dnd-kit can keep a closest-center `over` target after the pointer
-  // leaves the pane; edge splits must only resolve inside the actual panel.
+  // Require the pointer inside the panel because dnd-kit can retain a closest-center target after exit.
   if (
     pointer.x < panelRect.left ||
     pointer.x > panelRect.left + panelRect.width ||
@@ -179,7 +201,7 @@ export function resolvePanelEdgePaneColumnSplit({
       sourceGroupId: activeDrag.groupId,
       targetGroupId,
       splitDirection: zone,
-      sourceTabCount: sourceGroup?.tabOrder.length ?? 0,
+      sourceTabCount: serverTabCount(worktreeId, sourceGroup?.tabOrder ?? []),
       layout: layoutByWorktree[worktreeId]
     })
   ) {
@@ -228,28 +250,23 @@ export function resolveActivePaneColumnSplitTarget({
 
   const overData = event.over?.data.current
   const panelHit = findTabGroupPanelUnderPointer(worktreeId, pointer, { geometry })
+  if (!panelHit) {
+    return null
+  }
 
   if (isTabDragData(overData)) {
     // Why: tab-strip drags target reorder/insertion slots. Split creation stays
     // on pane/body edges so hovering over a tab never surprises the user with a
     // new split.
-    if (!panelHit || pointer.y < panelHit.panelRect.top + TAB_GROUP_TAB_STRIP_HEIGHT_PX) {
+    if (pointer.y < panelHit.panelRect.top + TAB_GROUP_TAB_STRIP_HEIGHT_PX) {
       return null
     }
   }
 
-  const targetGroupId =
-    panelHit?.groupId ??
-    (isTabDragData(overData) ? overData.groupId : null) ??
-    (isPaneDropData(overData) ? overData.groupId : null)
-
-  if (!targetGroupId) {
-    return null
-  }
+  const targetGroupId = panelHit.groupId
 
   const targetGeometry = geometry?.byGroupId.get(targetGroupId)
-  const panelRect =
-    panelHit?.groupId === targetGroupId ? panelHit.panelRect : targetGeometry?.panelRect
+  const panelRect = panelHit.panelRect
   const splitTarget = resolvePanelEdgePaneColumnSplit({
     activeDrag: activeData,
     targetGroupId,

@@ -4,13 +4,13 @@ import { clipboardFilePath } from './clipboard-file-path'
 describe('file paths copied to the clipboard', () => {
   it.each([
     [
-      'C:/Users/brook/dev/claude/General/hermes-bridge',
-      'C:\\Users\\brook\\dev\\claude\\General\\hermes-bridge'
+      'C:/Users/example-user/dev/claude/General/hermes-bridge',
+      'C:\\Users\\example-user\\dev\\claude\\General\\hermes-bridge'
     ],
     ['C:\\Mixed/folder/file.md', 'C:\\Mixed\\folder\\file.md'],
     ['//server/share/My Folder/file.md', '\\\\server\\share\\My Folder\\file.md'],
     ['//wsl.localhost/Ubuntu/home/user/file.md', '\\\\wsl.localhost\\Ubuntu\\home\\user\\file.md'],
-    ['/Users/brook/My Folder/file.md', '/Users/brook/My Folder/file.md'],
+    ['/Users/example-user/My Folder/file.md', '/Users/example-user/My Folder/file.md'],
     ['/srv/client/back\\slash/file.md', '/srv/client/back\\slash/file.md'],
     ['https://example.com/file.md', 'https://example.com/file.md']
   ])('copies %s without losing the owning filesystem syntax', (input, expected) => {

@@ -4,7 +4,22 @@ import { useAppStore } from '@/store'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import type { ProjectExecutionRuntimeResolution } from '../../../shared/project-execution-runtime'
 import type * as localPreflightContext from '@/lib/local-preflight-context'
-import { buildCodexAccountRestartStartup } from './codex-account-restart-startup'
+import { buildPaneAccountRestartStartup } from './agent-account-restart-startup'
+
+// Why: the Codex pane restart now lives in the stable agent-account module; this keeps Agency's cases on it.
+const buildCodexAccountRestartStartup = (args: {
+  tabId: string
+  leafId: string
+  worktreeId: string
+  shellOverride?: string
+}) => {
+  const startup = buildPaneAccountRestartStartup('codex', args)
+  expect(startup).not.toBeNull()
+  if (!startup) {
+    throw new Error('Codex account restart must always have a startup')
+  }
+  return startup
+}
 import { chatState, chatTab, chatWorktree } from '@/components/sidebar/chat-sidebar-test-fixtures'
 
 let projectRuntimeContext: ProjectExecutionRuntimeResolution | undefined
@@ -80,7 +95,7 @@ describe('buildCodexAccountRestartStartup', () => {
   it('falls back to a bare relaunch when the pane has no Codex session to name', () => {
     const startup = build()
 
-    expect(startup.command).toBe('codex')
+    expect(startup.command).toBe("codex '-c' 'disable_paste_burst=true'")
     expect(startup.resumeProviderSession).toBeUndefined()
   })
 
@@ -179,7 +194,7 @@ describe('buildCodexAccountRestartStartup', () => {
 
     const startup = build()
 
-    expect(startup.command).toBe('codex')
+    expect(startup.command).toBe("codex '-c' 'disable_paste_burst=true'")
     expect(startup.resumeProviderSession).toBeUndefined()
   })
 
@@ -190,7 +205,7 @@ describe('buildCodexAccountRestartStartup', () => {
       providerSession: { key: 'session_id', id: SESSION_ID }
     })
 
-    expect(build().command).toBe('codex')
+    expect(build().command).toBe("codex '-c' 'disable_paste_burst=true'")
   })
   it('does not resume another agent’s sleeping session when Codex has no session yet', () => {
     seedAgentStatus({ agentType: 'codex' })

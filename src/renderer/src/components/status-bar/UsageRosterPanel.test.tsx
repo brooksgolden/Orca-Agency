@@ -21,6 +21,26 @@ vi.mock('@/hooks/useResetCountdownClock', () => ({
   useResetCountdownClock: mocks.useResetCountdownClock
 }))
 vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenuCheckboxItem: ({
+    children,
+    checked,
+    onCheckedChange,
+    onSelect: _onSelect,
+    ...props
+  }: React.PropsWithChildren<{
+    checked: boolean
+    onCheckedChange: (value: boolean) => void
+    onSelect?: unknown
+  }>) => (
+    <button
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      onClick={() => onCheckedChange(!checked)}
+      {...props}
+    >
+      {children}
+    </button>
+  ),
   DropdownMenuItem: ({
     children,
     onSelect: _onSelect,
@@ -59,6 +79,26 @@ describe('UsageRow', () => {
     expect(markup).toContain('not signed in')
     expect(markup).toContain('Sign in')
     expect(markup).not.toContain('<button')
+  })
+
+  it('renders a row detail line under a placeholder', () => {
+    const markup = renderToStaticMarkup(
+      <UsageRow
+        p={{ ...signedOutCodex, provider: 'minimax', error: 'Not configured on devbox' }}
+        display="used"
+        state={{
+          kind: 'unavailable',
+          statusLabel: 'Not configured on devbox',
+          detail: 'Its sign-in is saved on this computer only.'
+        }}
+        showSignInAction={false}
+        now={mocks.now}
+      />
+    )
+
+    expect(markup).toContain('Not configured on devbox')
+    expect(markup).toContain('Its sign-in is saved on this computer only.')
+    expect(markup).not.toContain('Sign in')
   })
 
   it('keeps the bar fill consistent with the remaining percentage label', () => {
@@ -133,6 +173,38 @@ describe('UsageRow', () => {
     expect(markup).toContain('25%')
     expect(markup).toContain('wk')
     expect(markup).toContain('10%')
+  })
+
+  it('keeps full Antigravity pool names in the click panel', () => {
+    const markup = renderToStaticMarkup(
+      <UsageRow
+        p={{
+          provider: 'antigravity',
+          session: null,
+          weekly: null,
+          buckets: [
+            {
+              name: 'Gemini Models · Weekly Limit Remaining',
+              group: 'Gemini Models',
+              windowName: 'Weekly Limit Remaining',
+              usedPercent: 4,
+              windowMinutes: 10_080,
+              resetsAt: null,
+              resetDescription: null
+            }
+          ],
+          updatedAt: 0,
+          status: 'ok',
+          error: null
+        }}
+        display="used"
+        state={{ kind: 'usage', statusLabel: null }}
+        showSignInAction={false}
+        now={mocks.now}
+      />
+    )
+
+    expect(markup).toContain('Gemini Models · Weekly Limit Remaining')
   })
 
   it('renders the tightest window inline in compact mode', () => {
@@ -298,7 +370,8 @@ describe('UsageRosterPanel density picker', () => {
 
   function renderPanel(
     statusBarUsageMode: 'verbose' | 'compact',
-    onStatusBarUsageModeChange: (mode: 'verbose' | 'compact') => void
+    onStatusBarUsageModeChange: (mode: 'verbose' | 'compact') => void,
+    fable?: { show: boolean; onChange: (show: boolean) => void }
   ): void {
     act(() => {
       root.render(
@@ -308,6 +381,8 @@ describe('UsageRosterPanel density picker', () => {
             display="used"
             statusBarUsageMode={statusBarUsageMode}
             onStatusBarUsageModeChange={onStatusBarUsageModeChange}
+            showFableUsage={fable?.show}
+            onShowFableUsageChange={fable?.onChange}
             isRefreshing={false}
             onRefresh={() => {}}
             onOpenProvider={() => {}}
@@ -338,6 +413,22 @@ describe('UsageRosterPanel density picker', () => {
     expect(container.textContent).toContain('Compact')
     expect(segmentButton('Compact').getAttribute('aria-checked')).toBe('true')
     expect(segmentButton('Detailed').getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('offers a controlled Fable visibility toggle in the usage popover', () => {
+    const onChange = vi.fn()
+    renderPanel('compact', () => {}, { show: true, onChange })
+    const toggle = container.querySelector('[role="menuitemcheckbox"]')
+    expect(toggle?.textContent).toBe('Show Fable usage')
+    expect(toggle?.getAttribute('aria-checked')).toBe('true')
+    act(() => {
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(onChange).toHaveBeenCalledWith(false)
+    renderPanel('compact', () => {}, { show: false, onChange })
+    expect(container.querySelector('[role="menuitemcheckbox"]')?.getAttribute('aria-checked')).toBe(
+      'false'
+    )
   })
 
   it('switches mode when a segment is chosen', () => {

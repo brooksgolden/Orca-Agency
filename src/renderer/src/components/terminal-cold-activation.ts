@@ -11,11 +11,11 @@ import {
   holdTerminalTabsForStartup,
   releaseStartupTerminalTabHold
 } from './terminal/startup-terminal-tab-hold'
-import { hasRegisteredRuntimeTerminalTab } from '../runtime/sync-runtime-graph'
+import { hasRegisteredRuntimeTerminalTab } from '../runtime/mounted-terminal-tab-registry'
 import { anyMountedWorktreeHasLayout as computeAnyMountedWorktreeHasLayout } from './terminal/split-group-mount'
 import { isParkRestorableTerminalPty } from './terminal-pane/terminal-hidden-view-parking'
 import { canWatcherCoverParkedTerminalTab } from './terminal-pane/terminal-parked-tab-watchers'
-import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
+import { isRemoteRuntimePtyId } from '../../../shared/remote-runtime/remote-runtime-pty-id'
 import { terminalProviderHasAuthoritativeSnapshot } from './terminal/terminal-provider-snapshot-capability'
 import { canDeferUnwatchedVisiblePartnerTab } from './terminal/local-startup-pty-liveness'
 import { getResolvedExecutionHostIdForWorktree } from '@/lib/resolved-worktree-execution-host'
@@ -140,8 +140,7 @@ export function applyTerminalColdActivation(controller: TerminalParkingFoundatio
         },
         immediateTabIds
       })
-      // Why: the install mutates only refs, so without a returned revision the
-      // admission drain's effect deps never change and the plan strands.
+      // Installing mutates refs only; advance a revision so the admission effect can drain the plan.
       if (installedDeferralPlan) {
         activationDeferralPlanRevisionRef.current += 1
       }

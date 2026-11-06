@@ -2,10 +2,12 @@ import { useAppStore } from '@/store'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { ChatSidebarRow } from './chat-sidebar-types'
 import type { Worktree } from '../../../../shared/worktree/types'
+import { getWorktreeExecutionHostId } from '../../../../shared/execution-host'
 import { updateChatSidebarSettings } from '@/lib/chat-sidebar-settings-update'
 import { chatWorkspaceFolderKey } from './chat-sidebar-workspace-folder'
 import { chatCompletionEdit, chatPreference } from './chat-sidebar-identity'
-import { buildChatSidebarRows } from './chat-sidebar-rows'
+import { chatSidebarWorktrees } from './chat-sidebar-worktrees'
+import { buildChatSidebarRows, buildChatSidebarRowsForHost } from './chat-sidebar-rows'
 
 type Preferences = NonNullable<GlobalSettings['chatSidebar']>
 
@@ -17,6 +19,31 @@ export function updateChatSidebar(
 
 export function setChatCompleted(row: ChatSidebarRow, completed: boolean) {
   return updateChatSidebar((current) => chatCompletionEdit(row, current, completed, Date.now()))
+}
+
+/** Mark every remembered or resident conversation in one workspace in a single settings write. */
+export function setWorkspaceChatsCompleted(worktreeId: string, completed: boolean) {
+  const state = useAppStore.getState()
+  const now = Date.now()
+  const worktree = chatSidebarWorktrees(state).find((item) => item.id === worktreeId)
+  const repo = worktree && state.repos.find((item) => item.id === worktree.repoId)
+  const rows = worktree
+    ? buildChatSidebarRowsForHost(
+        state,
+        [],
+        now,
+        undefined,
+        true,
+        getWorktreeExecutionHostId(worktree, repo)
+      ).filter((row) => row.worktree.id === worktreeId)
+    : []
+  return updateChatSidebar((current) => {
+    let next = current
+    for (const row of rows) {
+      next = { ...next, ...chatCompletionEdit(row, next, completed, now) }
+    }
+    return { completed: next.completed }
+  })
 }
 
 export async function setChatSidebarTitle(

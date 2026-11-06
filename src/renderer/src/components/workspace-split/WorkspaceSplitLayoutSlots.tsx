@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { TabGroupResizeHandle as ResizeHandle } from '../tab-group/TabGroupResizeHandle'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 import type { WorkspaceLayoutNode, WorkspaceLayoutPath } from '@/lib/workspace-split-layout'
+import { workspacePaneKey } from '@/lib/workspace-group-layout'
 
 export type WorkspacePaneRect = { top: number; left: number; width: number; height: number }
 
@@ -22,80 +24,26 @@ function sameRects(a: Map<string, WorkspacePaneRect>, b: Map<string, WorkspacePa
   return true
 }
 
-function ResizeHandle({
-  direction,
-  onRatioChange
-}: {
-  direction: 'horizontal' | 'vertical'
-  onRatioChange: (ratio: number) => void
-}): React.JSX.Element {
-  return (
-    <div
-      className={`shrink-0 bg-border hover:bg-primary/50 ${direction === 'horizontal' ? 'w-1 cursor-col-resize' : 'h-1 cursor-row-resize'}`}
-      onPointerDown={(event) => {
-        event.preventDefault()
-        const handle = event.currentTarget
-        const parent = handle.parentElement
-        const previous = handle.previousElementSibling
-        const next = handle.nextElementSibling
-        const first = previous instanceof HTMLElement ? previous : null
-        const second = next instanceof HTMLElement ? next : null
-        if (!parent || !first || !second) {
-          return
-        }
-        handle.setPointerCapture(event.pointerId)
-        const onMove = (move: PointerEvent): void => {
-          if (move.pointerId !== event.pointerId) {
-            return
-          }
-          const rect = parent.getBoundingClientRect()
-          const raw =
-            direction === 'horizontal'
-              ? (move.clientX - rect.left) / rect.width
-              : (move.clientY - rect.top) / rect.height
-          const ratio = Math.max(0.15, Math.min(0.85, raw))
-          first.style.flex = `${ratio} 1 0%`
-          second.style.flex = `${1 - ratio} 1 0%`
-        }
-        const onEnd = (up: PointerEvent): void => {
-          if (up.pointerId !== event.pointerId) {
-            return
-          }
-          const rect = parent.getBoundingClientRect()
-          const raw =
-            direction === 'horizontal'
-              ? (up.clientX - rect.left) / rect.width
-              : (up.clientY - rect.top) / rect.height
-          onRatioChange(Math.max(0.15, Math.min(0.85, raw)))
-          handle.removeEventListener('pointermove', onMove)
-          handle.removeEventListener('pointerup', onEnd)
-          handle.removeEventListener('pointercancel', onEnd)
-          handle.releasePointerCapture(event.pointerId)
-        }
-        handle.addEventListener('pointermove', onMove)
-        handle.addEventListener('pointerup', onEnd)
-        handle.addEventListener('pointercancel', onEnd)
-      }}
-    />
-  )
-}
+const ignoreResizeStart = () => {}
 
 function SlotNode({
   node,
   path,
   register,
+  onResizeStart,
   onRatioChange
 }: {
   node: WorkspaceLayoutNode
   path: WorkspaceLayoutPath
   register: (id: string, element: HTMLDivElement | null) => void
+  onResizeStart: () => void
   onRatioChange: (path: WorkspaceLayoutPath, ratio: number) => void
 }): React.JSX.Element {
   if (node.type === 'leaf') {
     return (
       <div
-        ref={(element) => register(node.workspaceId, element)}
-        data-workspace-slot={node.workspaceId}
+        ref={(element) => register(workspacePaneKey(node), element)}
+        data-workspace-slot={workspacePaneKey(node)}
         className="flex-1 min-w-0 min-h-0"
       />
     )
@@ -111,11 +59,13 @@ function SlotNode({
           node={node.first}
           path={[...path, 'first']}
           register={register}
+          onResizeStart={onResizeStart}
           onRatioChange={onRatioChange}
         />
       </div>
       <ResizeHandle
         direction={node.direction}
+        onResizeStart={onResizeStart}
         onRatioChange={(ratio) => onRatioChange(path, ratio)}
       />
       <div
@@ -126,6 +76,7 @@ function SlotNode({
           node={node.second}
           path={[...path, 'second']}
           register={register}
+          onResizeStart={onResizeStart}
           onRatioChange={onRatioChange}
         />
       </div>
@@ -136,11 +87,15 @@ function SlotNode({
 export function WorkspaceSplitLayoutSlots({
   layout,
   onRectsChange,
-  onRatioChange
+  onResizeStart = ignoreResizeStart,
+  onRatioChange,
+  scope
 }: {
   layout: WorkspaceLayoutNode
   onRectsChange: (rects: Map<string, WorkspacePaneRect>) => void
+  onResizeStart?: () => void
   onRatioChange: (path: WorkspaceLayoutPath, ratio: number) => void
+  scope?: 'tab-group'
 }): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
   const leavesRef = useRef(new Map<string, HTMLDivElement>())
@@ -151,6 +106,9 @@ export function WorkspaceSplitLayoutSlots({
       return
     }
     const bounds = root.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return
+    }
     const rects = new Map<string, WorkspacePaneRect>()
     for (const [id, element] of leavesRef.current) {
       const rect = element.getBoundingClientRect()
@@ -173,7 +131,7 @@ export function WorkspaceSplitLayoutSlots({
       leavesRef.current.delete(id)
     }
   }, [])
-  useEffect(() => {
+  useLayoutEffect(() => {
     const observer = new ResizeObserver(measure)
     if (rootRef.current) {
       observer.observe(rootRef.current)
@@ -187,8 +145,19 @@ export function WorkspaceSplitLayoutSlots({
     }
   }, [layout, measure])
   return (
-    <div ref={rootRef} className="absolute inset-0 flex" data-workspace-split="true">
-      <SlotNode node={layout} path={[]} register={register} onRatioChange={onRatioChange} />
+    <div
+      ref={rootRef}
+      className="absolute inset-0 flex"
+      data-workspace-split={!scope ? 'true' : undefined}
+      data-tab-group-split={scope ? 'true' : undefined}
+    >
+      <SlotNode
+        node={layout}
+        path={[]}
+        register={register}
+        onResizeStart={onResizeStart}
+        onRatioChange={onRatioChange}
+      />
     </div>
   )
 }

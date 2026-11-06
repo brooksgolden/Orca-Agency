@@ -5,3 +5,4 @@ export const DEFAULT_STATUS_BAR_USAGE_MODE: StatusBarUsageMode = 'compact'
 export function normalizeStatusBarUsageMode(value: unknown): StatusBarUsageMode {
   return value === 'verbose' || value === 'compact' ? value : DEFAULT_STATUS_BAR_USAGE_MODE
 }
+export type UsageWindowVisibilitySettings = { showFableUsage?: boolean }

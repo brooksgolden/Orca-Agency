@@ -1,222 +1,124 @@
-import React from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment happy-dom
+import { createElement } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render } from '@testing-library/react'
+import type { TabGroupLayoutNode } from '../../../../shared/tab-types'
 
-const setTabGroupSplitRatioMock = vi.fn()
-const recordFeatureInteractionMock = vi.fn()
-const setDragRootNodeMock = vi.fn()
-const useAppStoreMock = vi.fn(
-  (
-    selector: (state: {
-      recordFeatureInteraction: typeof recordFeatureInteractionMock
-      setTabGroupSplitRatio: typeof setTabGroupSplitRatioMock
-    }) => unknown
-  ) =>
-    selector({
-      recordFeatureInteraction: recordFeatureInteractionMock,
-      setTabGroupSplitRatio: setTabGroupSplitRatioMock
-    })
-)
+const doubles = vi.hoisted(() => ({
+  ratio: vi.fn(),
+  record: vi.fn(),
+  root: vi.fn(),
+  panels: new Map<string, Record<string, unknown>>()
+}))
 vi.mock('../../store', () => ({
-  useAppStore: (
-    selector: (state: {
-      recordFeatureInteraction: typeof recordFeatureInteractionMock
-      setTabGroupSplitRatio: typeof setTabGroupSplitRatioMock
+  useAppStore: {
+    getState: () => ({
+      setTabGroupSplitRatio: doubles.ratio,
+      recordFeatureInteraction: doubles.record
+    })
+  }
+}))
+vi.mock('./TabGroupPanel', async () => {
+  const { createElement } = await import('react')
+  return {
+    default: (props: { groupId: string } & Record<string, unknown>) => {
+      doubles.panels.set(props.groupId, props)
+      return createElement('div', { 'data-testid': props.groupId })
+    }
+  }
+})
+vi.mock('./WorkspaceTabDragLayer', () => ({
+  WorkspaceTabDragLayer: ({
+    children
+  }: {
+    children: (state: {
+      isTabDragActive: boolean
+      hoveredTabInsertion: null
+      setDragRootNode: typeof doubles.root
     }) => unknown
-  ) => useAppStoreMock(selector)
+  }) =>
+    children({ isTabDragActive: false, hoveredTabInsertion: null, setDragRootNode: doubles.root })
 }))
-
-vi.mock('./TabGroupPanel', () => ({
-  default: (props: unknown) => ({ __mock: 'TabGroupPanel', props })
-}))
-
-vi.mock('./useTabDragSplit', () => ({
-  useTabDragSplit: () => ({
-    activeDrag: null,
-    collisionDetection: vi.fn(),
-    hoveredDropTarget: null,
-    hoveredTabInsertion: null,
-    isTabDragActiveRef: { current: false },
-    onDragCancel: vi.fn(),
-    onDragEnd: vi.fn(),
-    onDragMove: vi.fn(),
-    onDragOver: vi.fn(),
-    onDragStart: vi.fn(),
-    sensors: [],
-    setDragRootNode: setDragRootNodeMock
-  })
-}))
-
 import TabGroupSplitLayout from './TabGroupSplitLayout'
 
-type ReactElementLike = {
-  type: string | ((props: Record<string, unknown>) => unknown)
-  props: Record<string, unknown>
+beforeEach(() => {
+  vi.clearAllMocks()
+  doubles.panels.clear()
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
+const leaf: TabGroupLayoutNode = { type: 'leaf', groupId: 'group-1' }
+const pair: TabGroupLayoutNode = {
+  type: 'split',
+  direction: 'horizontal',
+  ratio: 0.5,
+  first: { type: 'leaf', groupId: 'left-group' },
+  second: { type: 'leaf', groupId: 'right-group' }
 }
-
-function asElement(node: unknown): ReactElementLike {
-  return node as ReactElementLike
+function mount(layout: TabGroupLayoutNode, active = true) {
+  return render(
+    createElement(TabGroupSplitLayout, {
+      layout,
+      worktreeId: 'wt-1',
+      focusedGroupId: layout.type === 'leaf' ? layout.groupId : 'right-group',
+      isWorktreeActive: active
+    })
+  )
 }
-
-function invokeComponent(element: ReactElementLike): unknown {
-  if (typeof element.type === 'function') {
-    return element.type(element.props)
-  }
-  return element
-}
-
 describe('TabGroupSplitLayout', () => {
-  beforeEach(() => {
-    setTabGroupSplitRatioMock.mockClear()
-    recordFeatureInteractionMock.mockClear()
-    setDragRootNodeMock.mockClear()
-    useAppStoreMock.mockClear()
-  })
-
-  function getLayoutWrapper(element: ReturnType<typeof TabGroupSplitLayout>) {
-    // The layout composes WorkspaceTabDragLayer (a render prop) around the chrome wrapper:
-    // invoke it to reach TabDragProvider > DndContext > [wrapper, DragOverlay, split overlay].
-    const providerElement = asElement(invokeComponent(asElement(element)))
-    const dndContext = asElement(providerElement.props.children)
-    return React.Children.toArray(dndContext.props.children as React.ReactNode)[0]
-  }
-
-  function getSplitNodeElement(element: ReturnType<typeof TabGroupSplitLayout>) {
-    const layoutWrapperChildren = React.Children.toArray(
-      asElement(getLayoutWrapper(element)).props.children as React.ReactNode
-    )
-    const splitBody = layoutWrapperChildren[1]
-    const treeElement = React.Children.only(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the wrapper's split body renders exactly the tree element; props are untyped in this shallow-walk rig.
-      asElement(splitBody).props.children as React.ReactNode
-    )
-    // TabGroupSplitNodeTree renders the recursive SplitNode; invoke both to reach the leaf/split.
-    const splitNodeElement = invokeComponent(asElement(treeElement))
-    return invokeComponent(asElement(splitNodeElement))
-  }
-
-  function getLeafPanelProps(isWorktreeActive: boolean) {
-    const element = TabGroupSplitLayout({
-      layout: { type: 'leaf', groupId: 'group-1' },
-      worktreeId: 'wt-1',
-      focusedGroupId: 'group-1',
-      isWorktreeActive
+  it('keeps an offscreen worktree mounted without keyboard focus', () => {
+    mount(leaf, false)
+    expect(doubles.panels.get('group-1')).toMatchObject({
+      isVisible: false,
+      isFocused: false,
+      hasSplitGroups: false
     })
-
-    const tabGroupPanelElement = asElement(getSplitNodeElement(element))
-    return tabGroupPanelElement.props as {
-      groupId: string
-      worktreeId: string
-      isVisible: boolean
-      isFocused: boolean
-      hasSplitGroups: boolean
-      reserveClosedExplorerToggleSpace: boolean
-      reserveCollapsedSidebarHeaderSpace: boolean
-    }
-  }
-
-  it('does not mark an offscreen worktree group as focused', () => {
-    expect(getLeafPanelProps(false)).toEqual(
-      expect.objectContaining({
-        groupId: 'group-1',
-        worktreeId: 'wt-1',
-        isVisible: false,
-        isFocused: false,
-        hasSplitGroups: false,
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: true
-      })
-    )
   })
-
-  it('keeps the visible worktree focused group active', () => {
-    expect(getLeafPanelProps(true)).toEqual(
-      expect.objectContaining({
-        groupId: 'group-1',
-        worktreeId: 'wt-1',
-        isVisible: true,
-        isFocused: true,
-        hasSplitGroups: false,
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: true
-      })
-    )
-  })
-
-  it('wires the split layout root to drag cleanup ownership', () => {
-    const element = TabGroupSplitLayout({
-      layout: { type: 'leaf', groupId: 'group-1' },
-      worktreeId: 'wt-1',
-      focusedGroupId: 'group-1',
-      isWorktreeActive: true
+  it('focuses the visible worktree group', () => {
+    mount(leaf)
+    expect(doubles.panels.get('group-1')).toMatchObject({
+      isVisible: true,
+      isFocused: true,
+      reserveClosedExplorerToggleSpace: true,
+      reserveCollapsedSidebarHeaderSpace: true
     })
-
-    expect(asElement(getLayoutWrapper(element)).props.ref).toBe(setDragRootNodeMock)
   })
-
-  it('only reserves top-right header space for the floating explorer toggle', () => {
-    const element = TabGroupSplitLayout({
-      layout: {
-        type: 'split',
-        direction: 'horizontal',
-        ratio: 0.5,
-        first: { type: 'leaf', groupId: 'left-group' },
-        second: { type: 'leaf', groupId: 'right-group' }
-      },
-      worktreeId: 'wt-1',
-      focusedGroupId: 'right-group',
-      isWorktreeActive: true
-    })
-
-    const rootElement = asElement(getSplitNodeElement(element))
-    const rootChildren = rootElement.props.children as unknown[]
-    const leftChild = asElement(rootChildren[0]).props.children
-    const rightChild = asElement(rootChildren[2]).props.children
-    const leftPanelProps = asElement(invokeComponent(asElement(leftChild))).props as {
-      reserveClosedExplorerToggleSpace: boolean
-      reserveCollapsedSidebarHeaderSpace: boolean
-      showWorkspacePaneCloseButton: boolean
-    }
-    const rightPanelProps = asElement(invokeComponent(asElement(rightChild))).props as {
-      reserveClosedExplorerToggleSpace: boolean
-      reserveCollapsedSidebarHeaderSpace: boolean
-      showWorkspacePaneCloseButton: boolean
-    }
-
-    expect(leftPanelProps).toEqual(
-      expect.objectContaining({
-        reserveClosedExplorerToggleSpace: false,
-        reserveCollapsedSidebarHeaderSpace: true,
-        showWorkspacePaneCloseButton: false
-      })
-    )
-    expect(rightPanelProps).toEqual(
-      expect.objectContaining({
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: false,
-        showWorkspacePaneCloseButton: true
-      })
-    )
+  it('wires the root to drag cleanup ownership', () => {
+    mount(leaf)
+    expect(doubles.root).toHaveBeenCalledWith(expect.any(HTMLElement))
   })
-
-  it('records pane resizing at the start of the gesture', () => {
-    const element = TabGroupSplitLayout({
-      layout: {
-        type: 'split',
-        direction: 'horizontal',
-        ratio: 0.5,
-        first: { type: 'leaf', groupId: 'left-group' },
-        second: { type: 'leaf', groupId: 'right-group' }
-      },
-      worktreeId: 'wt-1',
-      focusedGroupId: 'right-group',
-      isWorktreeActive: true
+  it('reserves window controls only on the matching outer corner', () => {
+    mount(pair)
+    expect(doubles.panels.get('left-group')).toMatchObject({
+      reserveClosedExplorerToggleSpace: false,
+      reserveCollapsedSidebarHeaderSpace: true,
+      showWorkspacePaneCloseButton: false
     })
-
-    const rootElement = asElement(getSplitNodeElement(element))
-    const resizeHandle = asElement((rootElement.props.children as unknown[])[1])
-
-    ;(resizeHandle.props.onResizeStart as () => void)()
-
-    expect(recordFeatureInteractionMock).toHaveBeenCalledWith('terminal-panes')
+    expect(doubles.panels.get('right-group')).toMatchObject({
+      reserveClosedExplorerToggleSpace: true,
+      reserveCollapsedSidebarHeaderSpace: false,
+      showWorkspacePaneCloseButton: true
+    })
+  })
+  it('records resizing when the actual divider gesture starts', () => {
+    const view = mount(pair)
+    const handle = view.container.querySelector<HTMLElement>('.tab-group-split-resize-handle')!
+    Object.assign(handle, {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: () => false,
+      releasePointerCapture: vi.fn()
+    })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100, clientY: 0 })
+    expect(doubles.record).toHaveBeenCalledWith('terminal-panes')
+    expect(doubles.ratio).not.toHaveBeenCalled()
   })
 })

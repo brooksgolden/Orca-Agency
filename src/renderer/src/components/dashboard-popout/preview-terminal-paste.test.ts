@@ -89,6 +89,30 @@ describe('createPreviewClipboardPaster', () => {
     expect(saveClipboardImageAsTempFile).not.toHaveBeenCalled()
   })
 
+  it('keeps chunked clipboard input on the caller-owned writer', async () => {
+    const text = 'x'.repeat(70_000)
+    const writes: string[] = []
+    const writeInput = vi.fn((data: string) => {
+      writes.push(data)
+      return true
+    })
+    readClipboardText.mockResolvedValue(text)
+
+    await createPreviewClipboardPaster({
+      ptyId: 'pty-1',
+      writeInput,
+      container,
+      getTerminal: () => terminal,
+      getTerminalInput: () => terminalInput,
+      isDisposed: () => disposed
+    })(document.activeElement, 'keyboard')
+
+    expect(writes.join('')).toBe(`\x1b[200~${text}\x1b[201~`)
+    expect(previewInput).not.toHaveBeenCalled()
+    expect(terminal.input).not.toHaveBeenCalled()
+    expect(terminal.paste).not.toHaveBeenCalled()
+  })
+
   it('still tries the image when the text read rejects, as image-only clipboards can', async () => {
     readClipboardText.mockRejectedValue(new Error('no text'))
     saveClipboardImageAsTempFile.mockResolvedValue(IMAGE_PATH)

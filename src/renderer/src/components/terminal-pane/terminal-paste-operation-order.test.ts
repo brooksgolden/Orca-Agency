@@ -6,7 +6,8 @@ import {
   BRACKETED_PASTE_START,
   wrapTerminalBracketedPasteText
 } from './terminal-bracketed-paste'
-import { executeTerminalPastePlan, planTerminalPaste } from './terminal-paste-coordinator'
+import { executeTerminalPastePlan } from './terminal-paste-executor'
+import { planTerminalPaste } from './terminal-paste-coordinator'
 import { runTerminalPtyInputTransaction } from './terminal-pty-input-transaction'
 
 function chunkedWindowsPaste() {
@@ -42,6 +43,81 @@ describe('terminal paste operation ordering', () => {
     await operation
   })
 
+  it('records a paste result before the next queued paste starts', async () => {
+    const events: string[] = []
+    let releaseFirst!: () => void
+    let firstWriteStarted!: () => void
+    const firstWrite = new Promise<void>((resolve) => {
+      firstWriteStarted = resolve
+    })
+    let held = false
+    const first = executeTerminalPastePlan(chunkedWindowsPaste(), {
+      onTransactionStart: () => events.push('first-start'),
+      onTransactionEnd: (result) => events.push(`first-end:${result.status}`),
+      pasteText: () => {},
+      writePty: async () => {
+        if (!held) {
+          held = true
+          firstWriteStarted()
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve
+          })
+        }
+        return true
+      },
+      yieldToEventLoop: async () => {}
+    })
+    await firstWrite
+
+    const second = executeTerminalPastePlan(chunkedWindowsPaste(), {
+      onTransactionStart: () => events.push('second-start'),
+      pasteText: () => {},
+      writePty: () => true,
+      yieldToEventLoop: async () => {}
+    })
+    await Promise.resolve()
+    expect(events).toEqual(['first-start'])
+
+    releaseFirst()
+    await Promise.all([first, second])
+    expect(events).toEqual(['first-start', 'first-end:pasted', 'second-start'])
+  })
+
+  it('cancels failed paste capture before the next queued paste starts', async () => {
+    const events: string[] = []
+    let releaseFirst!: () => void
+    let firstWriteStarted!: () => void
+    const firstWrite = new Promise<void>((resolve) => {
+      firstWriteStarted = resolve
+    })
+    const first = executeTerminalPastePlan(chunkedWindowsPaste(), {
+      onTransactionError: () => events.push('first-error'),
+      pasteText: () => {},
+      writePty: async () => {
+        firstWriteStarted()
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve
+        })
+        throw new Error('write failed')
+      }
+    })
+    const failed = first.then(
+      () => false,
+      () => true
+    )
+    await firstWrite
+    const second = executeTerminalPastePlan(chunkedWindowsPaste(), {
+      onTransactionStart: () => events.push('second-start'),
+      pasteText: () => {},
+      writePty: () => true,
+      yieldToEventLoop: async () => {}
+    })
+    releaseFirst()
+    expect(await failed).toBe(true)
+    await second
+    expect(events).toEqual(['first-error', 'second-start'])
+  })
+
   it('keeps startup context outside an active chunked user paste frame', async () => {
     const writes: string[] = []
     let startupDraft: Promise<boolean> | null = null
@@ -55,7 +131,6 @@ describe('terminal paste operation ordering', () => {
       writePty,
       yieldToEventLoop: async () => {
         startupDraft ??= sendAgentDraftPasteContent(
-          null,
           'pty-1',
           'GENERATED_CONTEXT',
           'launch',
@@ -77,13 +152,13 @@ describe('terminal paste operation ordering', () => {
 
   it('waits for an active startup frame before opening a user paste frame', async () => {
     const writes: { owner: 'startup' | 'user'; data: string }[] = []
+    let userTransactionStarted = false
     let releaseStartup!: () => void
     let startupOpened!: () => void
     const opened = new Promise<void>((resolve) => {
       startupOpened = resolve
     })
     const startup = sendAgentDraftPasteContent(
-      null,
       'pty-1',
       'G'.repeat(64 * 1024 + 1),
       'launch',
@@ -101,6 +176,9 @@ describe('terminal paste operation ordering', () => {
     await opened
 
     const user = executeTerminalPastePlan(chunkedWindowsPaste(), {
+      onTransactionStart: () => {
+        userTransactionStarted = true
+      },
       pasteText: () => {},
       writePty: async (data) => {
         writes.push({ owner: 'user', data })
@@ -109,6 +187,7 @@ describe('terminal paste operation ordering', () => {
       yieldToEventLoop: async () => {}
     })
     await Promise.resolve()
+    expect(userTransactionStarted).toBe(false)
     expect(writes).toEqual([{ owner: 'startup', data: BRACKETED_PASTE_START }])
 
     releaseStartup()
@@ -116,6 +195,7 @@ describe('terminal paste operation ordering', () => {
       true,
       expect.objectContaining({ status: 'pasted' })
     ])
+    expect(userTransactionStarted).toBe(true)
     const firstUserWrite = writes.findIndex(({ owner }) => owner === 'user')
     expect(firstUserWrite).toBeGreaterThan(0)
     expect(writes.slice(0, firstUserWrite).every(({ owner }) => owner === 'startup')).toBe(true)

@@ -1,8 +1,9 @@
+import { acquireWebviewsDragPassthrough } from '../browser-pane/host-guest/webview-drag-passthrough'
 import { getAiVaultResumeWorkspaceWslDistro } from '@/lib/ai-vault-resume-shell'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { toast } from 'sonner'
+import { canResumeAiVaultSessionOnTarget } from '../../../../shared/ai-vault-resume-target'
 import {
-  canResumeAiVaultSessionOnTarget,
   getAiVaultResumeWorkspaceExecutionHostId,
   getAiVaultResumeWorkspaceTargetStatus
 } from '@/lib/ai-vault-resume-target'
@@ -19,12 +20,12 @@ import {
   getAiVaultAgentProviderSession
 } from '@/lib/ai-vault-resume-command'
 import { launchAiVaultSessionInNewTab } from '@/lib/launch-ai-vault-session'
-import { aiVaultSessionNeedsResumePreparation } from '@/lib/ai-vault-session-resume-preparation'
+import { prepareAiVaultTerminalResumeRequest } from '@/lib/ai-vault-session-resume-preparation'
+import { describeAiVaultResumeFailure } from '@/lib/ai-vault-resume-refusal'
 import { useAppStore } from '@/store'
 import { resolveDropZone } from './tab-drop-zone'
 import type { TabDropZone } from './useTabDragSplit'
 import { translate } from '@/i18n/i18n'
-import type { AiVaultPrepareSessionResumeResult } from '../../../../shared/ai-vault-resume-preparation'
 import { activateAiVaultStructuredSession } from '@/lib/activate-ai-vault-structured-session'
 
 type PaneDropTarget = {
@@ -96,11 +97,37 @@ export default function AiVaultSessionDropLayer({
   const [target, setTarget] = useState<PaneDropTarget | null>(null)
   const layerRef = useRef<HTMLDivElement>(null)
 
+  useEffect(() => {
+    if (enabled && isDragActive) {
+      return acquireWebviewsDragPassthrough()
+    }
+    return undefined
+  }, [enabled, isDragActive])
+
   const clearDragState = useCallback(() => {
     setIsDragActive(false)
     setTarget(null)
     clearAiVaultSessionDragData()
   }, [])
+
+  useEffect(() => {
+    if (!isDragActive) {
+      return
+    }
+    // Native drags suppress pointer events; the first one afterward proves a missed end.
+    const reset = () => {
+      setIsDragActive(false)
+      setTarget(null)
+    }
+    window.addEventListener('pointermove', reset, { capture: true, once: true })
+    window.addEventListener('pointerdown', reset, { capture: true, once: true })
+    window.addEventListener('blur', reset, { once: true })
+    return () => {
+      window.removeEventListener('pointermove', reset, true)
+      window.removeEventListener('pointerdown', reset, true)
+      window.removeEventListener('blur', reset)
+    }
+  }, [isDragActive])
 
   const updateTarget = useCallback(
     (dataTransfer: DataTransfer, point: DropPoint): PaneDropTarget | null => {
@@ -142,24 +169,14 @@ export default function AiVaultSessionDropLayer({
         return false
       }
 
-      const layerRect = layerRef.current?.getBoundingClientRect()
-      const wasInsideLayer = layerRect ? containsPoint(layerRect, point.x, point.y) : false
-      if (!wasInsideLayer) {
+      const dropTarget = updateTarget(dataTransfer, point)
+      // Overlapping owner surfaces must not consume another pane's shared drag payload.
+      if (!dropTarget) {
         return false
       }
-      const dropTarget = updateTarget(dataTransfer, point) ?? target
       const payload = readAiVaultSessionDragData(dataTransfer)
       const sidebarDrop = payload ? readAiVaultSessionDropHandler(payload) : undefined
       clearDragState()
-      if (!dropTarget) {
-        toast.error(
-          translate(
-            'auto.components.tab.group.AiVaultSessionDropLayer.dropOntoTerminalPane',
-            'Drop onto a terminal pane to resume this session.'
-          )
-        )
-        return true
-      }
       if (!payload) {
         toast.error(
           translate(
@@ -182,8 +199,7 @@ export default function AiVaultSessionDropLayer({
         return true
       }
       if (payload.structuredSession) {
-        // Same row, same reveal as clicking Resume. Activating by id alone cannot reach a chat
-        // whose tab is closed, which is the case this drop is most often used for.
+        // Use Resume’s reveal path because activating a chat by ID alone cannot reopen its closed tab.
         void activateAiVaultStructuredSession(payload)
         return true
       }
@@ -226,23 +242,22 @@ export default function AiVaultSessionDropLayer({
           )
         )
       }
-      const preparation =
-        payload.sessionFilePath &&
-        payload.sessionExecutionHostId &&
-        payload.codexHome !== undefined &&
-        aiVaultSessionNeedsResumePreparation({
-          agent: payload.agent,
-          codexHome: payload.codexHome,
-          executionHostId: payload.sessionExecutionHostId
-        })
-          ? window.api.aiVault.prepareSessionResume({
-              agent: payload.agent,
-              sessionId: payload.sessionId,
-              filePath: payload.sessionFilePath,
-              executionHostId: payload.sessionExecutionHostId,
-              codexHome: payload.codexHome
-            })
-          : Promise.resolve<AiVaultPrepareSessionResumeResult>({ useRealCodexHome: false })
+      if (!payload.sessionFilePath || !payload.sessionExecutionHostId) {
+        toast.error(
+          translate(
+            'auto.components.tab.group.AiVaultSessionDropLayer.oldPayload',
+            'This session was dragged from an older Orca window. Resume it from Session History instead.'
+          )
+        )
+        return true
+      }
+      const preparation = prepareAiVaultTerminalResumeRequest({
+        agent: payload.agent,
+        sessionId: payload.sessionId,
+        filePath: payload.sessionFilePath,
+        executionHostId: payload.sessionExecutionHostId,
+        codexHome: payload.codexHome ?? null
+      })
       void preparation
         .then((result) => {
           const startup = result.useRealCodexHome
@@ -256,13 +271,17 @@ export default function AiVaultSessionDropLayer({
                 })
               : payload
           if (!startup) {
-            // Why: the host just proved the prebuilt command pins another
-            // account's home, so an unrepinnable payload (older serializer)
-            // must fail loudly rather than silently resume under it.
+            // Refuse old payloads that cannot repin the startup command; silently using another account’s home is unsafe.
             throw new Error(
               result.substituteCodexHome
-                ? 'This session was dragged from an older Orca window, so Orca cannot retarget it to the selected Codex account. Resume it from the Session History panel instead.'
-                : 'Orca could not prepare this legacy Codex session. Retry resume.'
+                ? translate(
+                    'auto.components.tab.group.AiVaultSessionDropLayer.legacyDragCannotRetarget',
+                    'This session was dragged from an older Orca window, so Orca cannot retarget it to the selected Codex account. Resume it from the Session History panel instead.'
+                  )
+                : translate(
+                    'auto.components.tab.group.AiVaultSessionDropLayer.legacyDragPrepareFailed',
+                    'Orca could not prepare this legacy Codex session. Retry resume.'
+                  )
             )
           }
           const providerSession = getAiVaultAgentProviderSession({
@@ -289,7 +308,9 @@ export default function AiVaultSessionDropLayer({
             void launchResult.runtimeLaunch.then((outcome) => {
               if (outcome.status === 'failed') {
                 toast.error(
-                  outcome.message ||
+                  (outcome.message
+                    ? describeAiVaultResumeFailure(new Error(outcome.message), payload.agent)
+                    : null) ||
                     translate(
                       'auto.lib.launch.agent.in.new.tab.11cce5cc77',
                       'Could not launch {{value0}} in a new terminal.',
@@ -305,18 +326,11 @@ export default function AiVaultSessionDropLayer({
           showQueuedToast()
         })
         .catch((error: unknown) => {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : translate(
-                  'auto.components.right.sidebar.AiVaultPanel.prepareSessionResumeFailed',
-                  'Could not prepare this session for resume.'
-                )
-          )
+          toast.error(describeAiVaultResumeFailure(error, payload.agent))
         })
       return true
     },
-    [clearDragState, target, updateTarget, worktreeId]
+    [clearDragState, updateTarget, worktreeId]
   )
 
   useEffect(() => {
@@ -336,6 +350,24 @@ export default function AiVaultSessionDropLayer({
       }
     }
 
+    const handleWindowDragOver = (event: DragEvent): void => {
+      if (!event.dataTransfer || !hasAiVaultSessionDragData(event.dataTransfer)) {
+        return
+      }
+      markDragActive()
+      if (updateTarget(event.dataTransfer, { x: event.clientX, y: event.clientY })) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.dataTransfer.dropEffect = 'copy'
+      }
+    }
+    const handleWindowDragLeave = (event: DragEvent): void => {
+      if (event.relatedTarget === null) {
+        setIsDragActive(false)
+        setTarget(null)
+      }
+    }
+
     const handleWindowDrop = (event: DragEvent): void => {
       if (!event.dataTransfer || !hasAiVaultSessionDragData(event.dataTransfer)) {
         return
@@ -345,11 +377,16 @@ export default function AiVaultSessionDropLayer({
       if (handleSessionDrop(event.dataTransfer, { x: event.clientX, y: event.clientY })) {
         event.preventDefault()
         event.stopPropagation()
+      } else {
+        // Another owner may still consume this payload in its capture listener.
+        setIsDragActive(false)
+        setTarget(null)
       }
     }
 
     window.addEventListener('dragenter', markIfVaultDrag, true)
-    window.addEventListener('dragover', markIfVaultDrag, true)
+    window.addEventListener('dragover', handleWindowDragOver, true)
+    window.addEventListener('dragleave', handleWindowDragLeave, true)
     window.addEventListener('drop', handleWindowDrop, true)
     window.addEventListener('drop', clearDragState)
     window.addEventListener('dragend', clearDragState, true)
@@ -357,54 +394,15 @@ export default function AiVaultSessionDropLayer({
     window.addEventListener(AI_VAULT_SESSION_DRAG_END_EVENT, clearDragState)
     return () => {
       window.removeEventListener('dragenter', markIfVaultDrag, true)
-      window.removeEventListener('dragover', markIfVaultDrag, true)
+      window.removeEventListener('dragover', handleWindowDragOver, true)
+      window.removeEventListener('dragleave', handleWindowDragLeave, true)
       window.removeEventListener('drop', handleWindowDrop, true)
       window.removeEventListener('drop', clearDragState)
       window.removeEventListener('dragend', clearDragState, true)
       window.removeEventListener(AI_VAULT_SESSION_DRAG_START_EVENT, markDragActive)
       window.removeEventListener(AI_VAULT_SESSION_DRAG_END_EVENT, clearDragState)
     }
-  }, [clearDragState, enabled, handleSessionDrop])
-
-  const handleDragOver = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (!hasAiVaultSessionDragData(event.dataTransfer)) {
-        return
-      }
-      event.preventDefault()
-      event.stopPropagation()
-      setIsDragActive(true)
-      const nextTarget = updateTarget(event.dataTransfer, {
-        x: event.clientX,
-        y: event.clientY
-      })
-      event.dataTransfer.dropEffect = nextTarget ? 'copy' : 'none'
-    },
-    [updateTarget]
-  )
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (!hasAiVaultSessionDragData(event.dataTransfer)) {
-        return
-      }
-      event.preventDefault()
-      event.stopPropagation()
-      handleSessionDrop(event.dataTransfer, {
-        x: event.clientX,
-        y: event.clientY
-      })
-    },
-    [handleSessionDrop]
-  )
-
-  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    const relatedTarget = event.relatedTarget
-    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) {
-      return
-    }
-    setTarget(null)
-  }, [])
+  }, [clearDragState, enabled, handleSessionDrop, updateTarget])
 
   return (
     <div
@@ -412,12 +410,7 @@ export default function AiVaultSessionDropLayer({
       aria-hidden="true"
       data-ai-vault-session-drop-layer="true"
       data-worktree-id={worktreeId}
-      className={`absolute inset-0 z-[10000] ${
-        isDragActive ? 'pointer-events-auto' : 'pointer-events-none'
-      }`}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      onDragLeave={handleDragLeave}
+      className="absolute inset-0 z-[10000] pointer-events-none"
     >
       {isDragActive && target ? (
         <div className="tab-drop-overlay absolute" style={target.overlayStyle} />

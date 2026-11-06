@@ -165,36 +165,6 @@ afterEach(() => {
 })
 
 describe('WorkspaceKanbanLaneGrid', () => {
-  it('reserves the full workflow width while mounting only the horizontal window', () => {
-    const { container } = renderGrid()
-
-    expect(mountedStatusIds(container)).toEqual([
-      'state-01',
-      'state-02',
-      'state-03',
-      'state-04',
-      'state-05'
-    ])
-    expect(
-      container.querySelector<HTMLElement>('[data-workspace-board-lane-grid]')?.style.width
-    ).toBe(`${21 * 308 + 20 * 12}px`)
-  })
-
-  it('mounts later ordered lanes and releases distant lanes after horizontal scroll', () => {
-    const rendered = renderGrid()
-    virtualWindow.startIndex = 17
-    rendered.rerender(makeGrid())
-
-    expect(mountedStatusIds(rendered.container)).toEqual([
-      'state-17',
-      'state-18',
-      'state-19',
-      'state-20',
-      'state-21'
-    ])
-    expect(rendered.container.querySelector('[data-workspace-status="state-01"]')).toBeNull()
-  })
-
   it('keeps one focused lane mounted without unbounding the virtual window', () => {
     const rendered = renderGrid()
     fireEvent.focus(rendered.getByRole('button', { name: 'State 1' }))

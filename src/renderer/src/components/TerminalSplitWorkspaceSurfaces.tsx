@@ -2,7 +2,7 @@ import { useAnyBrowserGuestNeedsPaint } from './browser-pane/host-guest/browser-
 import { WorktreeSplitSurface } from './TerminalWorktreeSplitSurface'
 import { selectParkedEquivalentMountTabIds } from './terminal/startup-terminal-tab-hold'
 import type { TerminalController } from './use-terminal-controller'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import {
   useWorkspaceDropTargets,
@@ -15,6 +15,8 @@ import {
 } from './workspace-split/WorkspaceSplitLayoutSlots'
 import { WorkspaceDropPreview } from './workspace-split/WorkspaceDropPreview'
 import { workspaceTouchesWindowEdge } from './workspace-split/workspace-window-edges'
+import { collectWorkspacePanes, workspacePaneKey } from '@/lib/workspace-group-layout'
+import type { PositionedGroup } from './tab-group/TabGroupPositionedPanels'
 
 export function TerminalSplitWorkspaceSurfaces({
   controller
@@ -32,6 +34,7 @@ export function TerminalSplitWorkspaceSurfaces({
     effectiveParkedTerminalWorktreeIds,
     forceParkedTerminalWorktreeIds,
     getEffectiveLayoutForWorktree,
+    prewarmLeasesRef,
     measurableBackgroundWorktreeIdsRef,
     mountedWorktreeIdsRef,
     renderedActiveWorktreeId,
@@ -42,6 +45,24 @@ export function TerminalSplitWorkspaceSurfaces({
   const rootRef = useRef<HTMLDivElement>(null)
   const [paneRects, setPaneRects] = useState<Map<string, WorkspacePaneRect>>(() => new Map())
   const [hover, setHover] = useState<WorkspaceDropHover | null>(null)
+  useEffect(() => {
+    const reconcile = () => {
+      if (useAppStore.getState().workspaceSessionReady) {
+        useAppStore.getState().reconcileWorkspaceSurfaceGroups()
+      }
+    }
+    reconcile()
+    return useAppStore.subscribe((state, previous) => {
+      if (
+        state.workspaceSessionReady &&
+        (state.workspaceSessionReady !== previous.workspaceSessionReady ||
+          state.layoutByWorktree !== previous.layoutByWorktree ||
+          state.groupsByWorktree !== previous.groupsByWorktree)
+      ) {
+        reconcile()
+      }
+    })
+  }, [])
   const onRatioChange = useCallback(
     (path: readonly ('first' | 'second')[], ratio: number) => {
       if (visibleWorkspaceSplitGroup) {
@@ -78,6 +99,45 @@ export function TerminalSplitWorkspaceSurfaces({
   // it re-attaches drop handling when the root appears after the visible ids settled.
   const rendersRoot = anyMountedWorktreeHasLayout || group !== null
   useWorkspaceDropTargets(rootRef, visibleIdsKey, rendersRoot, setHover)
+  const positionsByWorkspace = useMemo(() => {
+    const result = new Map<string, Map<string, PositionedGroup>>()
+    if (!group) {
+      return result
+    }
+    for (const pane of collectWorkspacePanes(group.layout)) {
+      if (!pane.groupId) {
+        continue
+      }
+      const positions = result.get(pane.workspaceId) ?? new Map<string, PositionedGroup>()
+      result.set(pane.workspaceId, positions)
+      const rect = paneRects.get(workspacePaneKey(pane))
+      if (rect) {
+        positions.set(pane.groupId, {
+          ...rect,
+          topEdge: workspaceTouchesWindowEdge(group.layout, pane.workspaceId, 'top', pane.groupId),
+          leftEdge: workspaceTouchesWindowEdge(
+            group.layout,
+            pane.workspaceId,
+            'left',
+            pane.groupId
+          ),
+          rightEdge: workspaceTouchesWindowEdge(
+            group.layout,
+            pane.workspaceId,
+            'right',
+            pane.groupId
+          ),
+          bottomEdge: workspaceTouchesWindowEdge(
+            group.layout,
+            pane.workspaceId,
+            'bottom',
+            pane.groupId
+          )
+        })
+      }
+    }
+    return result
+  }, [group, paneRects])
   if (!rendersRoot) {
     return null
   }
@@ -89,6 +149,7 @@ export function TerminalSplitWorkspaceSurfaces({
       !isVisible &&
       !shouldMeasureHiddenWorktree &&
       effectiveParkedTerminalWorktreeIds.has(workspace.id)
+    const groupPositions = isVisible && layout ? positionsByWorkspace.get(workspace.id) : undefined
     return (
       <WorktreeSplitSurface
         key={`tab-groups-${workspace.id}`}
@@ -110,14 +171,24 @@ export function TerminalSplitWorkspaceSurfaces({
             workspaceTouchesWindowEdge(group.layout, workspace.id, 'right'))
         }
         hoverEdge={
-          hover?.id === workspace.id && !hover.wholeWindow && !hover.placement && !hover.strip
+          hover?.id === workspace.id &&
+          !hover.previewBounds &&
+          !hover.wholeWindow &&
+          !hover.placement &&
+          !hover.strip
             ? hover.edge
             : null
         }
-        hoverSwap={hover?.id === workspace.id && hover.placement?.kind === 'swap'}
+        hoverSwap={
+          hover?.id === workspace.id && !hover.previewBounds && hover.placement?.kind === 'swap'
+        }
         paneRect={group && isVisible ? paneRects.get(workspace.id) : undefined}
+        groupPositions={groupPositions}
         shouldMeasureHiddenWorktree={shouldMeasureHiddenWorktree}
         shouldColdParkTerminalPanes={shouldColdParkTerminalPanes}
+        prewarmStage={
+          shouldMeasureHiddenWorktree ? (prewarmLeasesRef.current.get(workspace.id) ?? null) : null
+        }
         isForceParked={forceParkedTerminalWorktreeIds.has(workspace.id)}
         activityTerminalPortals={activityTerminalPortals}
         backgroundMountTabIds={backgroundMountTabIdsByWorktreeRef.current.get(workspace.id) ?? null}
@@ -157,8 +228,22 @@ export function TerminalSplitWorkspaceSurfaces({
               : workspace.id === renderedActiveWorktreeId)
         )
       )}
-      {hover?.wholeWindow ? <WorkspaceDropPreview edge={hover.edge} /> : null}
-      {hover?.placement?.kind === 'quadrant' ? (
+      {hover?.previewBounds ? (
+        <div
+          className="pointer-events-none fixed z-50 border-2 border-primary bg-primary/15"
+          style={hover.previewBounds}
+          data-workspace-window-drop={hover.wholeWindow ? hover.edge : undefined}
+          data-workspace-drop-edge={!hover.wholeWindow && !hover.placement ? hover.edge : undefined}
+          data-workspace-drop-swap={hover.placement?.kind === 'swap' ? 'true' : undefined}
+          data-workspace-quadrant-drop={
+            hover.placement?.kind === 'quadrant' ? hover.placement.quadrant : undefined
+          }
+        />
+      ) : null}
+      {hover?.wholeWindow && !hover.previewBounds ? (
+        <WorkspaceDropPreview edge={hover.edge} />
+      ) : null}
+      {hover?.placement?.kind === 'quadrant' && !hover.previewBounds ? (
         <WorkspaceDropPreview quadrant={hover.placement.quadrant} />
       ) : null}
       {hover?.strip ? (

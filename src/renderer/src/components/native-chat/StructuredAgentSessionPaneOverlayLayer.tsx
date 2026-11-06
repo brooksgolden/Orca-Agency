@@ -2,13 +2,14 @@ import { memo, useCallback, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Tab, TabGroup } from '../../../../shared/tab-types'
 import { useAppStore } from '@/store'
+import { useThemeBackgroundStore } from '@/store/theme-background'
 import {
   structuredAgentSessionOwnerForTab,
   structuredAgentSessionTargetForHost
 } from '@/runtime/structured-agent-session-owner'
 import { RetainedPaneHost } from '../tab-group/RetainedPaneHost'
 import NativeChatView from './NativeChatView'
-import { isStructuredTab } from './structured-agent-session-tabs'
+import { isStructuredTab } from '../../../../shared/agent-session/view/structured-agent-session-tab'
 
 type StructuredAgentSessionTab = Tab & {
   contentType: 'agent-session'
@@ -20,28 +21,35 @@ const EMPTY_GROUPS: readonly TabGroup[] = []
 
 const StructuredAgentSessionOverlaySlot = memo(function StructuredAgentSessionOverlaySlot({
   tab,
+  worktreeId,
   groupId,
   isActive,
   isFocusedGroup,
+  hasSplitGroups,
   onFocusOwningGroup
 }: {
   tab: StructuredAgentSessionTab
+  worktreeId: string
   groupId: string | undefined
   isActive: boolean
   isFocusedGroup: boolean
+  hasSplitGroups: boolean
   onFocusOwningGroup: ((groupId: string) => void) | undefined
 }): React.JSX.Element | null {
-  // Each chat is read from the host recorded on its tab, never from its workspace id, which two
-  // hosts can share.
+  // Resolve from the tab’s recorded host because workspace ids can collide across hosts.
   const owner = useAppStore((state) => structuredAgentSessionOwnerForTab(state, tab))
   const target = useMemo(() => structuredAgentSessionTargetForHost(owner), [owner])
+  const themeBackgroundActive = useThemeBackgroundStore((state) => state.active)
   if (!target) {
     return null
   }
   return (
     <RetainedPaneHost
       groupId={groupId}
+      worktreeId={worktreeId}
       isVisible={isActive}
+      // Why not over a theme image: the chat is translucent there, so a dim would bleed the image in.
+      dimmed={hasSplitGroups && !isFocusedGroup && !themeBackgroundActive}
       data-structured-agent-session-overlay-tab-id={tab.id}
       onFocusOwningGroup={onFocusOwningGroup}
     >
@@ -94,6 +102,7 @@ const StructuredAgentSessionPaneOverlayLayer = memo(
           <StructuredAgentSessionOverlaySlot
             key={tab.id}
             tab={tab}
+            worktreeId={worktreeId}
             groupId={tab.groupId}
             isActive={Boolean(isWorktreeActive && groupActiveTabById.get(tab.groupId) === tab.id)}
             isFocusedGroup={Boolean(
@@ -101,6 +110,7 @@ const StructuredAgentSessionPaneOverlayLayer = memo(
               groupActiveTabById.get(tab.groupId) === tab.id &&
               tab.groupId === activeGroupId
             )}
+            hasSplitGroups={groups.length > 1}
             onFocusOwningGroup={focusOwningGroup}
           />
         ))}

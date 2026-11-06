@@ -1,7 +1,8 @@
 import type { Worktree } from '../../../../shared/worktree/types'
 import {
   getWorktreeExecutionHostId,
-  getSettingsFocusedExecutionHostId
+  getSettingsFocusedExecutionHostId,
+  type ExecutionHostId
 } from '../../../../shared/execution-host'
 import {
   resolveAiVaultSessionWorktreeInfo,
@@ -38,6 +39,25 @@ export function buildChatSidebarRows(
   sessionWorktrees?: ReadonlyMap<string, AiVaultSessionWorktreeInfo>,
   includeAutomationRows = false
 ): ChatSidebarRow[] {
+  return buildChatSidebarRowsForHost(
+    state,
+    sessions,
+    now,
+    sessionWorktrees,
+    includeAutomationRows,
+    getSettingsFocusedExecutionHostId(state.settings)
+  )
+}
+
+/** Build rows using an explicit fallback host when the caller owns the routing context. */
+export function buildChatSidebarRowsForHost(
+  state: ChatSidebarState,
+  sessions: readonly AiVaultSession[],
+  now: number,
+  sessionWorktrees: ReadonlyMap<string, AiVaultSessionWorktreeInfo> | undefined,
+  includeAutomationRows: boolean,
+  focusedHostId: ExecutionHostId
+): ChatSidebarRow[] {
   const rows = new Map<string, ChatSidebarRow>()
   const residentRows: ChatSidebarRow[] = []
   const tabCreatedAt = new Map(
@@ -48,7 +68,6 @@ export function buildChatSidebarRows(
   )
   const worktrees = chatSidebarWorktrees(state)
   const repoById = new Map(state.repos.map((repo) => [repo.id, repo]))
-  const focusedHostId = getSettingsFocusedExecutionHostId(state.settings)
   const hostOf = (worktree: Worktree) =>
     getWorktreeExecutionHostId(worktree, repoById.get(worktree.repoId), focusedHostId)
   const settings = state.settings?.chatSidebar
@@ -57,6 +76,7 @@ export function buildChatSidebarRows(
   const sessionMap = chatSessionMap(sessions, rememberedSessions)
   const hidden = new Set(settings?.hidden ?? [])
   const automationChats = new Set(settings?.automationChats ?? [])
+  const humanChats = new Set(settings?.humanChats ?? [])
   const add = (row: ChatSidebarRow) => {
     const incumbent = rows.get(row.id)
     // Why: two resident terminals can resume the same provider session. Keep both navigable.
@@ -81,8 +101,11 @@ export function buildChatSidebarRows(
       !!row.tabId &&
       settings?.userResumedTabs?.includes(chatFallbackId(row.hostId, row.tabId)) === true
     // An explicit user resume overrides old automation markers only for that exact tab.
+    // A person's message in the chat makes it a normal chat for good.
     row.automated =
-      !userResumedTab && identities.some((id) => automationChats.has(id))
+      !userResumedTab &&
+      !identities.some((id) => humanChats.has(id)) &&
+      identities.some((id) => automationChats.has(id))
     // Why: hiding old history must not hide a conversation the user opens again.
     if (!row.tabId && identities.some((id) => hidden.has(id))) {
       return
@@ -234,6 +257,22 @@ export function buildChatSidebarRows(
   const result = [...rows.values()]
   const owners = chatWorkspaceNameOwners(state, result)
   const folders = chatWorkspaceFolders(result, settings, worktreeById, hostOf, tabCreatedAt)
+  const agentsByWorktree = new Map<string, Set<string>>()
+  for (const row of result) {
+    if (!row.tabId) {
+      continue
+    }
+    const agent = row.agentType ?? row.session?.agent ?? row.liveSession?.agent
+    if (!agent) {
+      continue
+    }
+    const agents = agentsByWorktree.get(row.worktree.id) ?? new Set<string>()
+    agents.add(agent)
+    agentsByWorktree.set(row.worktree.id, agents)
+  }
+  const mixedProviderWorktrees = new Set(
+    [...agentsByWorktree].filter(([, agents]) => agents.size > 1).map(([worktreeId]) => worktreeId)
+  )
   for (const row of result) {
     const destination = folders.get(row.id)
     if (destination) {
@@ -241,7 +280,12 @@ export function buildChatSidebarRows(
       row.folder = chatFolderLabel(state, destination)
     }
     row.ownsWorkspaceName = owners.get(row.worktree.id) === row
-    const workspaceName = row.ownsWorkspaceName ? manualWorkspaceName(state, row.worktree) : null
+    // A workspace label must not replace one provider's conversation title when Claude and
+    // Codex chats share the workspace. Keep the ownership pin for stable row ordering.
+    const workspaceName =
+      row.ownsWorkspaceName && !mixedProviderWorktrees.has(row.worktree.id)
+        ? manualWorkspaceName(state, row.worktree)
+        : null
     row.title =
       chatPreference(settings?.titles, row) ?? row.manualTitle ?? workspaceName ?? row.title
   }

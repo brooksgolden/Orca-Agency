@@ -531,7 +531,7 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
       const dom = await events.evaluate(({ dom }) => dom)
       expect(dom.some((event) => event.type === 'compositionstart')).toBe(true)
       expect(dom.some((event) => /[\uac00-\ud7af]/.test(event.data ?? ''))).toBe(true)
-      appendImeEngagementReceipt(testInfo.title, { dom, onData: [] })
+      appendImeEngagementReceipt(testInfo.title, { dom, onData: [], windowKeys: [] })
       completed = true
       await orcaPage.screenshot({
         path: testInfo.outputPath('native-deliberate-return-saves-notes.png')

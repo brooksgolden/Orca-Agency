@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { IDisposable } from '@xterm/xterm'
 import { normalizeDesktopTerminalScrollbackRows } from '../../../../shared/terminal-scrollback-policy'
 import { applyTerminalAppearance } from './terminal-appearance'
+import { useThemeBackgroundStore } from '@/store/theme-background'
 import { installMouseHideWhileTyping } from './mouse-hide-while-typing'
 import {
   applyTerminalScrollbackRowsToMountedPanes,
@@ -15,33 +16,8 @@ import {
 import type { UseTerminalPaneLifecycleDeps } from './terminal-pane-lifecycle-types'
 import { useTerminalPaneMountLifecycle } from './use-terminal-pane-mount-lifecycle'
 import { useTerminalPaneLifecycleRefs } from './use-terminal-pane-lifecycle-refs'
-import { installTerminalPaneHibernationWakeListener } from './terminal-pane-hibernation-wake-listener'
+import { listenForHibernatedAgentWake } from './hibernated-agent-wake-listener'
 
-export {
-  applyTerminalScrollbackRowsToMountedPanes,
-  clearQueuedInitialCwdAfterFirstPane,
-  createQueuedStartupConsumer,
-  getPreviousVisibleForTerminalPane,
-  isTerminalPaneVisibilityResume,
-  mapRestoredPaneTitlesByPaneId,
-  paneOwnsQueuedStartup,
-  replayLayoutWithOneShotParkIntent,
-  resolvePaneLinkCwd,
-  resolvePaneSeedCwd,
-  resolveQueuedInitialCwd,
-  recordRuntimeCreatedTerminalPaneSplit,
-  shouldDetachPaneTransportOnUnmount,
-  terminalSelectionExceedsPrimaryLimit,
-  splitPaneWithOneShotStartup
-} from './terminal-pane-lifecycle-primitives'
-export {
-  applyTerminalPaneCloseRequest,
-  retireMountedTerminalPaneSurface,
-  suppressIntentionalPaneCloseExit
-} from './terminal-pane-lifecycle-close'
-export type { UseTerminalPaneLifecycleDeps } from './terminal-pane-lifecycle-types'
-
-/** Coordinates mount, visibility, and live appearance effects for terminal panes. */
 export function useTerminalPaneLifecycle(deps: UseTerminalPaneLifecycleDeps): void {
   const refs = useTerminalPaneLifecycleRefs()
   useTerminalPaneMountLifecycle(deps, refs)
@@ -54,11 +30,12 @@ export function useTerminalPaneLifecycle(deps: UseTerminalPaneLifecycleDeps): vo
 
   useEffect(
     () =>
-      installTerminalPaneHibernationWakeListener({
-        worktreeId: deps.worktreeId,
-        tabId: deps.tabId,
-        panePtyBindingsRef: deps.panePtyBindingsRef
-      }),
+      // Why: exactly one wake listener per pane; Agency's tab-scoped wake is carried by the stable listener.
+      listenForHibernatedAgentWake(
+        deps.worktreeId,
+        () => deps.panePtyBindingsRef.current.values(),
+        deps.tabId
+      ),
     [deps.worktreeId, deps.tabId, deps.panePtyBindingsRef]
   )
 
@@ -118,6 +95,8 @@ export function useTerminalPaneLifecycle(deps: UseTerminalPaneLifecycleDeps): vo
     return () => window.removeEventListener('focus', onWindowFocus)
   }, [deps.isActive, deps.isVisible, deps.managerRef, deps.panePtyBindingsRef])
 
+  // Why: a theme image arrives after plugin themes load, so the single-paint switch must re-run then.
+  const themeBackgroundActive = useThemeBackgroundStore((state) => state.active)
   useEffect(() => {
     const manager = deps.managerRef.current
     const currentSettings = deps.settingsRef.current
@@ -136,6 +115,7 @@ export function useTerminalPaneLifecycle(deps: UseTerminalPaneLifecycleDeps): vo
     )
   }, [
     deps.settings,
+    themeBackgroundActive,
     deps.systemPrefersDark,
     deps.effectiveMacOptionAsAlt,
     deps.managerRef,

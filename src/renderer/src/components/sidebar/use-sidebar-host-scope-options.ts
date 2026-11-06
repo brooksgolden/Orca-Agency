@@ -1,3 +1,4 @@
+import { selectWslHostsServing } from './use-wsl-hosts-enabled'
 import { useMemo } from 'react'
 import { useAppStore } from '@/store'
 import { getHostDisplayLabelOverrides } from '../../../../shared/host-setting-overrides'
@@ -22,6 +23,8 @@ export function useSidebarHostScopeOptions(hostSource?: ExecutionHostSource): {
   const settings = useAppStore((s) => s.settings)
   const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)
   const runtimeStatusByEnvironmentId = useAppStore((s) => s.runtimeStatusByEnvironmentId)
+  const wslHostStatuses = useAppStore((s) => s.wslHostStatuses)
+  const wslHostServerFilesMissing = useAppStore((s) => s.wslHostServerFiles === 'missing')
 
   const hostLabelOverrides = useMemo(() => getHostDisplayLabelOverrides(settings), [settings])
   const hostOptions = useMemo(
@@ -34,7 +37,10 @@ export function useSidebarHostScopeOptions(hostSource?: ExecutionHostSource): {
         settings,
         runtimeEnvironments,
         runtimeStatusByEnvironmentId,
-        hostLabelOverrides
+        hostLabelOverrides,
+        wslHostStatuses,
+        wslHostsEnabled: selectWslHostsServing({ settings, runtimeEnvironments }),
+        wslHostServerFilesMissing
       }),
     [
       hostSource,
@@ -44,7 +50,9 @@ export function useSidebarHostScopeOptions(hostSource?: ExecutionHostSource): {
       settings,
       runtimeEnvironments,
       runtimeStatusByEnvironmentId,
-      hostLabelOverrides
+      hostLabelOverrides,
+      wslHostStatuses,
+      wslHostServerFilesMissing
     ]
   )
   const hostScopeOptions = useMemo(() => buildSidebarHostScopeOptions(hostOptions), [hostOptions])

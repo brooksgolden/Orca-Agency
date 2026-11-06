@@ -1,10 +1,12 @@
-import type { ManagedPaneInternal } from '@/lib/pane-manager/pane-manager-types'
-import { subscribeToTerminalInputData } from '../terminal-user-input-signal'
+import { isRemoteRuntimePtyId } from '../../../../../shared/remote-runtime/remote-runtime-pty-id'
+import { isPassiveTerminalInputReport } from '../terminal-passive-input-report'
+import { installPtyInputStreamSubscription } from './pty-input-stream-subscription'
 import { installTerminalImeCompositionRoute } from '../terminal-ime-composition-route'
 import { useAppStore } from '@/store'
+import { createHumanSubmitTracker } from '../../../../../shared/human-submit-signal'
+import { recordHumanChatMessage } from '@/lib/register-automation-chat'
 import { isTerminalQueryReply } from '../../../../../shared/terminal-query-reply'
 import { safeFitAndThen } from '@/lib/pane-manager/pane-tree-ops'
-import { requestStablePaneFit } from '@/lib/pane-manager/pane-fit-resize-observer'
 import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
 import { isPtyLocked } from '@/lib/pane-manager/mobile-driver-state'
 import { getAppliedSizeReadE2eDelayMs } from '../pty-applied-size-read-e2e-delay'
@@ -18,9 +20,8 @@ import {
   type PanePtyResizeHoldFlushDetail
 } from '@/lib/pane-manager/pane-pty-resize-hold'
 
-import { FOREGROUND_GRID_DRIFT_CHECK_MIN_MS } from './foreground-output-budgets'
+import { installForegroundGridDriftProbe } from './foreground-grid-drift-probe'
 import { TERMINAL_FOCUS_IN_SEQUENCE, TERMINAL_FOCUS_OUT_SEQUENCE } from './foreground-output-scan'
-import { isRemoteRuntimePtyId } from './paired-parked-terminal-restore'
 import { isCodexPaneStale } from './codex-pane-stale'
 import { installTerminalSelectionFitGuard } from '../terminal-selection-fit-guard'
 import { initializePaneGeometry, readPaneSize } from './read-pane-size'
@@ -28,15 +29,9 @@ import { initializePaneGeometry, readPaneSize } from './read-pane-size'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
 export function installPtyInputForward(session: ConnectPanePtySession): void {
+  const humanSubmit = createHumanSubmitTracker()
   session.forwardPtyInput = (data: string, wasUserInput = false): void => {
-    // Why: replaying recorded PTY bytes makes xterm auto-reply to embedded
-    // queries (DA1/DECRQM/OSC 10-11/CPR) via onData; those must not leak into
-    // the shell, but keystrokes typed mid-restore must survive. Pointer input
-    // stays dropped even though xterm flags it as user input: replayed bytes can
-    // leave mouse tracking armed until the guarded mode reset lands (a click
-    // would print SGR fragments on the fresh prompt), and a wheel over a
-    // replayed alt-screen frame becomes cursor keys that would recall history
-    // at that prompt once ?1049l lands. See replay-guard.ts.
+    // During replay, drop query replies and pointer-generated mouse/arrows but preserve typing; stale TUI modes could send reports or recall history in the fresh shell (replay-guard.ts).
     if (
       isPaneReplaying(session.deps.replayingPanesRef, session.pane.id) &&
       (!wasUserInput ||
@@ -50,6 +45,14 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
     if (isTerminalQueryReply(data)) {
       session.sendDesktopQueryReplyImmediate(data)
       return
+    }
+    // Why: only a submitted line the person typed here counts; scripts and CLI sends never reach this renderer path.
+    if (humanSubmit.observe(data, wasUserInput)) {
+      recordHumanChatMessage(session.deps.worktreeId, {
+        tabId: session.deps.tabId,
+        paneKey: session.cacheKey,
+        status: useAppStore.getState().agentStatusByPaneKey[session.cacheKey] ?? undefined
+      }).catch(() => {})
     }
     // Why: after a Codex account switch, the runtime auth has already moved to
     // the newly selected account. Stale panes must not keep sending input until
@@ -67,9 +70,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       session.clearPendingTerminalInputIntent()
       return
     }
-    // Why: presence-lock input drop. While mobile is the driver for this
-    // PTY, desktop keystrokes must not reach the shell; the visible overlay's
-    // explicit Take back action owns restoring desktop input and dimensions.
+    // Mobile driver lock withholds desktop input until explicit Take back restores input and dimensions.
     if (currentPtyId && isPtyLocked(currentPtyId)) {
       session.clearPendingTerminalInputIntent()
       return
@@ -83,22 +84,22 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       // disabling the mode would permanently silence focus events on resume.
       return
     }
-    // Why after the query-reply branch: device replies are not user input and
-    // must always reach the shell, or a program querying during reattach hangs.
-    // Why at all: a replaced endpoint reattaches to a fresh shell, so the tail
-    // of the interrupted line would be submitted by the user's own Enter and a
-    // compound command could run its surviving half (#10065 follow-up).
+    // Reply to device queries before blocking stale-line tails; dropping replies hangs TUIs, but replaying a replaced shell’s partial command could execute its suffix (#10065).
     if (shouldDropQuarantinedTerminalInput(session.deps.tabId, data)) {
       session.clearPendingTerminalInputIntent()
       return
     }
+    if (session.captureAgentPreReadyInput?.(data, wasUserInput)) {
+      session.clearPendingTerminalInputIntent()
+      return
+    }
+    if (!wasUserInput && !isPassiveTerminalInputReport(data)) {
+      session.noteTerminalInputForPty(currentPtyId)
+    }
     // Why xterm's provenance: its own focus reports reach onData too, and no person typed them.
     const inputKind = wasUserInput ? 'driving' : 'query-reply'
-    const intent = session.pendingTerminalInputIntent
-    // Why: real xterm can deliver the terminal byte even when our DOM keydown
-    // listener missed the press. Exact Ctrl+C/Escape bytes are still safe to
-    // infer for local/remote acknowledged writes; SSH fire-and-forget remains
-    // excluded because those transports do not expose sendInputAccepted.
+    const intent = session.pendingTerminalInputIntentFor(data)
+    // Missed DOM keydowns can still yield exact Ctrl+C/Escape bytes; infer only on acknowledged transports, excluding fire-and-forget SSH.
     const acknowledgedIntent = intent ?? session.inferIntentFromExactTerminalInput(data)
     if (acknowledgedIntent && session.transport.sendInputAccepted) {
       const interruptStatusBaseline =
@@ -109,10 +110,9 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
         session.interruptStatusBaselineSequence += 1
       }
       const capturedBaselineSequence = session.interruptStatusBaselineSequence
-      session.claimViewportForUserActivity()
+      session.claimViewportForUserActivity(data)
       if (acknowledgedIntent === 'ctrl-c') {
-        // Why: the accepted-write callback is async; let the next command be
-        // inferred if the user cancelled an oversized line and immediately typed.
+        // Async acknowledgments must not delay fresh inference after cancelling an oversized line.
         session.cancelSuspendedShellCommandInference()
       }
       session.clearPendingTerminalInputIntent()
@@ -132,8 +132,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
             session.observeTitleOnlyInterrupt()
             return immediateResult ?? null
           }
-          // Why: Esc/Ctrl+C are the first keys users press on a frozen pane;
-          // an unbound-transport reject here must arm recovery too.
+          // Frozen-pane Escape/Ctrl+C rejects must still arm unbound recovery.
           session.requestRecoveryForUndeliverableInput()
           return null
         })
@@ -145,7 +144,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       return
     }
     if (intent) {
-      session.claimViewportForUserActivity()
+      session.claimViewportForUserActivity(data)
       if (session.transport.sendInput(data, inputKind)) {
         session.markAcceptedTerminalInputSent()
         session.observeAcceptedShellCommandInput(data)
@@ -156,7 +155,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       session.clearPendingTerminalInputIntent()
       return
     }
-    session.claimViewportForUserActivity()
+    session.claimViewportForUserActivity(data)
     if (session.transport.sendInput(data, inputKind)) {
       session.markAcceptedTerminalInputSent()
       session.observeAcceptedShellCommandInput(data)
@@ -167,21 +166,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       session.requestRecoveryForUndeliverableInput()
     }
   }
-  // Why bind once: provenance must survive deferPtyInput's later callback, and
-  // this is the per-keystroke hot path, so no closure allocation per onData event.
-  const forwardUserInput = (data: string): void => session.forwardPtyInput(data, true)
-  const forwardUnclassifiedInput = (data: string): void => session.forwardPtyInput(data, false)
-  session.onDataDisposable = subscribeToTerminalInputData(
-    session.pane.terminal,
-    (data, wasUserInput) => {
-      const forward = wasUserInput ? forwardUserInput : forwardUnclassifiedInput
-      if (session.deps.deferPtyInput) {
-        session.deps.deferPtyInput(session.pane.id, data, forward)
-        return
-      }
-      forward(data)
-    }
-  )
+  installPtyInputStreamSubscription(session)
   session.imeCompositionRouteDisposable = installTerminalImeCompositionRoute({
     terminalElement: session.pane.terminal.element,
     terminal: session.pane.terminal,
@@ -203,8 +188,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
     if (session.deps.isVisibleRef.current) {
       return true
     }
-    // Why: hidden-tab layout churn is not authoritative; visible resume
-    // owns correction, and hidden SIGWINCH can reset full-screen TUIs.
+    // Hidden layout churn cannot own the grid; hidden SIGWINCH can reset full-screen TUIs.
     return false
   }
 
@@ -212,15 +196,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
     if (!session.isRendererPtyResizeAuthoritative()) {
       return
     }
-    // Why: when a mobile-fit override is active OR mobile is currently the
-    // driver of this PTY, the PTY is already at phone dims and any desktop
-    // resize is wrong. Suppress resize forwarding to avoid spurious SIGWINCH
-    // signals (TUI flicker / wrap corruption). Both checks are needed:
-    // - getFitOverrideForPty covers the "phone-fit dims" state.
-    // - isPtyLocked covers the broader "mobile driving" state, including
-    //   transitions where override may not be set (e.g. legacy code paths).
-    // The pty:resize IPC has a defense-in-depth twin. See
-    // docs/mobile-presence-lock.md.
+    // Suppress desktop resize under phone-fit or mobile-driver ownership, including transitions without an override (docs/mobile-presence-lock.md).
     if (session.shouldSuppressDesktopPtyResize()) {
       return
     }
@@ -243,16 +219,14 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
   )
 
   session.onResizeDisposable = session.pane.terminal.onResize(({ cols, rows }) => {
+    session.foregroundGridDriftProbeSettled = false
     if (session.suppressStructuralReplayPtyResize || session.suppressViewportClaimTerminalResize) {
       return
     }
     session.forwardPtyResize(cols, rows)
   })
 
-  // Why: renderer resize forwarding is fire-and-forget. A visible pane can
-  // finish with xterm at the right grid while the PTY silently kept an older
-  // grid, so Codex keeps composing against stale columns. Fit first so xterm's
-  // normal onResize can send, then read applied PTY size and repair only drift.
+  // Resize is fire-and-forget; fit, then verify applied PTY size and repair drift so Codex cannot keep composing at stale columns.
   session.ptySizeReassertion = createPtySizeReassertion({
     isDisposed: () => session.disposed,
     getPtyId: () => session.transport.getPtyId(),
@@ -264,8 +238,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       rows: session.pane.terminal.rows
     }),
     getAppliedSize: async (ptyId) => {
-      // Why: e2e seam — delays the read past the reveal fit to reproduce the
-      // busy-daemon/SSH ordering; returns 0 outside e2e builds.
+      // E2E-only delay races size readback behind reveal fit to model busy daemon/SSH ordering.
       const delayMs = getAppliedSizeReadE2eDelayMs()
       if (delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs))
@@ -274,10 +247,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
     },
     forwardResize: session.forwardPtyResize
   })
-  // Why built here and not inside session.handleReattachResult: a hidden pane parks this until it is
-  // revealed, and a closure created in that scope would pin the whole reattach payload
-  // (snapshot/replay/coldRestore bytes) for as long as the pane stays hidden. Taking the
-  // generation and pty id by value keeps only connection-level state alive.
+  // Capture only generation and PTY ID here; a deferred reveal closure inside reattach would retain its entire multi-MB payload while hidden.
   session.createReattachGridPush = (
     attemptGeneration: number,
     reattachPtyId: string
@@ -292,9 +262,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
         if (!isCurrent()) {
           return
         }
-        // Why re-checked at fire time: the caller's pre-check cannot see a mobile takeover that
-        // lands while the pane waits for a box, and transport.resize here bypasses
-        // forwardPtyResize's own suppression.
+        // Recheck mobile takeover after waiting for layout; direct transport.resize bypasses ordinary forwarding suppression.
         if (session.shouldSuppressDesktopPtyResize()) {
           return
         }
@@ -312,61 +280,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
       }
     }
   }
-  session.pendingForegroundGridDriftCheckRaf = null
-  session.lastForegroundGridDriftCheckAt = Number.NEGATIVE_INFINITY
-  session.readProposedTerminalGrid = (): { cols: number; rows: number } | null => {
-    try {
-      const proposed = session.pane.fitAddon.proposeDimensions()
-      if (!proposed || proposed.cols <= 0 || proposed.rows <= 0) {
-        return null
-      }
-      return proposed
-    } catch {
-      return null
-    }
-  }
-  session.terminalGridDriftedFromFit = (): boolean => {
-    const proposed = session.readProposedTerminalGrid()
-    return Boolean(
-      proposed &&
-      (session.pane.terminal.cols !== proposed.cols || session.pane.terminal.rows !== proposed.rows)
-    )
-  }
-  session.scheduleForegroundGridDriftCheck = (force = false): void => {
-    if (
-      session.disposed ||
-      !session.deps.isVisibleRef.current ||
-      session.shouldSuppressDesktopPtyResize() ||
-      session.pendingForegroundGridDriftCheckRaf !== null ||
-      (!force && session.terminalSelectionFitGuard?.isActive())
-    ) {
-      return
-    }
-    const now = performance.now()
-    if (
-      !force &&
-      now - session.lastForegroundGridDriftCheckAt < FOREGROUND_GRID_DRIFT_CHECK_MIN_MS
-    ) {
-      return
-    }
-    session.lastForegroundGridDriftCheckAt = now
-    session.pendingForegroundGridDriftCheckRaf = requestAnimationFrame(() => {
-      session.pendingForegroundGridDriftCheckRaf = null
-      if (
-        session.disposed ||
-        !session.deps.isVisibleRef.current ||
-        session.shouldSuppressDesktopPtyResize() ||
-        session.terminalSelectionFitGuard?.isActive() ||
-        !session.terminalGridDriftedFromFit()
-      ) {
-        return
-      }
-      requestStablePaneFit(session.pane as ManagedPaneInternal, () =>
-        session.ptySizeReassertion.request({ fit: false })
-      )
-    })
-  }
-
+  installForegroundGridDriftProbe(session)
   session.readPaneSize = () => readPaneSize(session)
   initializePaneGeometry(session)
 }

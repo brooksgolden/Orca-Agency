@@ -1,5 +1,5 @@
-import { AI_VAULT_AGENTS, type AiVaultAgent } from '../../../shared/ai-vault-types'
-import type { SleepingAgentLaunchConfig } from '../../../shared/agent-session-resume'
+import { isAiVaultAgent, type AiVaultAgent } from '../../../shared/ai-vault-types'
+import type { SleepingAgentLaunchConfig } from '../../../shared/agent-session/lifecycle/agent-session-resume'
 import { measureClipboardTextByteLength } from '../../../shared/clipboard-text'
 import { normalizeExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type { TabSplitDirection } from '@/store/slices/tabs'
@@ -21,9 +21,7 @@ export type AiVaultSessionDragPayload = {
   sessionFilePath?: string
   sessionExecutionHostId?: ExecutionHostId
   codexHome?: string | null
-  // Why: a per-account repin at drop time rebuilds the startup from the session
-  // cwd. Explicit null means the session genuinely has no cwd (rebuild without a
-  // cd prefix); an ABSENT key means an older serializer built the payload.
+  // Repinning rebuilds from cwd: null means no cd, absent means an older payload lacks recoverable cwd.
   sessionCwd?: string | null
   // Why: drag/drop resume must preserve planned env mutations/default args, not just the command.
   env?: Record<string, string>
@@ -48,10 +46,6 @@ let activeDropHandler: ((target: AiVaultSessionDropPlacement) => void) | undefin
 type SerializedAiVaultSessionDragPayload = AiVaultSessionDragPayload & {
   kind: 'ai-vault-session'
   version: 1
-}
-
-function isAiVaultAgent(value: unknown): value is AiVaultAgent {
-  return typeof value === 'string' && (AI_VAULT_AGENTS as readonly string[]).includes(value)
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -159,8 +153,7 @@ export function writeAiVaultSessionDragData(
   activeAiVaultSessionDragPayload = { ...payload }
   activeDropHandler = onDrop
   dataTransfer.effectAllowed = 'copy'
-  // Why: avoid text/plain so terminal/native drop targets cannot paste the
-  // resume command instead of letting Orca's pane drop layer handle it.
+  // Avoid text/plain so native terminal drops cannot paste the resume command before Orca handles it.
   dataTransfer.setData(AI_VAULT_SESSION_DRAG_TYPE, serialized)
 }
 

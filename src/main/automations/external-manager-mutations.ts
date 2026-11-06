@@ -7,7 +7,7 @@ import type {
 } from '../../shared/automations-types'
 import { assertExternalAutomationJobId } from './external-manager-job-id'
 import { runLocalAutomationCommand } from './external-manager-local-command'
-import { requireExternalAutomationMultiplexer } from './external-manager-relay'
+import { SshHostNotServedError } from '../providers/ssh-host-not-served-error'
 import { clearHermesCronOutputRunCountCache } from './hermes-cron-output'
 
 const PROVIDER_ACTION_COMMANDS: Record<
@@ -18,7 +18,7 @@ const PROVIDER_ACTION_COMMANDS: Record<
   openclaw: { pause: 'disable', resume: 'enable', run: 'run', delete: 'rm' }
 }
 
-/** Fails closed like its neighbours: an unlisted or inherited key is not an action. */
+/** Reject unlisted or inherited action names. */
 function providerActionCommand(
   provider: ExternalAutomationProvider,
   action: ExternalAutomationAction
@@ -60,7 +60,6 @@ function normalizeHermesCronMutationInput(input: ExternalAutomationCreateInput):
   }
 }
 
-/** Edit args when `jobId` is given, create args otherwise; both are argv, never a shell string. */
 function hermesCronMutationArgs(
   jobId: string | null,
   input: { name: string; prompt: string; schedule: string; workdir: string | null }
@@ -82,18 +81,11 @@ export async function createExternalAutomation(
   input: ExternalAutomationCreateInput
 ): Promise<void> {
   const normalized = normalizeHermesCronMutationInput(input)
-  if (input.target.type === 'local') {
-    await runLocalAutomationCommand('hermes', hermesCronMutationArgs(null, normalized))
-    clearHermesCronOutputRunCountCache()
-    return
+  if (input.target.type !== 'local') {
+    throw new SshHostNotServedError(input.target.connectionId)
   }
-  await requireExternalAutomationMultiplexer(input.target.connectionId).request(
-    'externalAutomations.create',
-    {
-      provider: input.provider,
-      ...normalized
-    }
-  )
+  await runLocalAutomationCommand('hermes', hermesCronMutationArgs(null, normalized))
+  clearHermesCronOutputRunCountCache()
 }
 
 export async function updateExternalAutomation(
@@ -101,19 +93,11 @@ export async function updateExternalAutomation(
 ): Promise<void> {
   assertExternalAutomationJobId(input.jobId)
   const normalized = normalizeHermesCronMutationInput(input)
-  if (input.target.type === 'local') {
-    await runLocalAutomationCommand('hermes', hermesCronMutationArgs(input.jobId, normalized))
-    clearHermesCronOutputRunCountCache(input.jobId)
-    return
+  if (input.target.type !== 'local') {
+    throw new SshHostNotServedError(input.target.connectionId)
   }
-  await requireExternalAutomationMultiplexer(input.target.connectionId).request(
-    'externalAutomations.update',
-    {
-      provider: input.provider,
-      jobId: input.jobId,
-      ...normalized
-    }
-  )
+  await runLocalAutomationCommand('hermes', hermesCronMutationArgs(input.jobId, normalized))
+  clearHermesCronOutputRunCountCache(input.jobId)
 }
 
 export async function runExternalAutomationAction(
@@ -128,12 +112,5 @@ export async function runExternalAutomationAction(
     }
     return
   }
-  await requireExternalAutomationMultiplexer(input.target.connectionId).request(
-    'externalAutomations.act',
-    {
-      provider: input.provider,
-      action: input.action,
-      jobId: input.jobId
-    }
-  )
+  throw new SshHostNotServedError(input.target.connectionId)
 }

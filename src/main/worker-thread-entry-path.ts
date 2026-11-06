@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { getAppEnvironment, hasAppEnvironment } from '../shared/app-environment'
 
 /**
@@ -16,32 +16,20 @@ export type WorkerEntryLayout = {
   moduleDir: string
 }
 
-/**
- * Resolve a built worker entry for one runtime layout.
- * @param layout - Packaged flag plus both candidate roots.
- * @param entryFileName - Built file name, e.g. `usage-scan-worker-entry.js`.
- * @returns Path passed to `new Worker()`.
- */
 export function resolveWorkerThreadEntryPath(
   layout: WorkerEntryLayout,
   entryFileName: string
 ): string {
-  // Why the resourcesPath guard: `isPackaged` is true on orcad too, but
-  // `process.resourcesPath` is Electron-only and undefined under plain Node —
-  // joining it threw a TypeError rather than failing as a missing worker. A host
-  // without an Electron resources tree has no asar to look in, so fall back to
-  // the module dir and let the caller report a missing worker honestly.
+  // Plain-Node orcad can be packaged without Electron resources; its workers live beside the module.
   if (layout.isPackaged && layout.resourcesPath) {
     return join(layout.resourcesPath, 'app.asar', 'out', 'main', entryFileName)
   }
   return join(layout.moduleDir, entryFileName)
 }
 
-/**
- * The current process's worker-entry layout.
- * @param moduleDir - The calling module's `__dirname`, used for unpackaged builds.
- * @returns Layout for `resolveWorkerThreadEntryPath`.
- */
+// The build's `chunkFileNames` folder; worker entries sit one level up, beside the main entry.
+const SHARED_CHUNK_DIR_NAME = 'chunks'
+
 export function currentWorkerEntryLayout(moduleDir: string): WorkerEntryLayout {
   return {
     isPackaged: hasAppEnvironment() && getAppEnvironment().isPackaged(),
@@ -49,6 +37,7 @@ export function currentWorkerEntryLayout(moduleDir: string): WorkerEntryLayout {
       'resourcesPath' in process && typeof process.resourcesPath === 'string'
         ? process.resourcesPath
         : undefined,
-    moduleDir
+    // Why: a caller bundled into a shared chunk sees `out/main/chunks` as its `__dirname`.
+    moduleDir: basename(moduleDir) === SHARED_CHUNK_DIR_NAME ? dirname(moduleDir) : moduleDir
   }
 }

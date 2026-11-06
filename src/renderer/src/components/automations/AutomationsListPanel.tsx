@@ -1,3 +1,4 @@
+import type { RuntimeEnvironmentSshBucket } from '../../store/slices/runtime-environment-ssh'
 import React, { useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type {
@@ -83,6 +84,7 @@ export type AutomationsListPanelProps = {
   worktreeForRow?: (row: AutomationListRow, repo: Repo | undefined) => Worktree | undefined
   projectHostSetups: readonly ProjectHostSetup[]
   sshConnectionStates: ReadonlyMap<string, Pick<SshConnectionState, 'status'>>
+  sshStateByEnvironment?: ReadonlyMap<string, RuntimeEnvironmentSshBucket>
   runtimeStatusByEnvironmentId: ReadonlyMap<string, RuntimeEnvironmentStatus>
   hostTargetFor: (row: AutomationListRow) => AutomationHostTarget | null
   automationSourceHostAvailabilityByRowKey: ReadonlyMap<string, TaskSourceHostAvailability[]>
@@ -141,6 +143,7 @@ export function AutomationsListPanel(props: AutomationsListPanelProps): React.JS
     worktreeForRow,
     projectHostSetups,
     sshConnectionStates,
+    sshStateByEnvironment,
     runtimeStatusByEnvironmentId,
     hostTargetFor,
     automationSourceHostAvailabilityByRowKey,
@@ -164,7 +167,7 @@ export function AutomationsListPanel(props: AutomationsListPanelProps): React.JS
     onOpenRuns
   } = props
   const listRef = useRef<HTMLDivElement>(null)
-  // Hosts moved into the Filters menu, so its toolbar row is the focus fallback now.
+  // Use the Filters toolbar as focus fallback now that it owns host controls.
   const toolbarRef = useRef<HTMLDivElement>(null)
   const pendingKeyboardScrollRef = useRef(false)
   // Why: keyboard traversal and focus recovery read render order, which the sort owns.
@@ -260,6 +263,7 @@ export function AutomationsListPanel(props: AutomationsListPanelProps): React.JS
   }
   const emptyState = resolveAutomationListEmptyState(emptyStateInput)
   const rowProps = {
+    capturedOwners: hostCatalog.rows.capturedOwners,
     selectedRowKey,
     isSelectedLocal: selectedExternalKey === null,
     lastRunByAutomationId: EMPTY_AUTOMATION_RUNS,
@@ -270,6 +274,7 @@ export function AutomationsListPanel(props: AutomationsListPanelProps): React.JS
     worktreeForRow,
     projectHostSetups,
     sshConnectionStates,
+    sshStateByEnvironment,
     runtimeStatusByEnvironmentId,
     hostTargetFor,
     automationSourceHostAvailabilityByRowKey,

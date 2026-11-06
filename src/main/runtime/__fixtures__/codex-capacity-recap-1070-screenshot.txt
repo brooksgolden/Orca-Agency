@@ -1,0 +1,16 @@
+■ Selected model is at capacity. Please try a different model.
+
+  ↳ Recap: Orca remains unusably slow after reboot;
+    diagnosis now targets Orca itself. Cleanup
+    stopped orphaned searches and five finished
+    sessions, but only 0.63 GiB of deletion is
+    confirmed. The delegation handoff has partial
+    source work and tests, remains incomplete and
+    uninstalled, and Orca is still 1.4.1069. Unsent
+    orchestration notices remain unresolved.
+    Next: Pause worker tests/builds and correlate
+    Orca CPU, event-loop stalls, and terminal
+    activity with live system counters.
+
+› Ask Codex to do anything
+G… Goal stalled (/goal resume)  ⚠ 2 warnings · f2 to view

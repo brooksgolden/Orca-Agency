@@ -1,7 +1,8 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useEffect, useMemo } from 'react'
 import { registerBrowserOverlaySlotViewport } from '../host-guest/browser-page-viewport'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '../../../store'
+import { resolveBrowserWorkspaceOwner } from '@/lib/browser-workspace-source-resolution'
 import type { BrowserTab as BrowserTabState } from '../../../../../shared/browser-workspace-types'
 import type { Tab, TabGroup } from '../../../../../shared/tab-types'
 import BrowserPane from './browser-workspace-pane'
@@ -31,6 +32,7 @@ const EMPTY_GROUPS: readonly TabGroup[] = []
 
 type BrowserOverlaySlotProps = {
   browserTab: BrowserTabState
+  worktreeId: string
   isWorktreeActive: boolean
   // Why: undefined = orphan tab (in browserTabs but not referenced by any group's unified-tab list); the fallback branch keeps these hidden.
   groupId: string | undefined
@@ -43,6 +45,7 @@ type BrowserOverlaySlotProps = {
 // Why: memoize each slot so unrelated worktree mutations don't cascade a re-render into every BrowserPane subtree.
 const BrowserOverlaySlot = memo(function BrowserOverlaySlot({
   browserTab,
+  worktreeId,
   isWorktreeActive,
   groupId,
   isActive,
@@ -64,8 +67,7 @@ const BrowserOverlaySlot = memo(function BrowserOverlaySlot({
   const needsGuestPaint = useBrowserGuestPaintRetention(browserPageIds)
   const isMountAdmitted = useAnyBrowserPageMountAdmission(browserPageIds)
   const isPaintable = isActive || needsGuestPaint || isMountAdmitted
-  // Why: CSS anchor positioning pins the overlay to its owning group's body — a tab move only swaps positionAnchor, no measurement/state.
-  // Orphan branch (no anchorName) stays display:none until the tab is reassigned or destroyed.
+  // Anchor changes move tabs without reparenting guests; unassigned orphans stay hidden.
   const style: React.CSSProperties = useMemo(
     () =>
       anchorName
@@ -102,6 +104,9 @@ const BrowserOverlaySlot = memo(function BrowserOverlaySlot({
       style={style}
       className="relative flex min-h-0 flex-1 flex-col"
       data-browser-overlay-tab-id={browserTab.id}
+      data-retained-pane-host=""
+      data-retained-pane-group-id={groupId}
+      data-retained-pane-worktree-id={worktreeId}
       onPointerDown={handleFocus}
       onFocusCapture={handleFocus}
     >
@@ -118,7 +123,7 @@ const BrowserOverlaySlot = memo(function BrowserOverlaySlot({
   )
 })
 
-// Why: memoize so parent re-renders on props this layer doesn't consume don't rerun its selector or assignments mapping (focused-split state comes from the store selector below, not props).
+// Memoize the layer against unrelated parent props; focused-split state comes from its own selector.
 const BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer({
   worktreeId,
   isWorktreeActive
@@ -160,7 +165,7 @@ const BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer({
     return lookup
   }, [groups])
 
-  // Map each browser tab to its owning group; tabs not in any group's unified-tab list are transient mid-move "orphans", not a steady state.
+  // Transient mid-move tabs may have no owning group; keep them as hidden orphans.
   const assignments = useMemo(() => {
     const entries = new Map<string, BrowserOverlayAssignment>()
     for (const tab of unifiedTabs) {
@@ -175,23 +180,50 @@ const BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer({
     return entries
   }, [groupActiveTabById, unifiedTabs])
 
+  // Why: a click into a page is a press in another WebContents; the slot's own pointer and focus
+  // handlers never see it, so its split stayed inactive (#22144). Main reports the press instead.
+  useEffect(() => {
+    if (!isWorktreeActive) {
+      return
+    }
+    return window.api.ui.onBrowserPagePointerDown(({ browserPageId }) => {
+      const state = useAppStore.getState()
+      const owner = resolveBrowserWorkspaceOwner(state, browserPageId, worktreeId)
+      const groupId = owner
+        ? state.unifiedTabsByWorktree[worktreeId]?.find(
+            (tab) => tab.contentType === 'browser' && tab.entityId === owner.workspaceId
+          )?.groupId
+        : undefined
+      if (groupId) {
+        focusOwningGroup(groupId)
+      }
+    })
+  }, [focusOwningGroup, isWorktreeActive, worktreeId])
+
   return (
     <>
       {browserTabs.map((browserTab) => {
         const assignment = assignments.get(browserTab.id)
         const isActive = Boolean(isWorktreeActive && assignment && assignment.isActiveInGroup)
+        const inFocusedGroup =
+          knownFocusedGroupId !== undefined && assignment?.groupId === knownFocusedGroupId
         const chromeShortcutScope: BrowserChromeShortcutScope = !isActive
           ? 'inactive'
           : // Why: 'focused' means the main window's focused split, so a floating browser answers only its own chords.
-            isFloatingWorkspace || knownFocusedGroupId === undefined
-            ? 'owned-target'
-            : assignment?.groupId === knownFocusedGroupId
-              ? 'focused'
-              : 'inactive'
+            isFloatingWorkspace
+            ? inFocusedGroup
+              ? 'owned-target-focused'
+              : 'owned-target'
+            : knownFocusedGroupId === undefined
+              ? 'owned-target'
+              : inFocusedGroup
+                ? 'focused'
+                : 'inactive'
         return (
           <BrowserOverlaySlot
             key={browserTab.id}
             browserTab={browserTab}
+            worktreeId={worktreeId}
             isWorktreeActive={isWorktreeActive}
             groupId={assignment?.groupId}
             isActive={isActive}
@@ -200,9 +232,7 @@ const BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer({
           />
         )
       })}
-      {/* Why: last in DOM order so the placeholder paints over whichever guest the group was
-          showing — the group's own active tab is untouched, since a client-hosted row owns no
-          unified tab to become active. */}
+      {/* Render last so this tabless placeholder paints above the group’s unchanged active guest. */}
       <ClientHostedBrowserRowOverlaySlot
         worktreeId={worktreeId}
         groups={groups}
@@ -254,6 +284,9 @@ function ClientHostedBrowserRowOverlaySlot({
       style={style}
       className="flex min-h-0 flex-col"
       data-client-hosted-browser-host-row-pane={selectedRow.browserPageId}
+      data-retained-pane-host=""
+      data-retained-pane-group-id={liveSelection?.groupId}
+      data-retained-pane-worktree-id={worktreeId}
     >
       <ClientHostedBrowserHostRowPane row={selectedRow} />
     </div>

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { extractTerminalFileLinks } from '@/lib/terminal-links'
+import { Terminal } from '@xterm/headless'
+import { extractTerminalFileLinks } from '../../../../shared/terminal-links'
 import { makeBufferLine } from './terminal-link-provider-buffer-fixtures'
 import {
   collectPriorTerminalFileLinkAnchors,
@@ -58,6 +59,37 @@ describe('terminal relative file context', () => {
     expect(candidates.map((candidate) => candidate.absolutePath)).toContain(
       'C:/Users/alex/dev/app-code/docs/agent/research-requests/README.md'
     )
+  })
+
+  it('uses a long soft-wrapped Windows sibling path from real xterm buffer rows', async () => {
+    const terminal = new Terminal({ cols: 127, rows: 62 })
+    const anchor =
+      'C:/Users/example-user/dev/claude/Local Apps/Orca/builds/qfl2/profile/app-code/docs/agent/research.md'
+    await new Promise<void>((resolve) => {
+      terminal.write(
+        `PS C:\\workspace> echo "${anchor}"\r\n${anchor}\r\n` +
+          'PS C:\\workspace> echo docs/agent/linked.md\r\ndocs/agent/linked.md\r\n',
+        resolve
+      )
+    })
+    const buffer = terminal.buffer.active
+    let targetRow = -1
+    for (let row = 0; row < buffer.length; row += 1) {
+      if (buffer.getLine(row)?.translateToString(true) === 'docs/agent/linked.md') {
+        targetRow = row
+      }
+    }
+    expect(targetRow).toBeGreaterThanOrEqual(0)
+    const candidates = contextualFileLinkTargets(
+      buffer,
+      targetRow + 1,
+      'docs/agent/linked.md',
+      'C:/workspace'
+    )
+    expect(candidates.map((candidate) => candidate.absolutePath)).toContain(
+      'C:/Users/example-user/dev/claude/Local Apps/Orca/builds/qfl2/profile/app-code/docs/agent/linked.md'
+    )
+    terminal.dispose()
   })
 
   it('keeps competing anchors and repeated directory sequences distinct', () => {
@@ -125,7 +157,11 @@ describe('terminal relative file context', () => {
       cwd: '/workspace/client',
       worktreePath: '/workspace/client',
       runtimeEnvironmentId: null,
-      fileContext: { settings: null, worktreeId: 'wt-1', worktreePath: '/workspace/client' },
+      fileContext: {
+        target: { kind: 'local' },
+        worktreeId: 'wt-1',
+        worktreePath: '/workspace/client'
+      },
       pathExistsCache: new Map(),
       pathExists,
       getPriorAnchors: () => [String.raw`\\evil.example\share\docs\agent\linked.md`]

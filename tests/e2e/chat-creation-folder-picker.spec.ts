@@ -35,7 +35,7 @@ test('new chats choose real folders, default consistently, and retain their conf
         parentPath: client,
         createdFrom: 'manual'
       })
-      await s.fetchProjectGroups()
+      await s.fetchProjectGroups({ runtimeEnvironmentId: null })
       await s.updateSettings({
         defaultTuiAgent: 'blank',
         chatSidebar: { ...s.settings?.chatSidebar, view: 'chats', defaultFolder: undefined }
@@ -113,7 +113,11 @@ test('new chats choose real folders, default consistently, and retain their conf
   await expect(dialog).toHaveCount(0)
   await orcaPage.evaluate(() => {
     const s = window.__store!.getState()
-    s.openSettingsTarget({ pane: 'general', sectionId: 'general-default-chat-folder' })
+    s.openSettingsTarget({
+      pane: 'general',
+      repoId: null,
+      sectionId: 'general-default-chat-folder'
+    })
     s.openSettingsPage()
   })
   const setting = orcaPage.getByRole('combobox', { name: 'Default chat folder', exact: true })

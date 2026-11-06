@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { chatSidebarListItems } from './chat-sidebar-groups'
+import { buildChatSidebarRows } from './chat-sidebar-rows'
 import { chatRow, chatState, chatTab, chatWorktree } from './chat-sidebar-test-fixtures'
 import type { Tab, TabGroupLayoutNode } from '../../../../shared/tab-types'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { chatSessionKey } from './chat-sidebar-types'
 import { placeWorkspaceAtEdge } from '@/lib/workspace-split-layout'
 
 const worktreeId = chatWorktree.id
@@ -44,6 +46,103 @@ const chats = (source: ReturnType<typeof state>, values = rows) =>
   chatSidebarListItems(values, source, '').filter((item) => item.kind === 'chat')
 
 describe('chat connectors follow pane layout', () => {
+  it('keeps distinct Claude and Codex titles and nests the second chat in one pane', () => {
+    const source = state()
+    source.worktreesByRepo = {
+      repo: [{ ...chatWorktree, displayName: 'Agency launch plan' }]
+    }
+    const claudeTab = chatTab('claude', {
+      launchAgent: 'claude',
+      aiVaultTitle: {
+        agent: 'claude',
+        sessionId: 'claude-session',
+        title: 'Femi Slack strategy for partners'
+      }
+    })
+    const claudeUnified: Tab = {
+      id: 'claude-unified',
+      entityId: claudeTab.id,
+      groupId: 'left',
+      worktreeId,
+      contentType: 'terminal',
+      label: 'Femi Slack strategy for partners',
+      customLabel: null,
+      color: null,
+      createdAt: 1_000,
+      sortOrder: 0
+    }
+    const codexUnified: Tab = {
+      id: 'codex-unified',
+      entityId: 'codex-session',
+      groupId: 'left',
+      worktreeId,
+      contentType: 'agent-session',
+      agentSessionAgent: 'codex',
+      aiVaultTitle: {
+        agent: 'codex',
+        sessionId: 'codex-session',
+        title: 'Audit Manatal posting candidates'
+      },
+      label: 'Audit Manatal posting candidates',
+      customLabel: null,
+      color: null,
+      createdAt: 2_000,
+      sortOrder: 1
+    }
+    source.tabsByWorktree = { [worktreeId]: [claudeTab] }
+    const claudeSessionKey = chatSessionKey('local', 'claude', 'claude-session')
+    source.settings!.chatSidebar = {
+      titles: {},
+      sessions: {
+        [claudeSessionKey]: { worktreeId, ownsWorkspaceName: true }
+      }
+    }
+    source.unifiedTabsByWorktree = { [worktreeId]: [claudeUnified, codexUnified] }
+    source.groupsByWorktree = {
+      [worktreeId]: [
+        {
+          id: 'left',
+          worktreeId,
+          activeTabId: claudeUnified.id,
+          tabOrder: [claudeUnified.id, codexUnified.id]
+        }
+      ]
+    }
+    const built = buildChatSidebarRows(source, [], 10_000)
+    const result = chatSidebarListItems(built, source, '').filter((item) => item.kind === 'chat')
+
+    expect(result.map((item) => [item.row.agentType, item.row.title, item.subTab])).toEqual([
+      ['claude', 'Femi Slack strategy for partners', false],
+      ['codex', 'Audit Manatal posting candidates', true]
+    ])
+
+    source.settings!.chatSidebar!.titles = {
+      [claudeSessionKey]: 'My Claude conversation name'
+    }
+    claudeTab.aiVaultTitle = {
+      ...claudeTab.aiVaultTitle!,
+      title: 'Femi partner strategy retitled by Claude'
+    }
+    codexUnified.aiVaultTitle = {
+      agent: 'codex',
+      sessionId: 'codex-session',
+      title: 'Manatal audit retitled by Codex'
+    }
+    codexUnified.label = 'Manatal audit retitled by Codex'
+    const restored = structuredClone(source)
+    const restoredItems = chatSidebarListItems(
+      buildChatSidebarRows(restored, [], 20_000),
+      restored,
+      ''
+    ).filter((item) => item.kind === 'chat')
+    expect(
+      restoredItems.map((item) => [item.row.agentType, item.row.title, item.subTab])
+    ).toEqual([
+      ['claude', 'My Claude conversation name', false],
+      ['codex', 'Manatal audit retitled by Codex', true]
+    ])
+  })
+
   it('changes the parent immediately when tabs are reordered, including after restoring layout', () => {
     const source = state()
     const owner = source.groupsByWorktree[worktreeId][0]

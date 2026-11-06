@@ -87,7 +87,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
       }
       return ids
     }, folderPaths)
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await page.waitForFunction(() => Boolean(window.api))
     const row = (id: string) =>
       page.locator(`[role="option"][data-worktree-id="folder:${id}"]`).first()
@@ -241,7 +241,7 @@ test('packaged sidebar and cross-workspace terminals', async (// oxlint-disable-
         )
       )
       .toEqual([`folder:${ids[1]}`, `folder:${ids[0]}`])
-    await page.reload()
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await page.getByRole('button', { name: 'Workspace options' }).click()
     await page.getByRole('menuitem', { name: /Sort by/ }).hover()
     await page.getByRole('menuitemradio', { name: 'Name', exact: true }).click()

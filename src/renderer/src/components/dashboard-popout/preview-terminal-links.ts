@@ -13,6 +13,8 @@ import { createPreviewTerminalLinkContext } from './preview-terminal-link-contex
 import type { PreviewTerminalWorkspace } from './agent-terminal-preview-props'
 import { parseOsc7 } from '../terminal-pane/parse-osc7'
 import { extractUncHost } from '../terminal-pane/terminal-pane-lifecycle-primitives'
+import { installGuardedLinkProviderRegistration } from '@/lib/pane-manager/terminal-link-provider-guard'
+import { TERMINAL_HTTP_URL_REGEX } from '../../../../shared/terminal-http-url-extraction'
 
 /** Each connection owns its links; stale hover callbacks cannot open another card's files. */
 export function installPreviewTerminalLinks(
@@ -24,6 +26,8 @@ export function installPreviewTerminalLinks(
   }
 ): () => void {
   let disposed = false
+  // Guard providers before registration; xterm can throw on pathological wrapped lines and escape to window.onerror.
+  installGuardedLinkProviderRegistration(terminal)
   const isCurrent = (): boolean => !disposed && args.container.isConnected && args.isCurrent()
   const context = args.workspace
     ? createPreviewTerminalLinkContext(args.workspace, isCurrent)
@@ -42,7 +46,7 @@ export function installPreviewTerminalLinks(
       void window.api.shell.openUrl(uri).catch(() => undefined)
     }
     terminal.clearSelection()
-  })
+  }, { urlRegex: TERMINAL_HTTP_URL_REGEX })
   terminal.loadAddon(webLinks)
   if (!context) {
     return () => {

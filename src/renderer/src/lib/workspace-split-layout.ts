@@ -1,7 +1,7 @@
 // Adapted from whyjp's worktree layout tree in stablyai/orca#8379 for the
-// current workbench. Leaves are complete workspaces, each with its own tabs.
+// current workbench. Leaves retain workspace ownership and may address a tab group.
 export type WorkspaceLayoutNode =
-  | { type: 'leaf'; workspaceId: string }
+  | { type: 'leaf'; workspaceId: string; groupId?: string }
   | {
       type: 'split'
       direction: 'horizontal' | 'vertical'
@@ -14,12 +14,13 @@ export type WorkspaceSplitGroup = { id: string; layout: WorkspaceLayoutNode }
 export type WorkspaceSplitEdge = 'left' | 'right' | 'top' | 'bottom'
 export type WorkspaceLayoutPath = readonly ('first' | 'second')[]
 export const MAX_WORKSPACE_PANES = 16
-const STORAGE_KEY = 'orca.workspaceSplitGroups.v1'
+const STORAGE_KEY = 'orca.workspaceSplitGroups.v2'
+const LEGACY_STORAGE_KEY = 'orca.workspaceSplitGroups.v1'
 
 export function collectWorkspaceIds(node: WorkspaceLayoutNode): string[] {
   return node.type === 'leaf'
     ? [node.workspaceId]
-    : [...collectWorkspaceIds(node.first), ...collectWorkspaceIds(node.second)]
+    : [...new Set([...collectWorkspaceIds(node.first), ...collectWorkspaceIds(node.second)])]
 }
 
 export function findWorkspaceSplitGroup(
@@ -107,9 +108,12 @@ export function placeWorkspaceAtEdge(
     }
   }
   const remaining = groups
-    .map((group) => ({ ...group, layout: removeLeaf(group.layout, sourceId) }))
+    .map((group) => {
+      const layout = removeLeaf(group.layout, sourceId)
+      return layout === group.layout ? group : { ...group, layout }
+    })
     .filter((group): group is WorkspaceSplitGroup => group.layout !== null)
-    .filter((group) => collectWorkspaceIds(group.layout).length >= 2)
+    .filter((group) => group.layout.type === 'split')
   const targetAfterMove = findWorkspaceSplitGroup(remaining, targetId)
   if (targetAfterMove) {
     return remaining.map((group) =>
@@ -144,9 +148,12 @@ export function removeWorkspaceFromSplit(
   workspaceId: string
 ): WorkspaceSplitGroup[] {
   return groups
-    .map((group) => ({ ...group, layout: removeLeaf(group.layout, workspaceId) }))
+    .map((group) => {
+      const layout = removeLeaf(group.layout, workspaceId)
+      return layout === group.layout ? group : { ...group, layout }
+    })
     .filter((group): group is WorkspaceSplitGroup => group.layout !== null)
-    .filter((group) => collectWorkspaceIds(group.layout).length >= 2)
+    .filter((group) => group.layout.type === 'split')
 }
 
 export function setWorkspaceSplitRatio(
@@ -177,11 +184,20 @@ function parseNode(value: unknown, seen: Set<string>, depth = 0): WorkspaceLayou
   const type = 'type' in value ? value.type : undefined
   const workspaceId = 'workspaceId' in value ? value.workspaceId : undefined
   if (type === 'leaf' && typeof workspaceId === 'string' && workspaceId.length > 0) {
-    if (seen.has(workspaceId) || seen.size >= MAX_WORKSPACE_PANES) {
+    const groupId =
+      'groupId' in value && typeof value.groupId === 'string' && value.groupId
+        ? value.groupId
+        : undefined
+    const key = groupId ? JSON.stringify([workspaceId, groupId]) : workspaceId
+    const groupedPrefix = `${JSON.stringify([workspaceId]).slice(0, -1)},`
+    const conflicts = groupId
+      ? seen.has(workspaceId)
+      : [...seen].some((id) => id.startsWith(groupedPrefix))
+    if (conflicts || seen.has(key) || seen.size >= MAX_WORKSPACE_PANES) {
       return null
     }
-    seen.add(workspaceId)
-    return { type: 'leaf', workspaceId }
+    seen.add(key)
+    return { type: 'leaf', workspaceId, ...(groupId ? { groupId } : {}) }
   }
   if (type !== 'split') {
     return null
@@ -210,7 +226,11 @@ function parseNode(value: unknown, seen: Set<string>, depth = 0): WorkspaceLayou
 
 export function readWorkspaceSplitGroups(): WorkspaceSplitGroup[] {
   try {
-    const stored: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]')
+    const stored: unknown = JSON.parse(
+      window.localStorage.getItem(STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_STORAGE_KEY) ??
+        '[]'
+    )
     if (!Array.isArray(stored)) {
       return []
     }
@@ -225,7 +245,7 @@ export function readWorkspaceSplitGroups(): WorkspaceSplitGroup[] {
         return []
       }
       const ids = collectWorkspaceIds(layout)
-      if (ids.length < 2 || ids.some((id) => used.has(id))) {
+      if (layout.type !== 'split' || ids.some((id) => used.has(id))) {
         return []
       }
       ids.forEach((id) => used.add(id))

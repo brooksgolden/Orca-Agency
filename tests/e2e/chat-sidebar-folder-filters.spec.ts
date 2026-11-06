@@ -28,12 +28,15 @@ test('Done folder collapse, open-only filtering and sidebar renaming persist wit
       name: 'Finished folder',
       parentPath: folderPath
     })
-    await state.fetchProjectGroups()
-    const folder = await state.createFolderWorkspace({
-      projectGroupId: group.id,
-      folderPath,
-      name: 'Finished folder'
-    })
+    await state.fetchProjectGroups({ runtimeEnvironmentId: null })
+    const folder = await state.createFolderWorkspace(
+      {
+        projectGroupId: group.id,
+        folderPath,
+        name: 'Finished folder'
+      },
+      { runtimeEnvironmentId: null }
+    )
     if (!folder) {
       throw new Error('Could not create fixture folder')
     }

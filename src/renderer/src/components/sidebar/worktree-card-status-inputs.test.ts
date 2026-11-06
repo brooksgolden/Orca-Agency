@@ -180,9 +180,7 @@ describe('worktree card status input selectors', () => {
       }
     }
 
-    // Why: waking a slept pane rewrites ptyIdsByLeafId several times. Status
-    // heuristics only need the layout root, so binding-only churn should not
-    // invalidate every sidebar card or section summary.
+    // PTY-binding churn must not invalidate status selectors that read only layout roots.
     expect(
       shallow(
         selectTerminalLayoutRootsForWorktree(state, worktreeId),
@@ -197,8 +195,7 @@ describe('worktree card status input selectors', () => {
     ).toBe(true)
   })
 
-  // Why: zustand re-runs every mounted card's selector on every store write, so
-  // a fresh record per call multiplies by (visible cards x writes/sec).
+  // Per-call records multiply allocations by visible cards and store writes.
   it('returns one identity per store generation instead of rebuilding per call', () => {
     const worktreeId = 'repo1::/path/wt1'
     const state: SelectorState & LayoutRootSelectorState = {

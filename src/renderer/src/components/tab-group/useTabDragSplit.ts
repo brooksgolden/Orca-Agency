@@ -13,13 +13,9 @@ import {
 } from '@dnd-kit/core'
 import type { TabGroup } from '../../../../shared/tab-types'
 import { useAppStore } from '../../store'
+import type { TabDragActivationSnapshot } from '../../store/slices/tabs/tabs-slice-contract'
 import { useHoveredTabInsertion, type HoveredTabInsertion } from './tab-insertion'
-import {
-  captureTabDragActivationSnapshot,
-  restoreSourceGroupActiveTabAfterCrossGroupDrop,
-  restoreTabDragActivationSnapshot,
-  type TabDragActivationSnapshot
-} from './tab-drag-preview-activation'
+import { captureTabDragActivationSnapshot } from './tab-drag-preview-activation'
 import { getDragPointer } from './tab-drag-pointer'
 import { TabDragPointerSensor } from './tab-drag-pointer-sensor'
 import {
@@ -47,8 +43,7 @@ export {
   type TabPaneDropData
 } from './tab-drag-data'
 
-// Why: tab activation waits for pointerup, so dnd-kit needs enough movement
-// tolerance to avoid treating ordinary click jitter as an intentional drag.
+// Allow click jitter because tab activation waits until pointerup.
 export const TAB_DRAG_ACTIVATION_DISTANCE_PX = 12
 
 export function canDropTabForPaneColumnSplit(args: {
@@ -86,9 +81,7 @@ export function useTabDragSplit({
   enabled = true
 }: {
   worktreeId: string
-  /** When false (e.g. for hidden worktrees), returns empty sensors so no
-   *  DndContext pointer listeners are registered on the document. Multiple
-   *  simultaneous DndContext instances with active sensors can interfere. */
+  /** Disable drag activation for hidden retained worktrees without changing sensor count. */
   enabled?: boolean
 }): {
   activeDrag: TabDragItemData | null
@@ -111,7 +104,8 @@ export function useTabDragSplit({
   const tabDragActiveRef = useRef(false)
   const dragGeometryRef = useRef<TabGroupPanelGeometrySnapshot | null>(null)
   const clearDragStateRef = useRef<() => void>(() => {})
-  const tabInsertion = useHoveredTabInsertion(isTabDragData, getDragPointer)
+  const tabInsertion = useHoveredTabInsertion()
+  const currentTabInsertion = tabInsertion.current
   const {
     acquireWebviewDragPassthrough,
     installMissedEndFallback,
@@ -130,12 +124,7 @@ export function useTabDragSplit({
     tabInsertion
   })
 
-  // Why: hidden worktrees stay mounted so their PTYs survive worktree
-  // switches, but their DndContext should not activate drags. We use an
-  // impossible activation distance rather than switching between
-  // useSensors(ptr) / useSensors(), because dnd-kit internally spreads
-  // the sensors array into a useEffect dependency list — changing its
-  // length between renders violates React's rules of hooks.
+  // Use an impossible activation distance for hidden worktrees; changing sensor count changes dnd-kit effect dependency length.
   const activationDistance = getTabDragActivationDistance(enabled)
   // Why memoized: fresh options rebuild every tab's drag listeners and wake every tab through dnd-kit's context.
   const pointerSensorOptions = useMemo(
@@ -168,7 +157,7 @@ export function useTabDragSplit({
     if (!snapshot) {
       return
     }
-    restoreTabDragActivationSnapshot(worktreeId, snapshot)
+    useAppStore.getState().restoreDragActivationSnapshot(worktreeId, snapshot)
   }, [worktreeId])
 
   const restoreSourceGroupAfterCrossGroupDrop = useCallback(
@@ -177,7 +166,7 @@ export function useTabDragSplit({
       if (!snapshot) {
         return
       }
-      restoreSourceGroupActiveTabAfterCrossGroupDrop({
+      useAppStore.getState().restoreSourceGroupActiveTabAfterDrop({
         worktreeId,
         snapshot,
         sourceGroupId: activeData.groupId,
@@ -227,11 +216,12 @@ export function useTabDragSplit({
       const pointer = getDragPointer(event)
       if (
         isTabDragData(data) &&
-        data.tabType === 'terminal' &&
+        (data.tabType === 'terminal' || data.tabType === 'editor') &&
         pointer &&
         dispatchWorkspacePanePointerMove({
           sourceId: data.worktreeId,
           unifiedTabId: data.unifiedTabId,
+          sourceGroupId: data.groupId,
           ...pointer
         })
       ) {
@@ -245,8 +235,7 @@ export function useTabDragSplit({
   )
 
   const onDragOver = useCallback((_event: DragOverEvent) => {
-    // Why: onDragMove already carries over + delta; skipping duplicate work here
-    // avoids running split/insertion resolution twice in the same frame.
+    // onDragMove already resolves split/insertion targets; avoid duplicate work in the same frame.
   }, [])
 
   const onDragEnd = useCallback(
@@ -259,33 +248,39 @@ export function useTabDragSplit({
       const pointer = getDragPointer(event)
       if (
         isTabDragData(data) &&
-        data.tabType === 'terminal' &&
+        (data.tabType === 'terminal' || data.tabType === 'editor') &&
         pointer &&
         dispatchWorkspacePanePointerDrop({
           sourceId: data.worktreeId,
           unifiedTabId: data.unifiedTabId,
+          sourceGroupId: data.groupId,
           ...pointer
         })
       ) {
-        finishDrag(false)
+        finishDrag(true)
         return
       }
       commitTabDragDrop({
         event,
         worktreeId,
         dragGeometryRef,
+        hoveredTabInsertion: currentTabInsertion(),
         dropUnifiedTab,
         reorderUnifiedTabs,
         finishDrag
       })
     },
-    [dragGeometryRef, dropUnifiedTab, finishDrag, reorderUnifiedTabs, worktreeId]
+    [
+      currentTabInsertion,
+      dragGeometryRef,
+      dropUnifiedTab,
+      finishDrag,
+      reorderUnifiedTabs,
+      worktreeId
+    ]
   )
 
-  // Why: dnd-kit fires onDragCancel (not onDragEnd) when the user presses
-  // Escape or the drag is otherwise aborted. Without this handler the
-  // activeDrag and hoveredDropTarget state would remain stale, leaving the
-  // drop overlay visible indefinitely.
+  // Escape/aborted drags arrive here without onDragEnd; clear previews and restore the snapshot.
   const onDragCancel = useCallback(() => {
     finishDrag(true)
   }, [finishDrag])

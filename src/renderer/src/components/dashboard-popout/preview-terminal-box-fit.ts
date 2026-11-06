@@ -29,7 +29,7 @@ export function observePreviewBoxResize(
 // whose first fit ran detached still converges without any external trigger.
 const UNMEASURABLE_RETRY_FRAMES = 40
 
-/** Transform-scales an oversized frame down (never up; that blurs) anchored at the end holding the CURSOR row, since a fresh shell prompts at the top. */
+/** Replays at real PTY dimensions to avoid ANSI rewrap corruption. Transform-scales an oversized frame down (never up; that blurs) anchored at the end holding the CURSOR row, since a fresh shell prompts at the top. */
 export function createPreviewBoxFit(args: {
   container: HTMLElement
   getTerminal: () => PreviewBoxFitTerminal | null

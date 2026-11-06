@@ -22,7 +22,6 @@ import { parseHermesOutput, type ParsedHermesSection } from './hermes-cron-outpu
 function isPromptSection(section: ParsedHermesSection): boolean {
   return /^prompt$/i.test(section.heading.trim())
 }
-
 function isResponseSection(section: ParsedHermesSection): boolean {
   return /^response$/i.test(section.heading.trim())
 }
@@ -117,7 +116,6 @@ function CollapsibleSection({
     </section>
   )
 }
-
 type SectionCardProps = {
   title: string
   accent?: 'response' | 'error' | 'default'

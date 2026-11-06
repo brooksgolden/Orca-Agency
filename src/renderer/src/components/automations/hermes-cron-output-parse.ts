@@ -3,7 +3,6 @@ export type ParsedHermesSection = {
   level: number
   body: string
 }
-
 export type ParsedHermesOutput = {
   title: string | null
   metadata: { label: string; value: string }[]
@@ -55,7 +54,6 @@ export function parseHermesOutput(content: string): ParsedHermesOutput {
     sections: splitHermesSections(content, bodyStartOffset)
   }
 }
-
 function splitHermesSections(content: string, startOffset: number): ParsedHermesSection[] {
   const sections: ParsedHermesSection[] = []
   let current: { heading: string; level: number; bodyStart: number; bodyEnd: number } | null = null

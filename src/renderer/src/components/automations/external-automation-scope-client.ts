@@ -1,25 +1,15 @@
-/**
- * The renderer's scoped external-manager surface.
- *
- * Every call names the owner the host was captured under, so a manager ID —
- * which is only unique inside one host — can never route a mutation to a
- * different machine. The owner is recorded when a manager is discovered and
- * replayed on every later action, rather than re-derived from the manager's own
- * target at action time.
- */
+/** Carry discovered ownership into every manager action; host-local manager IDs cannot identify a machine or safely reconstruct scope later. */
 
 import type {
   ExternalAutomationAction,
-  ExternalAutomationJob,
+  ExternalAutomationCreateInput,
   ExternalAutomationManager,
   ExternalAutomationProvider,
-  ExternalAutomationRun
+  ExternalAutomationRunsInput,
+  ExternalAutomationRunsPage
 } from '../../../../shared/automations-types'
 import type { AutomationOwnerRef } from '../../../../shared/automation-owner-ref'
-import {
-  EXTERNAL_AUTOMATION_PROVIDERS,
-  type ScopedExternalManagerMutationFields
-} from '../../../../shared/external-automation-scope'
+import { EXTERNAL_AUTOMATION_PROVIDERS } from '../../../../shared/external-automation-scope'
 import type { AutomationHostCatalogEntry } from './automation-host-catalog-types'
 import { resolveExternalAutomationScopeGate } from './external-automation-scope-gating'
 
@@ -28,13 +18,7 @@ export type ExternalAutomationScope = {
   provider: ExternalAutomationProvider
 }
 
-/**
- * A discovered manager still carrying the scope it was listed under.
- *
- * Why paired rather than looked up: a manager ID is `hermes:local` on every host
- * that has no SSH target, so it does not name an authority. Recovering the scope
- * from the ID would collide for exactly the hosts a scope is meant to separate.
- */
+/** Pair manager and captured scope; openclaw:local collides on every host without SSH targets. */
 export type ScopedExternalAutomationManager = {
   scope: ExternalAutomationScope
   manager: ExternalAutomationManager
@@ -112,45 +96,6 @@ export async function listScopedExternalAutomationManagers(
   return { managers, failures }
 }
 
-/**
- * The desktop host that owns a repo's external managers. Null when no owner
- * could be captured for it, which disables creation rather than defaulting one.
- */
-export function desktopExternalAutomationOwner(
-  entries: readonly AutomationHostCatalogEntry[],
-  connectionId: string | null
-): AutomationOwnerRef | null {
-  for (const entry of entries) {
-    if (entry.stableRef.authority.kind !== 'desktop' || !entry.owner) {
-      continue
-    }
-    const selector = entry.stableRef.selector
-    const matches =
-      connectionId === null
-        ? selector.kind === 'self'
-        : selector.kind === 'ssh' && selector.targetId === connectionId
-    if (matches) {
-      return entry.owner
-    }
-  }
-  return null
-}
-
-export async function createScopedExternalAutomation(
-  scope: ExternalAutomationScope,
-  fields: ScopedExternalManagerMutationFields
-): Promise<void> {
-  await window.api.automations.createExternalForOwner({ ...scope, ...fields })
-}
-
-export async function updateScopedExternalAutomation(
-  scope: ExternalAutomationScope,
-  jobId: string,
-  fields: ScopedExternalManagerMutationFields
-): Promise<void> {
-  await window.api.automations.updateExternalForOwner({ ...scope, ...fields, jobId })
-}
-
 export async function runScopedExternalAutomationAction(
   scope: ExternalAutomationScope,
   jobId: string,
@@ -159,23 +104,34 @@ export async function runScopedExternalAutomationAction(
   await window.api.automations.runExternalActionForOwner({ ...scope, jobId, action })
 }
 
-export type ScopedExternalAutomationRunsPage = {
-  runs: readonly ExternalAutomationRun[]
-  totalCount: number
+/** CRUD and history are intentionally available only for this desktop's Hermes instance. */
+export function desktopExternalAutomationOwner(scope: ExternalAutomationScope): boolean {
+  return (
+    scope.provider === 'hermes' &&
+    scope.owner.authority.kind === 'desktop' &&
+    scope.owner.selector.kind === 'self'
+  )
 }
 
 export async function listScopedExternalAutomationRuns(
   scope: ExternalAutomationScope,
-  job: ExternalAutomationJob,
-  page: number,
-  pageSize: number
-): Promise<ScopedExternalAutomationRunsPage> {
-  const result = await window.api.automations.listExternalRunsForOwner({
-    ...scope,
-    jobId: job.id,
-    // The engine pages from one; the table's page index is zero-based.
-    page: page + 1,
-    pageSize
-  })
-  return { runs: result.runs, totalCount: result.total }
+  input: Pick<ExternalAutomationRunsInput, 'jobId' | 'page' | 'pageSize'>
+): Promise<ExternalAutomationRunsPage> {
+  if (!desktopExternalAutomationOwner(scope)) {
+    throw new Error('Hermes run history is available only for the local desktop manager.')
+  }
+  return await window.api.automations.listExternalRunsForOwner({ ...scope, ...input })
+}
+
+export async function saveScopedExternalAutomation(
+  scope: ExternalAutomationScope,
+  fields: Omit<ExternalAutomationCreateInput, 'managerId' | 'provider' | 'target'>,
+  jobId: string | null
+): Promise<void> {
+  if (!desktopExternalAutomationOwner(scope)) {
+    throw new Error('Hermes automation editing is available only for the local desktop manager.')
+  }
+  await (jobId
+    ? window.api.automations.updateExternalForOwner({ ...scope, ...fields, jobId })
+    : window.api.automations.createExternalForOwner({ ...scope, ...fields }))
 }

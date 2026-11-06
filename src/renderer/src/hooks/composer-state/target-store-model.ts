@@ -21,6 +21,7 @@ import type { RuntimeEnvironmentStatus } from '../../store/slices/runtime-status
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { WorkspaceHostScope } from '../../../../shared/ui-chrome-types'
 import type { WorkspaceSource as WorkspaceCreateTelemetrySource } from '../../../../shared/workspace-source'
+import type { WorkspaceCreationTargetHint } from '@/lib/project-host-workspace-target'
 
 export type ComposerTargetStoreModel = {
   chatMode: boolean
@@ -31,6 +32,7 @@ export type ComposerTargetStoreModel = {
   initialLinkedWorkItem: LinkedWorkItemSummary | null
   initialGitHubWorkItem: GitHubWorkItem | null
   initialTaskSourceContext: TaskSourceContext | null
+  initialWorkspaceTarget: WorkspaceCreationTargetHint | null
   initialWorkspaceStatus: WorkspaceStatus | undefined
   initialBaseBranch: string | undefined
   persistDraft: boolean
@@ -63,7 +65,7 @@ export type ComposerTargetStoreModel = {
   newWorkspaceDraft: UISlice['newWorkspaceDraft']
   worktreesByRepo: Record<string, Worktree[]>
   sparsePresetsByRepo: Record<string, SparsePreset[]>
-  workspaceStatuses: WorkspaceStatusDefinition[]
+  workspaceStatuses: readonly WorkspaceStatusDefinition[]
   sshConnectionStates: Map<string, SshConnectionState>
   sshTargetLabels: Map<string, string>
   sshConnectedGeneration: number

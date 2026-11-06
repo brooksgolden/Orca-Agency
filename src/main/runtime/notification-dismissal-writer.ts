@@ -6,6 +6,8 @@ import type { WorkerThreadFactory } from '../lazy-worker-thread-host'
 
 export type NotificationDismissalWriteRequest = { id: number; path: string; value: unknown }
 export type NotificationDismissalWriteResponse = { id: number; ok: boolean; error?: string }
+// flush() may make one retry. Keep both attempts inside the shared 20-second quit barrier.
+export const NOTIFICATION_DISMISSAL_WRITE_TIMEOUT_MS = 7_500
 
 function defaultWorkerFactory(): Worker {
   const entry = resolveWorkerThreadEntryPath(
@@ -40,7 +42,10 @@ export function createNotificationDismissalWriter(
     onUnavailable: () => console.warn('[notifications] Background dismissal writer unavailable')
   })
   return async (path, value) => {
-    const response = await queue.dispatch((id) => ({ id, path, value }), 60_000)
+    const response = await queue.dispatch(
+      (id) => ({ id, path, value }),
+      NOTIFICATION_DISMISSAL_WRITE_TIMEOUT_MS
+    )
     if (!response.ok) {
       throw new Error(response.error ?? 'Notification dismissal write failed')
     }

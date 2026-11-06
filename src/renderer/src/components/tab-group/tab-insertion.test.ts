@@ -6,10 +6,6 @@ import {
 } from './tab-insertion'
 import type { TabDragItemData } from './useTabDragSplit'
 
-// ---------------------------------------------------------------------------
-// Helpers for building minimal dnd-kit-shaped event stubs
-// ---------------------------------------------------------------------------
-
 function makeDragData(overrides: Partial<TabDragItemData> = {}): TabDragItemData {
   return {
     kind: 'tab',
@@ -27,7 +23,6 @@ function isTabDragData(value: unknown): value is TabDragItemData {
   return Boolean(value) && typeof value === 'object' && (value as TabDragItemData).kind === 'tab'
 }
 
-/** Build a minimal event stub satisfying the fields `resolveTabInsertion` reads. */
 function makeDragEvent({
   activeData,
   overData,
@@ -48,10 +43,6 @@ function makeDragEvent({
     delta: { x: 0, y: 0 }
   } as unknown as Parameters<typeof resolveTabInsertion>[0]
 }
-
-// ---------------------------------------------------------------------------
-// resolveTabInsertion
-// ---------------------------------------------------------------------------
 
 describe('resolveTabInsertion', () => {
   it('returns null when there is no "over" element', () => {
@@ -96,7 +87,6 @@ describe('resolveTabInsertion', () => {
       visibleTabId: 'tab-over',
       groupId: 'group-2'
     })
-    // Over rect: left=100, width=100 → left edge ends at 130
     const event = makeDragEvent({
       activeData: makeDragData({ unifiedTabId: 'tab-active' }),
       overData,
@@ -105,6 +95,7 @@ describe('resolveTabInsertion', () => {
     const result = resolveTabInsertion(event, isTabDragData, () => ({ x: 120, y: 10 }))
     expect(result).toEqual({
       groupId: 'group-2',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'left'
     })
@@ -116,7 +107,6 @@ describe('resolveTabInsertion', () => {
       visibleTabId: 'tab-over',
       groupId: 'group-2'
     })
-    // Over rect: left=100, width=100 → right edge starts at 170
     const event = makeDragEvent({
       activeData: makeDragData({ unifiedTabId: 'tab-active' }),
       overData,
@@ -125,6 +115,7 @@ describe('resolveTabInsertion', () => {
     const result = resolveTabInsertion(event, isTabDragData, () => ({ x: 180, y: 10 }))
     expect(result).toEqual({
       groupId: 'group-2',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'right'
     })
@@ -143,6 +134,7 @@ describe('resolveTabInsertion', () => {
     })
     expect(resolveTabInsertion(event, isTabDragData, () => ({ x: 100, y: 10 }))).toEqual({
       groupId: 'group-1',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'right'
     })
@@ -161,20 +153,18 @@ describe('resolveTabInsertion', () => {
     })
     expect(resolveTabInsertion(event, isTabDragData, () => ({ x: 80, y: 10 }))).toEqual({
       groupId: 'group-2',
+      unifiedTabId: 'tab-over',
       visibleTabId: 'tab-over',
       side: 'left'
     })
   })
 })
 
-// ---------------------------------------------------------------------------
-// resolveTabIndicatorEdges
-// ---------------------------------------------------------------------------
-
 describe('resolveTabIndicatorEdges', () => {
   it('marks one edge for a left-edge insertion slot', () => {
     const hovered: HoveredTabInsertion = {
       groupId: 'group-1',
+      unifiedTabId: 'tab-2',
       visibleTabId: 'tab-2',
       side: 'left'
     }
@@ -187,6 +177,7 @@ describe('resolveTabIndicatorEdges', () => {
   it('marks one edge for a right-edge insertion slot', () => {
     const hovered: HoveredTabInsertion = {
       groupId: 'group-1',
+      unifiedTabId: 'tab-2',
       visibleTabId: 'tab-2',
       side: 'right'
     }
@@ -200,6 +191,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['tab-1', 'tab-2'], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-1',
         visibleTabId: 'tab-1',
         side: 'left'
       })
@@ -208,6 +200,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['tab-1', 'tab-2'], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-2',
         visibleTabId: 'tab-2',
         side: 'right'
       })
@@ -222,6 +215,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges([], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-1',
         visibleTabId: 'tab-1',
         side: 'left'
       })
@@ -232,6 +226,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['tab-1', 'tab-2'], {
         groupId: 'group-1',
+        unifiedTabId: 'tab-unknown',
         visibleTabId: 'tab-unknown',
         side: 'left'
       })
@@ -242,6 +237,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['only-tab'], {
         groupId: 'group-1',
+        unifiedTabId: 'only-tab',
         visibleTabId: 'only-tab',
         side: 'left'
       })
@@ -252,6 +248,7 @@ describe('resolveTabIndicatorEdges', () => {
     expect(
       resolveTabIndicatorEdges(['only-tab'], {
         groupId: 'group-1',
+        unifiedTabId: 'only-tab',
         visibleTabId: 'only-tab',
         side: 'right'
       })

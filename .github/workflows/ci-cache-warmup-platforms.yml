@@ -1,0 +1,16 @@
+name: Warm shared CI platform caches
+
+on:
+  workflow_dispatch: null
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cache-warmup-platforms-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  warm-platforms:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    uses: ./.github/workflows/ci-cache-warmup-platform-jobs.yml

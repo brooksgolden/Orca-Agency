@@ -7,6 +7,7 @@ export type WorkspacePanePointerDetail = {
   x: number
   y: number
   unifiedTabId?: string
+  sourceGroupId?: string
 }
 
 export function readWorkspacePanePointerDetail(event: Event): WorkspacePanePointerDetail | null {
@@ -30,6 +31,9 @@ export function readWorkspacePanePointerDetail(event: Event): WorkspacePanePoint
     sourceId: detail.sourceId,
     x: detail.x,
     y: detail.y,
+    ...('sourceGroupId' in detail && typeof detail.sourceGroupId === 'string'
+      ? { sourceGroupId: detail.sourceGroupId }
+      : {}),
     ...('unifiedTabId' in detail && typeof detail.unifiedTabId === 'string'
       ? { unifiedTabId: detail.unifiedTabId }
       : {})

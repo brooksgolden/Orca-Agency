@@ -1,6 +1,8 @@
+/* eslint-disable max-lines -- Why: This rendered terminal preview suite shares a mounted xterm fixture across sizing, output, and teardown cases. */
 // @vitest-environment happy-dom
 
 import '@testing-library/jest-dom/vitest'
+import type { ITerminalOptions } from '@xterm/xterm'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalPreviewApi } from '../../../../preload/api/dashboard-api'
@@ -78,6 +80,7 @@ vi.mock('@xterm/xterm', () => ({
     element = document.createElement('div')
     unicode = { activeVersion: '6', versions: ['6', '11'], register: vi.fn() }
     loadAddon = vi.fn()
+    options: ITerminalOptions = {}
     attachCustomWheelEventHandler = vi.fn()
     scrollToTop = vi.fn()
     scrollToBottom = vi.fn()
@@ -122,8 +125,7 @@ vi.mock('@/components/terminal-pane/terminal-ime-native-text-forwarder', () => (
       claimKeyEvent: vi.fn(() => imeHarness.claimResult),
       dispose: vi.fn(),
       sendInput: args.sendInput,
-      // Why captured: the bridge's whole job is handing the live mirror to the
-      // forwarder, so the test reads what a real commit would read.
+      // Read the same live keyboard-mode mirror the real commit forwarder receives.
       getKittyKeyboardFlags: args.getKittyKeyboardFlags ?? ((): number => 0)
     }
     imeHarness.forwarders.push(forwarder)
@@ -143,7 +145,36 @@ vi.mock('@/store', () => {
   return { useAppStore }
 })
 
+type RemotePreviewSubscription = {
+  terminal: string
+  callbacks: {
+    onSnapshot: (data: string, meta?: { cols?: number; rows?: number; seq?: number }) => void
+    onData: (data: string, meta?: { seq?: number }) => void
+  }
+}
+const multiplexerHarness = vi.hoisted(() => {
+  const environments: string[] = []
+  const subscriptions: RemotePreviewSubscription[] = []
+  return { environments, subscriptions, sendInput: vi.fn(() => true), close: vi.fn() }
+})
+vi.mock('@/runtime/remote-runtime-terminal-multiplexer', () => ({
+  getRemoteRuntimeTerminalMultiplexer: (environmentId: string) => {
+    multiplexerHarness.environments.push(environmentId)
+    return {
+      subscribeTerminal: async (args: RemotePreviewSubscription) => {
+        multiplexerHarness.subscriptions.push(args)
+        return {
+          sendInput: multiplexerHarness.sendInput,
+          claimViewport: vi.fn(() => true),
+          close: multiplexerHarness.close
+        }
+      }
+    }
+  }
+}))
+
 import { AgentTerminalPreview } from './AgentTerminalPreview'
+import { resetRemoteRuntimeTerminalPreviewSessionsForTests } from './remote-runtime-terminal-preview-api'
 
 describe('AgentTerminalPreview', () => {
   const input = vi.fn(async (_ptyId: string, _data: string) => true)
@@ -200,6 +231,10 @@ describe('AgentTerminalPreview', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
+    resetRemoteRuntimeTerminalPreviewSessionsForTests()
+    multiplexerHarness.environments.length = 0
+    multiplexerHarness.subscriptions.length = 0
     vi.clearAllMocks()
     vi.unstubAllGlobals()
     vi.useRealTimers()
@@ -263,7 +298,8 @@ describe('AgentTerminalPreview', () => {
     expect(writeClipboardText).not.toHaveBeenCalled()
   })
 
-  it('does not install the IME native-text forwarder off macOS', async () => {
+  it('does not install the IME native-text forwarder on Windows', async () => {
+    platformState.value = 'win32'
     render(<AgentTerminalPreview ptyId="pty-1" />)
     await waitFor(() => expect(terminalHarness.instances).toHaveLength(1))
     await waitFor(() => expect(terminalHarness.instances[0]!.customKeyHandler).not.toBeNull())
@@ -271,9 +307,14 @@ describe('AgentTerminalPreview', () => {
     expect(imeHarness.trackers).toHaveLength(0)
   })
 
-  // The bridge omitted this dependency entirely, so every Preview
-  // commit was evaluated at flags 0. Ordering and provenance live in
-  // preview-terminal-snapshot-replay.test.ts; this pins the wiring.
+  // fcitx4 delivers a single-character pick as the Space/digit keypress's text (#28213).
+  it('installs the IME native-text forwarder on desktop Linux', async () => {
+    platformState.value = 'linux'
+    render(<AgentTerminalPreview ptyId="pty-1" />)
+    await waitFor(() => expect(imeHarness.forwarders).toHaveLength(1))
+  })
+
+  // Assert the forwarder receives live snapshot-seeded flags; replay ordering is covered in preview-terminal-snapshot-replay.test.ts.
   it('hands the forwarder the live mirror seeded from the snapshot flags', async () => {
     platformState.value = 'darwin'
     connect.mockResolvedValue({
@@ -478,6 +519,25 @@ describe('AgentTerminalPreview', () => {
     expect(input).not.toHaveBeenCalled()
   })
 
+  it('dismisses the hosting dialog on the pane-close chord', async () => {
+    const onRequestClose = vi.fn()
+    render(<AgentTerminalPreview ptyId="pty-1" onRequestClose={onRequestClose} />)
+    await waitFor(() => expect(terminalHarness.instances).toHaveLength(1))
+    const terminal = terminalHarness.instances[0]!
+    await waitFor(() => expect(terminal.customKeyHandler).not.toBeNull())
+
+    const keydown = new KeyboardEvent('keydown', {
+      key: 'w',
+      code: 'KeyW',
+      ctrlKey: true,
+      cancelable: true
+    })
+    expect(terminal.customKeyHandler!(keydown)).toBe(false)
+    expect(keydown.defaultPrevented).toBe(true)
+    expect(onRequestClose).toHaveBeenCalledOnce()
+    expect(input).not.toHaveBeenCalled()
+  })
+
   it('keeps a native input-source chord from inserting text into the preview', async () => {
     storeState.keybindings = { 'terminal.switchInputSource': ['Shift+Space'] }
     const view = render(<AgentTerminalPreview ptyId="pty-1" />)
@@ -548,10 +608,7 @@ describe('AgentTerminalPreview', () => {
     expect(terminal.input).not.toHaveBeenCalled()
   })
 
-  // Why: a snapshot carries the TUI's one-time kitty push and the post-snapshot
-  // replay redelivers it. Applying replays with stack semantics would leave the
-  // TUI's single pop on a stale frame, so a plain shell keeps getting
-  // kitty-encoded Option chords.
+  // Snapshot replay can redeliver a kitty push; it must not leave stale flags after the TUI’s single pop.
   it('does not let a redelivered kitty push outlive the TUI pop', async () => {
     connect.mockResolvedValueOnce({
       snapshot: { data: '\x1b[>1u', cols: 80, rows: 24, seq: 1 },
@@ -627,7 +684,7 @@ describe('AgentTerminalPreview', () => {
     expect(terminalHarness.instances).toHaveLength(1)
     expect(terminal.dispose).not.toHaveBeenCalled()
     expect(terminal.reset).not.toHaveBeenCalled()
-    expect(view.queryByText(/No live terminal/)).not.toBeInTheDocument()
+    expect(view.queryByText(/No preview available/)).not.toBeInTheDocument()
 
     await act(async () => {
       resolveRefresh({
@@ -639,7 +696,7 @@ describe('AgentTerminalPreview', () => {
     expect(terminal.resize).toHaveBeenCalledWith(100, 30)
     expect(terminalHarness.instances).toHaveLength(1)
     expect(terminal.dispose).not.toHaveBeenCalled()
-    expect(view.queryByText(/No live terminal/)).not.toBeInTheDocument()
+    expect(view.queryByText(/No preview available/)).not.toBeInTheDocument()
   })
 
   it('disposes a stale terminal when resync confirms the pty is gone', async () => {
@@ -655,7 +712,7 @@ describe('AgentTerminalPreview', () => {
 
     act(() => emitData({ type: 'resync', ptyId: 'pty-1' }))
 
-    await waitFor(() => expect(view.getByText(/No live terminal/)).toBeInTheDocument())
+    await waitFor(() => expect(view.getByText(/No preview available/)).toBeInTheDocument())
     expect(terminal.dispose).toHaveBeenCalledTimes(1)
     expect(terminalHarness.userInputDispose).toHaveBeenCalledTimes(1)
     expect(unsubscribe).toHaveBeenCalledWith('pty-1', expect.any(String))
@@ -680,7 +737,8 @@ describe('AgentTerminalPreview', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(view.getByText(/No live terminal/)).toBeInTheDocument()
+    // Why: the gone-pty notice is the shared unavailable message (terminalPreviewUnavailableMessage).
+    expect(view.getByText(/No preview available/)).toBeInTheDocument()
 
     view.rerender(<AgentTerminalPreview ptyId="pty-live" />)
 
@@ -689,7 +747,7 @@ describe('AgentTerminalPreview', () => {
       scrollbackRows: 24,
       surfaceId: expect.any(String)
     })
-    expect(view.queryByText(/No live terminal/)).not.toBeInTheDocument()
+    expect(view.queryByText(/No preview available/)).not.toBeInTheDocument()
   })
 
   it('veils the terminal across a resync repaint and lifts it once the replay lands', async () => {
@@ -721,6 +779,23 @@ describe('AgentTerminalPreview', () => {
     })
     expect(view.getByTestId('preview-phase-veil').dataset.visible).toBe('false')
 
+    const host = view.container.querySelector<HTMLElement>('.origin-bottom-left')!
+    const box = host.parentElement!
+    Object.defineProperty(box, 'clientWidth', { configurable: true, value: 900 })
+    Object.defineProperty(box, 'clientHeight', { configurable: true, value: 480 })
+    // 80×24 grid rendered at 800×384 → 10×16 cells → the box holds 90×30.
+    const screen = document.createElement('div')
+    screen.className = 'xterm-screen'
+    Object.defineProperty(screen, 'offsetWidth', { configurable: true, value: 800 })
+    Object.defineProperty(screen, 'offsetHeight', { configurable: true, value: 384 })
+    host.appendChild(screen)
+
+    await vi.advanceTimersByTimeAsync(200)
+    // Why: the grid claim's fit carries the surface id as its fourth argument.
+    expect(fit).toHaveBeenCalledTimes(1)
+    expect(fit).toHaveBeenCalledWith('pty-1', 90, 30, expect.any(String))
+
+    // Unchanged target geometry must not reclaim the grid on reconnect and fight the host.
     act(() => emitData({ type: 'resync', ptyId: 'pty-1' }))
     await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2))
     await act(async () => {
@@ -826,5 +901,41 @@ describe('AgentTerminalPreview', () => {
     view.unmount()
     await vi.advanceTimersByTimeAsync(150)
     expect(connect).toHaveBeenCalledTimes(2)
+  })
+
+  it("previews a paired host's pane from that host, not this app's main process", async () => {
+    render(<AgentTerminalPreview ptyId="remote:env-1@@term-7" />)
+
+    await waitFor(() => expect(multiplexerHarness.subscriptions).toHaveLength(1))
+    expect(multiplexerHarness.environments).toEqual(['env-1'])
+    expect(multiplexerHarness.subscriptions[0]!.terminal).toBe('term-7')
+    expect(connect).not.toHaveBeenCalled()
+
+    act(() =>
+      multiplexerHarness.subscriptions[0]!.callbacks.onSnapshot('agent screen', {
+        cols: 100,
+        rows: 30,
+        seq: 5
+      })
+    )
+    await waitFor(() => expect(terminalHarness.instances).toHaveLength(1))
+    const terminal = terminalHarness.instances[0]!
+    expect(terminal.write).toHaveBeenCalledWith('agent screen', expect.any(Function))
+
+    act(() => multiplexerHarness.subscriptions[0]!.callbacks.onData('live', { seq: 9 }))
+    expect(terminal.write).toHaveBeenCalledWith('live', expect.any(Function))
+    act(() => {
+      terminalHarness.userInputListener?.()
+      terminal.onDataListener?.('y')
+    })
+    expect(multiplexerHarness.sendInput).toHaveBeenCalledWith('y')
+  })
+
+  it('shows the unavailable message instead of a blank dialog when the bridge is missing', async () => {
+    // The web client's fallback proxy resolves every missing bridge call to undefined.
+    Object.assign(window.api.terminalPreview, { connect: async () => undefined })
+    const view = render(<AgentTerminalPreview ptyId="pty-1" />)
+
+    await waitFor(() => expect(view.getByText(/No preview available/)).toBeInTheDocument())
   })
 })

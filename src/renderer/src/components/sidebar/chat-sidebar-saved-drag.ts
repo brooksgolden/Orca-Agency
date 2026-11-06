@@ -7,11 +7,7 @@ import {
   type AiVaultSessionDropPlacement
 } from '@/lib/ai-vault-session-drag'
 import { buildAiVaultResumeStartupForWorktree } from '@/lib/ai-vault-resume-command'
-import {
-  collectWorkspaceIds,
-  findWorkspaceSplitGroup,
-  MAX_WORKSPACE_PANES
-} from '@/lib/workspace-split-layout'
+import { findWorkspaceSplitGroup, MAX_WORKSPACE_PANES } from '@/lib/workspace-split-layout'
 import { chatResumeSession } from './chat-sidebar-resume'
 import { buildChatSidebarRows, chatSidebarWorktrees } from './chat-sidebar-rows'
 import { chatSessionKey } from './chat-sidebar-types'
@@ -19,7 +15,10 @@ import { activateAiVaultStructuredSession } from '@/lib/activate-ai-vault-struct
 import type { ChatSidebarRow } from './chat-sidebar-types'
 import type { useAiVaultSessionLaunchActions } from '../right-sidebar/ai-vault-session-launch-actions'
 import { createSeparateChatWorkspace, discardEmptyChatWorkspace } from './chat-sidebar-detach'
-import { dropTerminalTabAtWorkspaceEdge } from '../workspace-split/workspace-tab-edge-drop'
+import { collectWorkspacePanes, placeWorkspaceSurface } from '@/lib/workspace-group-layout'
+import { effectiveWorkspaceLayouts } from '@/lib/workspace-surface-state'
+import { dropTabAtWorkspaceEdge } from '../workspace-split/workspace-tab-edge-drop'
+import { translate } from '@/i18n/i18n'
 
 type Resume = ReturnType<typeof useAiVaultSessionLaunchActions>['handleResume']
 
@@ -86,7 +85,7 @@ export async function resumeSavedChatAtDrop(
     return
   }
   const split = findWorkspaceSplitGroup(state.workspaceSplitGroups, target.worktreeId)
-  const ids = split ? collectWorkspaceIds(split.layout) : []
+  const ids = split ? collectWorkspacePanes(split.layout).map((pane) => pane.workspaceId) : []
   if (
     sourceId !== target.worktreeId &&
     !ids.includes(sourceId) &&
@@ -102,8 +101,25 @@ export async function resumeSavedChatAtDrop(
         ? 'bottom'
         : (target.splitDirection ?? 'right')
   const placeWorkspace = (): void => {
+    if (sourceId === target.worktreeId) {
+      return
+    }
     if (destinationExists()) {
-      useAppStore.getState().placeWorkspaceAtEdge(sourceId, target.worktreeId, edge)
+      const moved = useAppStore
+        .getState()
+        .placeWorkspaceSurface(
+          { type: 'leaf', workspaceId: sourceId },
+          { type: 'leaf', workspaceId: target.worktreeId, groupId: target.groupId },
+          edge
+        )
+      if (!moved) {
+        toast.error(
+          translate(
+            'auto.components.sidebar.chatSidebarSavedDrag.destinationChanged',
+            'The destination changed. Your chat is still available in its original workspace.'
+          )
+        )
+      }
     }
   }
   const moveExisting = (): boolean => {
@@ -133,11 +149,12 @@ export async function resumeSavedChatAtDrop(
       })
     } else {
       if (unified.contentType === 'terminal') {
-        void dropTerminalTabAtWorkspaceEdge({
+        void dropTabAtWorkspaceEdge({
           sourceId,
           unifiedTabId: unified.id,
           targetId: target.worktreeId,
           edge,
+          targetGroupId: target.groupId,
           wholeWindow: false
         }).catch((error: unknown) =>
           toast.error(error instanceof Error ? error.message : 'Could not move chat.')
@@ -168,6 +185,24 @@ export async function resumeSavedChatAtDrop(
     toast.error(`A split can contain up to ${MAX_WORKSPACE_PANES} workspaces`)
     return
   }
+  if (
+    !placeWorkspaceSurface(
+      state.workspaceSplitGroups,
+      effectiveWorkspaceLayouts(state),
+      { type: 'leaf', workspaceId: 'drag:saved' },
+      { type: 'leaf', workspaceId: target.worktreeId, groupId: target.groupId },
+      edge,
+      'drag:check'
+    )
+  ) {
+    toast.error(
+      translate(
+        'auto.components.sidebar.chatSidebarSavedDrag.splitCannotAcceptChat',
+        'This split cannot accept the chat. No session was opened.'
+      )
+    )
+    return
+  }
   const workspace = await createSeparateChatWorkspace(row, { useSourceWhenUngrouped: true })
   const createdWorkspace = workspace.id !== row.worktree.id
   if (!destinationExists() || moveExisting()) {
@@ -179,6 +214,9 @@ export async function resumeSavedChatAtDrop(
   sourceId = workspace.id
   // Why: a sidebar drag arranges its own workspace, never files the chat under another project.
   resume(session, sourceId, {
+    ...(sourceId === target.worktreeId
+      ? { targetGroupId: target.groupId, splitDirection: target.splitDirection }
+      : {}),
     onResumed: placeWorkspace,
     validateDestination: destinationExists,
     onSettled: (outcome) => {

@@ -20,13 +20,7 @@ export async function waitForPackagedNativeShellInput(
           const session = (await window.api.pty.listSessions()).find(
             (entry) => entry.worktreeId === id
           )
-          if (!session) {
-            return ''
-          }
-          const snapshot = await window.api.pty.getMainBufferSnapshot(session.id, {
-            scrollbackRows: 10
-          })
-          return snapshot?.data.includes('\x1b[?1004h') ? session.id : ''
+          return session?.id ?? ''
         }, worktreeId)
         return ptyId
       },
@@ -34,7 +28,8 @@ export async function waitForPackagedNativeShellInput(
     )
     .not.toBe('')
 
-  // PSReadLine focus mode can precede readiness; require actual shell execution.
+  // A visible PowerShell prompt can be ready without emitting xterm focus reporting. Prove
+  // readiness by executing a marker instead of treating that optional escape as a prerequisite.
   const marker = `ORCA_PTY_READY_${randomUUID()}`
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {

@@ -4,11 +4,9 @@ import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-typ
 import { createWorktreeRecordSelector } from '@/store/worktree-record-selector-cache'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 
-// Why: these selectors return fresh maps whose top-level values preserve
-// underlying per-tab references, so callers must compare them shallowly.
+// Cache projected maps per source snapshot while preserving per-tab value references.
 
-// Why frozen: one instance is shared by every card, so a stray write would leak
-// across worktrees instead of failing locally.
+// Freeze shared empties so stray writes cannot affect unrelated worktrees.
 export const EMPTY_RUNTIME_PANE_TITLES: Record<string, Record<number, string>> = Object.freeze({})
 export const EMPTY_LIVE_PTY_IDS: Record<string, string[]> = Object.freeze({})
 export const EMPTY_FOREGROUND_AGENT_PANE_IDS: Record<string, ReadonlySet<string>> = Object.freeze(
@@ -164,7 +162,6 @@ function getPaneForegroundAgentsByTabId(
   return byTabId
 }
 
-/** This worktree's pane foreground-process reads, keyed by pane key. */
 export const selectPaneForegroundAgentsForWorktree = createWorktreeRecordSelector<
   WorktreeCardForegroundPaneInputState,
   Record<string, PaneForegroundAgentEntry>

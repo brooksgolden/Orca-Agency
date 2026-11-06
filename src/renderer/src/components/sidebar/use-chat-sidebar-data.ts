@@ -12,6 +12,7 @@ import { classifyUnscannedClaudeHistory } from './chat-sidebar-headless-history'
 import type { ChatSidebarState } from './chat-sidebar-types'
 import type { AppState } from '@/store/types'
 import { useNow } from '@/hooks/use-now'
+import { useStructuredChatTabNames } from '@/runtime/structured-chat-name-observation'
 
 /** The store slices chat rows read; shared with the background snapshot recorder. */
 export function selectChatSidebarState(s: AppState): ChatSidebarState {
@@ -37,6 +38,7 @@ export function selectChatSidebarState(s: AppState): ChatSidebarState {
 
 export function useChatSidebarData() {
   const state = useAppStore(useShallow(selectChatSidebarState))
+  const chatNames = useStructuredChatTabNames()
   const { worktreesByRepo, folderWorkspaces, repos } = state
   const worktrees = useMemo(
     () => chatSidebarWorktrees({ worktreesByRepo, folderWorkspaces }),
@@ -58,8 +60,9 @@ export function useChatSidebarData() {
   })
   const now = useNow(30_000)
   const rows = useMemo(
-    () => buildChatSidebarRows(state, history.sessions, now, sessionWorktrees, true),
-    [state, history.sessions, now, sessionWorktrees]
+    () =>
+      buildChatSidebarRows({ ...state, chatNames }, history.sessions, now, sessionWorktrees, true),
+    [state, chatNames, history.sessions, now, sessionWorktrees]
   )
   useEffect(() => {
     syncChatSidebarTabTitles(rows)

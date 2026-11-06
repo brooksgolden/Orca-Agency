@@ -21,6 +21,7 @@ import type {
   TerminalDropTransport
 } from '../terminal-pane/terminal-drop-surface'
 import type { PreviewTerminalWorkspace } from './agent-terminal-preview-props'
+import { terminalPreviewApiFor } from './terminal-preview-api'
 
 export function installPreviewTerminalFileDrop(args: {
   container: HTMLElement
@@ -47,7 +48,7 @@ export function installPreviewTerminalFileDrop(args: {
     getPtyId: () => args.ptyId,
     isConnected: isCurrent,
     sendInput: () => false,
-    sendInputAccepted: (data) => window.api.terminalPreview.input(args.ptyId, data),
+    sendInputAccepted: (data) => terminalPreviewApiFor(args.ptyId).input(args.ptyId, data),
     getExecutionHostId: () => workspace.executionHostId,
     getRuntimeEnvironmentId: () => {
       const host = parseExecutionHostId(workspace.executionHostId)

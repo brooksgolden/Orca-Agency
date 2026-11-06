@@ -2,13 +2,35 @@ import { describe, expect, it } from 'vitest'
 import {
   buildAgentDraftLaunchPlan,
   buildAgentResumeStartupPlan,
-  buildAgentStartupPlan,
-  buildShellCommandFromArgv,
-  planAgentCliArgsSuffix
+  buildAgentStartupPlan
 } from './tui-agent-startup'
+import {
+  buildShellCommandFromArgv,
+  planAgentCliArgsSuffix,
+  tokenizeStartupCommand
+} from './tui-agent-startup-shell'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import { normalizeTuiAgentArgsRecord, resolveTuiAgentLaunchArgs } from './tui-agent-launch-defaults'
-import { tokenizeStartupCommand } from './tui-agent-startup-shell'
+import './tui-agent-startup.spec'
+import './agent-resume-argv-drop.spec'
+import './agent-resume-launch-command.spec'
+import './agent-startup-plan-inputs.spec'
+import './agent-startup-plan-inputs-extra-agent-args.spec'
+import './automation-extra-agent-args.spec'
+import './dsh-startup.spec'
+import './freebuff-launch.spec'
+import './freebuff-startup.spec'
+import './omp-fresh-launch.spec'
+import './opencode-startup-prompt.spec'
+import './opencode2-resume-launch-mode.spec'
+import './qoder-cn-launch-recipe.spec'
+import './tui-agent-fork-startup.spec'
+import './tui-agent-launch-defaults.spec'
+import './tui-agent-prompt-transport.spec'
+import './tui-agent-startup-copilot-resume.spec'
+import './tui-agent-startup-hermes.spec'
+import './tui-agent-startup-session-options.spec'
+import './tui-agent-startup-shell.spec'
 import {
   unwrapPosixShellScript,
   unwrapPowerShellScript
@@ -52,7 +74,7 @@ describe('tui agent startup plans', () => {
       agent: 'claude',
       prompt: '',
       agentArgs: resolveTuiAgentLaunchArgs('claude', {
-        claude: '--dangerously-skip-permissions --model Opus'
+        agentDefaultArgs: { claude: '--dangerously-skip-permissions --model Opus' }
       }),
       cmdOverrides: {},
       platform: 'linux',
@@ -400,7 +422,7 @@ describe('tui agent startup plans', () => {
         cmdOverrides: {},
         platform,
         shell,
-        agentArgs: resolveTuiAgentLaunchArgs('muse', defaults)
+        agentArgs: resolveTuiAgentLaunchArgs('muse', { agentDefaultArgs: defaults })
       })
 
       expect(plan).toMatchObject({
@@ -607,7 +629,7 @@ describe('tui agent startup plans', () => {
       agent: 'opencode',
       prompt: 'fix it',
       cmdOverrides: {},
-      agentArgs: resolveTuiAgentLaunchArgs('opencode', agentDefaultArgs),
+      agentArgs: resolveTuiAgentLaunchArgs('opencode', { agentDefaultArgs }),
       platform: 'linux'
     })
 

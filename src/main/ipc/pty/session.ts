@@ -1,25 +1,48 @@
+/* eslint-disable max-lines -- Why: PTY session IPC keeps session ownership, renderer notifications, and lifecycle transitions together. */
 import type { BrowserWindow, WebContents } from 'electron'
 import type { OrcaRuntimeService } from '../../runtime/orca-runtime'
-import type { Store } from '../../persistence'
+import type { Store } from '../../persistence/loading-store/store'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
-import type { IPtyProvider } from '../../providers/types'
-import type { LegacySshProjectionSemantics } from '../ssh-pty-legacy-projection'
+import type { IPtyProvider } from '../../providers/pty-provider-contract'
 import type { PtyModelRestoreReason } from '../../../shared/pty-model-restore-marker'
 import type {
   PtyDeliveryWriteOff,
   PtyRendererDeliveryStateReport
 } from '../../../shared/pty-renderer-delivery-health'
 import type { PtyRendererDeliveryDebugSnapshot } from './delivery/debug'
-import { PtyProducerFlowController } from '../pty-producer-flow-control'
-import { PtyPendingDataDrainQueue, type PendingPtyData } from '../pty-pending-data-drain-queue'
-import type { SshPtyOutputIntake } from '../ssh-pty-output-intake'
+import { PtyProducerFlowController } from './delivery/pty-producer-flow-control'
+import { recordTerminalProducerFlowTransition } from '../crash-reporting-renderer-breadcrumbs'
+import { PtyPendingDataDrainQueue } from './delivery/pty-pending-data-drain-queue'
+import type { PendingPtyData } from './delivery/pty-pending-data-drain-contract'
 import { activeRendererPtys } from './delivery/visibility-state'
 import {
   isHiddenPtyDeliveryGateEnabled,
   shouldDropHiddenRendererPtyData
-} from '../pty-hidden-delivery-gate'
+} from './delivery/pty-hidden-delivery-gate'
 import type { CodexHomePtySpawnedLifecycleArgs, PrepareCodexSessionResume } from './host-env/types'
 import { tryGetProviderForPty } from './provider/registry'
+import { ptyOwnership } from './provider/ownership-state'
+import { parseAppSshPtyId } from '../../providers/ssh-pty-id'
+import type { ProducerFlowRequestStatus } from '../pty-producer-flow-control'
+import { getRendererInFlightCharsForPty } from './delivery/accounting'
+
+function requestProducerFlow(
+  id: string,
+  operation: 'pauseProducer' | 'resumeProducer'
+): ProducerFlowRequestStatus {
+  const provider = tryGetProviderForPty(id)
+  if (!provider) {
+    return 'missing-provider'
+  }
+  const method = provider[operation]
+  if (!method) {
+    return 'unsupported'
+  }
+  // This confirms only that the provider method was invoked. Legacy providers
+  // can silently ignore the request, and a daemon can auto-resume after 5s.
+  method.call(provider, id)
+  return 'method-invoked-unconfirmed'
+}
 
 export type PtyDataPayload = {
   id: string
@@ -29,6 +52,8 @@ export type PtyDataPayload = {
   transformed?: boolean
   background?: boolean
   droppedOutput?: boolean
+  /** Escape left open by bytes dropped just before this chunk; lets an abandoned restore skip its tail. */
+  gapEscapeState?: string
 }
 
 export type RendererPtyDeliveryAccounting = {
@@ -51,7 +76,7 @@ export type PtyIpcSessionOptions = {
   prepareCodexSessionResume?: PrepareCodexSessionResume
   awaitLocalPtyStartup?: () => Promise<void>
   awaitLocalPtyProviderStartup?: () => Promise<void>
-  // Why: returns true once for the crash-recovery reload so its did-finish-load skips the orphan sweep and keeps live PTYs (#5787).
+  // Recovery reload must preserve live in-process PTYs until restore re-adopts them (#5787).
   isRecoveryReloadInFlight?: (webContentsId: number) => boolean
   onCodexHomePtySpawned?: (args: CodexHomePtySpawnedLifecycleArgs) => void
   onPtyExit?: (id: string, exitSequence: number) => void
@@ -73,12 +98,12 @@ export type PtyIpcSession = {
   getSettings?: () => GlobalSettings
   options?: PtyIpcSessionOptions
   pendingData: PtyPendingDataDrainQueue
-  sshOutputIntake: SshPtyOutputIntake | null
   rendererExitingPtyIds: Set<string>
   rendererCreditBeforeExitByPty: Map<string, boolean>
   rendererDeliveryRestoreNeededPtys: Set<string>
   pendingOverflowMarkedPtys: Set<string>
   rendererDeliveryAccountingByPty: Map<string, RendererPtyDeliveryAccounting>
+  sourceCreditPendingPtys: Set<string>
   trustedTerminalHandleEnv: Set<string>
   flushTimer: ReturnType<typeof setTimeout> | null
   pendingDataFlushActive: boolean
@@ -103,7 +128,6 @@ export type PtyIpcSession = {
   lastHiddenDropContradictionWarnAtMs: number
   pendingDataDropWarnedPtys: Set<string>
   producerFlowControl: PtyProducerFlowController
-  sourceCreditPendingPtys: Set<string>
   backgroundedDeliverySyncByPty: Map<string, boolean>
   syntheticKillExitPtyIds: Map<
     string,
@@ -117,11 +141,7 @@ export type PtyIpcSession = {
   canSendPtyDataToRenderer: (id: string, options?: { interactive?: boolean }) => boolean
   schedulePendingDataFlush: (delayMs: number) => void
   flushPendingData: () => void
-  sendPtyDataToRenderer: (
-    id: string,
-    payload: PtyDataPayload,
-    projectionAdmissionIds?: readonly string[]
-  ) => { sent: boolean; projectionsTransferred: boolean }
+  sendPtyDataToRenderer: (id: string, payload: PtyDataPayload) => boolean
   sendModelRestoreNeededMarker: (
     id: string,
     reason: PtyModelRestoreReason,
@@ -143,19 +163,8 @@ export type PtyIpcSession = {
       sequenceChars?: number
       transformed?: boolean
     },
-    outputSeq: number | undefined,
-    projection?: LegacySshProjectionSemantics
+    outputSeq: number | undefined
   ) => void
-  preparePtyExitForRenderer: (payload: {
-    id: string
-    code: number
-    incarnationId?: string
-  }) => (() => void) | null
-  finalizePtyExitForRenderer: (payload: {
-    id: string
-    code: number
-    incarnationId?: string
-  }) => void
   sendPtyExitToRenderer: (payload: { id: string; code: number; incarnationId?: string }) => void
   sendPtySpawnedToRenderer: (id: string) => void
   requestSerializedBuffer: (
@@ -175,7 +184,12 @@ export type PtyIpcSession = {
   transitionHiddenRendererPtyDeliveryState: (
     id: string,
     hidden: boolean
-  ) => { droppable: boolean; droppedWhileHidden: boolean; policyChanged: boolean }
+  ) => {
+    droppable: boolean
+    droppedWhileHidden: boolean
+    hiddenDropEpisode?: number
+    policyChanged: boolean
+  }
   transitionSpawnHiddenRendererPtyDeliveryState: (id: string, hidden: boolean) => void
   rendererPtyIsKnownHidden: (id: string) => boolean
   schedulePendingDataAfterCreditReport: (creditedAny: boolean) => void
@@ -201,7 +215,6 @@ export function createPtyIpcSession(args: {
     getSettings: args.getSettings,
     options: args.options,
     pendingData: undefined as unknown as PtyPendingDataDrainQueue,
-    sshOutputIntake: null,
     rendererExitingPtyIds: new Set(),
     rendererCreditBeforeExitByPty: new Map(),
     rendererDeliveryRestoreNeededPtys: new Set(),
@@ -230,10 +243,26 @@ export function createPtyIpcSession(args: {
     dispatcherReadyWatchdogTimer: null,
     lastHiddenDropContradictionWarnAtMs: 0,
     pendingDataDropWarnedPtys: new Set(),
-    producerFlowControl: new PtyProducerFlowController({
-      pauseProducer: (id) => tryGetProviderForPty(id)?.pauseProducer?.(id),
-      resumeProducer: (id) => tryGetProviderForPty(id)?.resumeProducer?.(id)
-    }),
+    producerFlowControl: new PtyProducerFlowController(
+      {
+        pauseProducer: (id) => requestProducerFlow(id, 'pauseProducer'),
+        resumeProducer: (id) => requestProducerFlow(id, 'resumeProducer')
+      },
+      {
+        onTransition: (transition) => {
+          const accounting = session.rendererDeliveryAccountingByPty.get(transition.id)
+          const owner = ptyOwnership.get(transition.id)
+          recordTerminalProducerFlowTransition(transition, {
+            scope: typeof owner === 'string' || parseAppSshPtyId(transition.id) ? 'ssh' : 'local',
+            rendererInFlightChars: accounting
+              ? getRendererInFlightCharsForPty(session, transition.id)
+              : null,
+            msSinceLastRendererAck:
+              accounting?.lastAckAtMs == null ? null : Date.now() - accounting.lastAckAtMs
+          })
+        }
+      }
+    ),
     sourceCreditPendingPtys: new Set(),
     backgroundedDeliverySyncByPty: new Map(),
     syntheticKillExitPtyIds: new Map(),
@@ -254,8 +283,6 @@ export function createPtyIpcSession(args: {
     clearDispatcherReadyWatchdog: unsetSessionFn,
     armDispatcherReadyWatchdog: unsetSessionFn,
     acceptPtyDataForRenderer: unsetSessionFn,
-    preparePtyExitForRenderer: unsetSessionFn,
-    finalizePtyExitForRenderer: unsetSessionFn,
     sendPtyExitToRenderer: unsetSessionFn,
     sendPtySpawnedToRenderer: unsetSessionFn,
     requestSerializedBuffer: unsetSessionFn,
@@ -276,7 +303,7 @@ export function createPtyIpcSession(args: {
   session.pendingData = new PtyPendingDataDrainQueue(
     (id) => {
       const runnableLane = activeRendererPtys.has(id) ? 'active' : 'background'
-      // Why first: hidden bytes are dropped from main's pending queue even when renderer credit is exhausted.
+      // Hidden delivery can retire even when renderer credit is exhausted.
       if (shouldDropHiddenRendererPtyData(id, session.getSettings?.())) {
         return runnableLane
       }

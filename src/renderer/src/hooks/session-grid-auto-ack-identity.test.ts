@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveAutoAckTabTargets } from './agent-auto-ack-targets'
+import { onScreenWorkspaceIds, resolveAutoAckTabTargets } from './agent-auto-ack-targets'
 import { createTestStore, makeTab } from '../store/slices/store-test-helpers'
 
 describe('selected grid workspace identity', () => {
@@ -16,6 +16,7 @@ describe('selected grid workspace identity', () => {
     })
     store.getState().setActiveSessionGridTabId('tab-1', 'wt-card')
     const state = store.getState()
+    expect(onScreenWorkspaceIds(state)).toEqual(['wt-card'])
     expect(resolveAutoAckTabTargets(state, { floatingPanelVisible: false })).toEqual([
       {
         tabId: 'tab-1',
@@ -35,5 +36,7 @@ describe('selected grid workspace identity', () => {
         { floatingPanelVisible: false }
       )
     ).toEqual([])
+    expect(onScreenWorkspaceIds({ ...state, sessionsGridHiddenTabIds: ['tab-1'] })).toEqual([])
+    expect(onScreenWorkspaceIds({ ...state, sessionsGridFilter: 'wt-sidebar' })).toEqual([])
   })
 })

@@ -1,15 +1,19 @@
 import { useCallback, useRef, useState, type RefObject } from 'react'
 import type { DragMoveEvent, DragOverEvent } from '@dnd-kit/core'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { useAppStore } from '../../store'
 import type { useHoveredTabInsertion } from './tab-insertion'
-import { applyDragPreviewTab, type TabDragActivationSnapshot } from './tab-drag-preview-activation'
+import { resolvePointerStripInsertion } from './tab-insertion'
+import type { TabDragActivationSnapshot } from '../../store/slices/tabs/tabs-slice-contract'
 import { resolveDragPreviewTabId } from './tab-drag-preview-target'
 import { getDragPointer } from './tab-drag-pointer'
 import {
+  findTabGroupPanelUnderPointer,
   resolveActivePaneColumnSplitTarget,
   type ActivePaneColumnSplitTarget,
   type TabGroupPanelGeometrySnapshot
 } from './tab-group-panel-split-target'
+import { findTabGroupStripUnderPointer, type TabGroupStripHit } from './tab-group-strip-hit'
 import { isTabDragData, type TabDragItemData, type TabDropZone } from './tab-drag-data'
 
 export type HoveredTabDropTarget = {
@@ -18,9 +22,7 @@ export type HoveredTabDropTarget = {
   panelRect?: DOMRect
 }
 
-/** Derives the in-flight hover state of a tab drag: the live preview tab to
- *  activate (deduped through private memo refs) and the hovered pane-column
- *  split target, delegating tab-strip insertion to the injected tabInsertion. */
+/** Derive preview activation and pane-column targeting; keep insertion policy in the injected tabInsertion. */
 export function useTabDragHoverPreview({
   worktreeId,
   preDragActivationSnapshotRef,
@@ -41,32 +43,42 @@ export function useTabDragHoverPreview({
   const lastHoveredTabPreviewRef = useRef<{ groupId: string; tabId: string } | null>(null)
 
   const updateDragPreviewActivation = useCallback(
-    (event: DragMoveEvent | DragOverEvent, activeData: TabDragItemData) => {
+    (
+      activeData: TabDragItemData,
+      strip: TabGroupStripHit | null,
+      panel: { groupId: string } | null
+    ) => {
       const snapshot = preDragActivationSnapshotRef.current
       if (!snapshot) {
         return
       }
 
-      const overData = event.over?.data.current
-      if (isTabDragData(overData) && overData.unifiedTabId !== activeData.unifiedTabId) {
+      if (strip?.tabAtPointer && strip.tabAtPointer.unifiedTabId !== activeData.unifiedTabId) {
         lastHoveredTabPreviewRef.current = {
-          groupId: overData.groupId,
-          tabId: overData.unifiedTabId
+          groupId: strip.groupId,
+          tabId: strip.tabAtPointer.unifiedTabId
         }
       }
 
-      const preview = resolveDragPreviewTabId({
-        activeDrag: activeData,
-        overData,
-        preDragActiveTabIdByGroup: snapshot.activeTabIdByGroup,
-        lastHoveredTabPreview: lastHoveredTabPreviewRef.current
-      })
+      const preview =
+        worktreeId === FLOATING_TERMINAL_WORKTREE_ID
+          ? {
+              groupId: activeData.groupId,
+              tabId: snapshot.activeTabIdByGroup[activeData.groupId] ?? null
+            }
+          : resolveDragPreviewTabId({
+              activeDrag: activeData,
+              overData:
+                panel && !strip ? { kind: 'pane-body', worktreeId, groupId: panel.groupId } : null,
+              preDragActiveTabIdByGroup: snapshot.activeTabIdByGroup,
+              lastHoveredTabPreview: lastHoveredTabPreviewRef.current
+            })
       const lastPreview = lastPreviewRef.current
       if (lastPreview?.groupId === preview.groupId && lastPreview.tabId === preview.tabId) {
         return
       }
       lastPreviewRef.current = preview
-      applyDragPreviewTab({
+      useAppStore.getState().previewDragActiveTab({
         worktreeId,
         groupId: preview.groupId,
         tabId: preview.tabId,
@@ -99,24 +111,34 @@ export function useTabDragHoverPreview({
   const handleDragUpdate = useCallback(
     (event: DragMoveEvent | DragOverEvent) => {
       const activeData = event.active.data.current
-      if (isTabDragData(activeData) && activeData.worktreeId === worktreeId) {
-        updateDragPreviewActivation(event, activeData)
-      }
-
       const state = useAppStore.getState()
-      const splitTarget = resolveActivePaneColumnSplitTarget({
-        event,
-        groupsByWorktree: state.groupsByWorktree,
-        layoutByWorktree: state.layoutByWorktree,
-        worktreeId,
-        getDragPointer,
-        geometry: dragGeometryRef.current
-      })
+      const pointer = getDragPointer(event)
+      const strip = pointer ? findTabGroupStripUnderPointer(worktreeId, pointer) : null
+      const panel = pointer
+        ? findTabGroupPanelUnderPointer(worktreeId, pointer, { geometry: dragGeometryRef.current })
+        : null
+      if (isTabDragData(activeData) && activeData.worktreeId === worktreeId) {
+        updateDragPreviewActivation(activeData, strip, panel)
+      }
+      const splitTarget =
+        !strip && panel
+          ? resolveActivePaneColumnSplitTarget({
+              event,
+              groupsByWorktree: state.groupsByWorktree,
+              layoutByWorktree: state.layoutByWorktree,
+              worktreeId,
+              getDragPointer,
+              geometry: dragGeometryRef.current
+            })
+          : null
       updateHoveredDropTargetFromSplit(splitTarget)
       if (splitTarget) {
         tabInsertion.clear()
       } else {
-        tabInsertion.update(event)
+        const tabOrder = (state.groupsByWorktree[worktreeId] ?? []).find(
+          (group) => group.id === strip?.groupId
+        )?.tabOrder
+        tabInsertion.set(resolvePointerStripInsertion(event, strip, pointer, tabOrder))
       }
     },
     [

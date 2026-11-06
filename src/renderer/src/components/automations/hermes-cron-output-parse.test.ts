@@ -4,7 +4,6 @@ import { parseHermesOutput } from './hermes-cron-output-parse'
 afterEach(() => {
   vi.restoreAllMocks()
 })
-
 describe('parseHermesOutput', () => {
   it('parses title, metadata, and structured sections', () => {
     const parsed = parseHermesOutput(

@@ -6,9 +6,9 @@ import type { ProjectExecutionRuntimeResolution } from '../../../../shared/proje
 import { resolveLocalWindowsTerminalShellOverrideForTab } from '../../../../shared/local-windows-terminal-runtime'
 import { WINDOWS_GIT_BASH_SHELL } from '../../../../shared/windows-terminal-shell'
 import { getFolderWorkspaceConnectionId } from '@/lib/folder-workspace-connection'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { getIndexedRepoMap, getIndexedWorktreeMap } from '../worktree-repo-index'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
+import { selectFolderWorkspaces, selectWorktreesByRepo } from '../workspace-record-selectors'
 
 export function isWindowsRendererRuntime(): boolean {
   return typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows')
@@ -58,12 +58,12 @@ export function worktreeUsesWslPath(
 ): boolean {
   const parsed = parseWorkspaceKey(worktreeId)
   if (parsed?.type === 'folder') {
-    const folderWorkspace = state.folderWorkspaces.find(
+    const folderWorkspace = selectFolderWorkspaces(state).find(
       (workspace) => workspace.id === parsed.folderWorkspaceId
     )
     return folderWorkspace ? isWslUncPath(folderWorkspace.folderPath) : false
   }
-  const worktree = getIndexedWorktreeMap(state.worktreesByRepo).get(worktreeId)
+  const worktree = getIndexedWorktreeMap(selectWorktreesByRepo(state)).get(worktreeId)
   return worktree ? isWslUncPath(worktree.path) : false
 }
 
@@ -80,7 +80,7 @@ export function worktreeUsesRemoteConnection(
   if (directRepo) {
     return Boolean(directRepo.connectionId)
   }
-  const worktree = getIndexedWorktreeMap(state.worktreesByRepo).get(worktreeId)
+  const worktree = getIndexedWorktreeMap(selectWorktreesByRepo(state)).get(worktreeId)
   const repo = worktree ? repoMap.get(worktree.repoId) : null
   return Boolean(repo?.connectionId)
 }
@@ -109,14 +109,7 @@ export function getRemoteConnectionIdForWorktree(
   if (directRepo) {
     return directRepo.connectionId?.trim() || null
   }
-  const worktree = getIndexedWorktreeMap(state.worktreesByRepo).get(worktreeId)
+  const worktree = getIndexedWorktreeMap(selectWorktreesByRepo(state)).get(worktreeId)
   const repo = worktree ? repoMap.get(worktree.repoId) : null
   return repo?.connectionId?.trim() || null
-}
-
-export function resolveTerminalStopRuntimeEnvironmentId(
-  state: Pick<AppState, 'repos' | 'settings' | 'worktreesByRepo'>,
-  worktreeId: string
-): string | null {
-  return getRuntimeEnvironmentIdForWorktree(state, worktreeId)
 }

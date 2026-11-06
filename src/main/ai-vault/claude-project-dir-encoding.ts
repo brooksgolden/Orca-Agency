@@ -1,7 +1,6 @@
 export { encodeClaudeProjectPath, encodeClaudeProjectPaths } from '../../shared/claude-project-path'
 
-/** Why the explicit boundary: a bare `startsWith` lets a sibling prefix match, so the encoding of
- *  `…/orca` would claim `…/orca-secret` and `…/orcadyne` as its own. */
+/** Require an encoded separator boundary so orca cannot match its sibling orcadyne. */
 export function isClaudeProjectDirInScope(
   projectDirName: string,
   scopePrefixes: ReadonlySet<string> | readonly string[]

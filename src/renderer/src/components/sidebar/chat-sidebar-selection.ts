@@ -49,6 +49,42 @@ export function activeChatTarget(
   }
 }
 
+/** Tabs the user can see now: each visible group's active tab plus the focused chat's tab. */
+export function visibleChatTabIds(
+  state: Pick<
+    AppState,
+    | 'activeWorktreeId'
+    | 'activeGroupIdByWorktree'
+    | 'groupsByWorktree'
+    | 'unifiedTabsByWorktree'
+    | 'activeTabType'
+    | 'activeTabId'
+    | 'terminalLayoutsByTabId'
+  >
+): string[] {
+  const ids = new Set<string>()
+  const focusedTabId = activeChatTarget(state).tabId
+  if (focusedTabId) {
+    ids.add(focusedTabId)
+  }
+  const worktreeId = state.activeWorktreeId
+  for (const group of worktreeId ? (state.groupsByWorktree[worktreeId] ?? []) : []) {
+    const tab = group.activeTabId
+      ? state.unifiedTabsByWorktree[worktreeId!]?.find((item) => item.id === group.activeTabId)
+      : undefined
+    const tabId =
+      tab?.contentType === 'terminal'
+        ? tab.entityId
+        : tab?.contentType === 'agent-session'
+          ? tab.id
+          : null
+    if (tabId) {
+      ids.add(tabId)
+    }
+  }
+  return [...ids]
+}
+
 export function isChatRowSelected(
   row: Pick<ChatSidebarRow, 'worktree' | 'tabId' | 'paneKey'>,
   target: ActiveChatTarget,

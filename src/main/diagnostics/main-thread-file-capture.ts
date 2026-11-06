@@ -6,7 +6,7 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024
 /** Diagnostic disk stalls must not block main or create an unbounded pending queue. */
 export function createMainThreadFileCapture(
   path: string,
-  append: (path: string, line: string) => Promise<void> = appendBounded
+  append: (path: string, line: string) => Promise<void> = appendBoundedDiagnosticLine
 ): (line: string) => void {
   let pending: string | null = null
   let active = false
@@ -31,7 +31,7 @@ export function createMainThreadFileCapture(
   }
 }
 
-async function appendBounded(path: string, line: string): Promise<void> {
+export async function appendBoundedDiagnosticLine(path: string, line: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   const existing = await stat(path).catch(() => null)
   if (existing && existing.size + Buffer.byteLength(line) > MAX_FILE_BYTES) {

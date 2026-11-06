@@ -183,7 +183,8 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       },
       { folder, nextFolder, ids, transcripts, stub }
     )
-    await page.reload({ waitUntil: 'domcontentloaded' })
+    // Cold packaged reloads under the idle-priority runner can exceed 30 seconds.
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     const rows = page.locator('[data-chat-sidebar-id]')
     const latest = rows.filter({ hasText: 'Latest client research' })
     await expect(latest).toBeVisible()
@@ -203,50 +204,89 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     const renamed = rows.filter({ hasText: 'Saved client name' })
     await renamed.getByRole('button', { name: 'Mark Saved client name done' }).click()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
-    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect(renamed).toBeVisible()
     await expect(renamed).toHaveAttribute('data-chat-completed', 'true')
-    await page.getByRole('button', { name: /^Chat grouping and folder filters/ }).click()
-    const progressFilter = page.getByRole('menuitemcheckbox', {
-      name: 'Hide Done chats',
-      exact: true
-    })
-    await progressFilter.click()
-    await expect(progressFilter).toHaveAttribute('aria-checked', 'true')
-    await captureHiddenRendererScreenshot(page, testInfo.outputPath('packaged-chat-filters.png'))
-    await page.keyboard.press('Escape')
-    await expect(renamed).toHaveCount(0)
-    await expect(rows).toHaveCount(1)
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await expect(renamed).toHaveCount(0)
-    await expect(rows).toHaveCount(1)
-    await page.getByRole('button', { name: /^Chat grouping and folder filters/ }).click()
-    await expect(progressFilter).toHaveAttribute('aria-checked', 'true')
-    await progressFilter.click()
-    await page.keyboard.press('Escape')
-    await expect(renamed).toBeVisible()
-    await expect(rows).toHaveCount(2)
     const filterButton = page.getByRole('button', {
       name: /^Chat grouping and folder filters/
     })
+    const toggleNestedFilter = async (
+      menuName: 'Hide Chats' | 'Collapse Folders',
+      optionName: 'Done Closed' | 'Done Open' | 'Idle'
+    ) => {
+      await filterButton.click()
+      const submenu = page.getByRole('menuitem', { name: menuName, exact: true })
+      await submenu.focus()
+      await page.keyboard.press('ArrowRight')
+      const option = page.getByRole('menuitemcheckbox', { name: optionName, exact: true })
+      await expect(option).toBeVisible()
+      const wasChecked = (await option.getAttribute('aria-checked')) === 'true'
+      // The settings write intentionally remounts the menu. Dispatch immediately, then verify the
+      // persisted preference instead of asking Playwright to wait for an element that will detach.
+      await option.dispatchEvent('click')
+      const stateKey =
+        optionName === 'Done Closed'
+          ? 'doneClosed'
+          : optionName === 'Done Open'
+            ? 'doneOpen'
+            : 'idle'
+      await expect
+        .poll(() =>
+          page.evaluate(
+            async ({ menuName, stateKey }) => {
+              const preferences = (await window.api.settings.get()).chatSidebar
+              const checks =
+                menuName === 'Hide Chats' ? preferences?.hideChats : preferences?.collapseFolders
+              return checks?.[stateKey] ?? false
+            },
+            { menuName, stateKey }
+          )
+        )
+        .toBe(!wasChecked)
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+    }
+    // The former Hide Done toggle is now represented by the two explicit Done states.
+    await toggleNestedFilter('Hide Chats', 'Done Closed')
+    await toggleNestedFilter('Hide Chats', 'Done Open')
+    await captureHiddenRendererScreenshot(page, testInfo.outputPath('packaged-chat-filters.png'))
+    await expect(renamed).toHaveCount(0)
+    await expect(rows).toHaveCount(1)
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+    await expect(rows.filter({ hasText: 'Earlier client draft' })).toBeVisible()
+    await expect(renamed).toHaveCount(0)
+    await expect(rows).toHaveCount(1)
+    await toggleNestedFilter('Hide Chats', 'Done Closed')
+    await toggleNestedFilter('Hide Chats', 'Done Open')
+    await expect(renamed).toBeVisible()
+    await expect(rows).toHaveCount(2)
     await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
     const inactiveBox = await filterButton.boundingBox()
     expect(inactiveBox).not.toBeNull()
     if (!inactiveBox) {
       throw new Error('Filter button has no visible bounds')
     }
-    for (const option of ['Hide Done chats', 'Show only open chats', 'Collapse Done folders']) {
-      await expect(page.getByRole('menu')).toHaveCount(0)
-      await filterButton.click()
-      await page.getByRole('menuitemcheckbox', { name: option, exact: true }).click()
-      await page.keyboard.press('Escape')
-      await expect(filterButton).toHaveAttribute('data-filters-active', 'true')
-      await assertPackagedChatFilterHighlight(filterButton, inactiveBox.width)
-      await filterButton.click()
-      await page.getByRole('menuitemcheckbox', { name: option, exact: true }).click()
-      await page.keyboard.press('Escape')
-      await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
-    }
+    await toggleNestedFilter('Hide Chats', 'Done Closed')
+    await expect(filterButton).toHaveAttribute('data-filters-active', 'true')
+    await assertPackagedChatFilterHighlight(filterButton, inactiveBox.width)
+    await toggleNestedFilter('Hide Chats', 'Done Closed')
+    await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
+
+    await filterButton.click()
+    await page.getByRole('menuitemcheckbox', { name: 'Show only open chats', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect(filterButton).toHaveAttribute('data-filters-active', 'true')
+    await assertPackagedChatFilterHighlight(filterButton, inactiveBox.width)
+    await filterButton.click()
+    await page.getByRole('menuitemcheckbox', { name: 'Show only open chats', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
+
+    await toggleNestedFilter('Collapse Folders', 'Done Closed')
+    await expect(filterButton).toHaveAttribute('data-filters-active', 'true')
+    await assertPackagedChatFilterHighlight(filterButton, inactiveBox.width)
+    await toggleNestedFilter('Collapse Folders', 'Done Closed')
+    await expect(filterButton).toHaveAttribute('data-filters-active', 'false')
     await renamed.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Change folder', exact: true }).hover()
     await page.getByRole('menuitem', { name: 'local-tools', exact: true }).click()
@@ -258,7 +298,10 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       .toContain(ids[0])
     const launched = readFileSync(capture, 'utf8').trim().split(/\r?\n/)
     expect(launched).toHaveLength(1)
-    expect(launched[0]).toContain(nextFolder)
+    // Changing the sidebar folder is organizational metadata. Resuming must retain the
+    // conversation's recorded project directory instead of silently changing its cwd.
+    expect(launched[0]).toContain(folder)
+    expect(launched[0]).not.toContain(nextFolder)
     expect(existsSync(transcripts[0])).toBe(true)
     await expect(rows).toHaveCount(2)
     await expect(renamed).toHaveAttribute('aria-selected', 'true')
@@ -294,12 +337,12 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       return { id: worktree.id, mode: worktree.displayNameMode }
     }, folder)
     expect(generatedWorkspace.mode).toBe('automatic')
-    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toBeVisible()
     await page.evaluate(async (worktreeId) => {
       await window.api.worktrees.updateMeta({ worktreeId, updates: { displayName: 'coho' } })
     }, generatedWorkspace.id)
-    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await expect(rows.filter({ hasText: 'coho' })).toBeVisible()
     await expect(rows.filter({ hasText: 'Set Krisp to record webinar' })).toHaveCount(0)
     await captureHiddenRendererScreenshot(page, testInfo.outputPath('packaged-chat-sidebar.png'))
@@ -308,7 +351,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
     await page.evaluate(async (parentPath) => {
       await window.api.projectGroups.create({ name: 'Old inbox label', parentPath })
     }, inbox)
-    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
     await page.getByRole('button', { name: 'New workspace', exact: true }).click()
     const newChat = page.getByRole('dialog', { name: 'New chat', exact: true })
     await expect(newChat.getByRole('combobox', { name: 'Folder', exact: true })).toContainText(
@@ -373,6 +416,7 @@ test('packaged chat sidebar restores closed chats and resumes one exact session'
       )
     ).toBe(true)
   } catch (error) {
+    console.error('Packaged chat sidebar smoke failed:', error)
     try {
       const page = await app.firstWindow()
       await page.screenshot({

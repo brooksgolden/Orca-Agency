@@ -4,7 +4,6 @@ type ExternalAutomationRunTableJob = {
   id: string
   runs: readonly ExternalAutomationRun[]
 }
-
 type ExternalAutomationRunPageResult = {
   runs: ExternalAutomationRun[]
   totalCount?: number
@@ -33,7 +32,6 @@ export function createExternalAutomationRunTableState(
     fetchError: null
   }
 }
-
 export function resolveExternalAutomationRunTableState(
   state: ExternalAutomationRunTableState,
   job: ExternalAutomationRunTableJob

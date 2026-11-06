@@ -23,7 +23,7 @@ vi.mock('./chat-sidebar-detach', () => ({
   discardEmptyChatWorkspace: mocks.discard
 }))
 vi.mock('../workspace-split/workspace-tab-edge-drop', () => ({
-  dropTerminalTabAtWorkspaceEdge: mocks.dropEdge
+  dropTabAtWorkspaceEdge: mocks.dropEdge
 }))
 vi.mock('@/lib/ai-vault-resume-command', () => ({ buildAiVaultResumeStartupForWorktree: vi.fn() }))
 vi.mock('@/lib/activate-ai-vault-structured-session', () => ({
@@ -39,11 +39,13 @@ function makeState() {
   return {
     ...chatState(),
     worktreesByRepo: { repo: [chatWorktree, { ...chatWorktree, id: 'other' }] },
+    layoutByWorktree: {},
+    activeGroupIdByWorktree: {},
     groupsByWorktree: { [chatWorktree.id]: [{ id: 'pane' }], other: [{ id: 'pane' }] },
     workspaceSplitGroups: placeWorkspaceAtEdge([], 'other', chatWorktree.id, 'right', 'split'),
     dropUnifiedTab: vi.fn(),
     activateTab: vi.fn(),
-    placeWorkspaceAtEdge: vi.fn()
+    placeWorkspaceSurface: vi.fn().mockReturnValue(true)
   }
 }
 
@@ -78,16 +80,25 @@ describe('saved chat sidebar drop', () => {
     expect(resumed.sessionId).toBe('fork')
     expect(source).toBe('separate')
     expect(placement.targetGroupId).toBeUndefined()
-    expect(state.placeWorkspaceAtEdge).not.toHaveBeenCalled()
+    expect(state.placeWorkspaceSurface).not.toHaveBeenCalled()
     placement.onResumed()
-    expect(state.placeWorkspaceAtEdge).toHaveBeenCalledWith('separate', 'other', 'bottom')
+    expect(state.placeWorkspaceSurface).toHaveBeenCalledWith(
+      { type: 'leaf', workspaceId: 'separate' },
+      { type: 'leaf', workspaceId: 'other', groupId: 'pane' },
+      'bottom'
+    )
   })
   it('uses the source workspace when an ungrouped chat cannot create a separate workspace', async () => {
     mocks.createSeparate.mockResolvedValue(chatWorktree)
     await resumeSavedChatAtDrop(row, target, resume)
     expect(mocks.createSeparate).toHaveBeenCalledWith(row, { useSourceWhenUngrouped: true })
     expect(resume).toHaveBeenCalledWith(session, chatWorktree.id, expect.any(Object))
-    resume.mock.calls[0][2].onSettled('not-created')
+    const placement = resume.mock.calls[0][2]
+    expect(placement.targetGroupId).toBe('pane')
+    expect(placement.splitDirection).toBe('right')
+    placement.onResumed()
+    expect(state.placeWorkspaceSurface).not.toHaveBeenCalled()
+    placement.onSettled('not-created')
     expect(mocks.discard).not.toHaveBeenCalled()
   })
 
@@ -144,6 +155,7 @@ describe('saved chat sidebar drop', () => {
         unifiedTabId: 'unified',
         targetId: 'other',
         edge: 'right',
+        targetGroupId: 'pane',
         wholeWindow: false
       })
     }

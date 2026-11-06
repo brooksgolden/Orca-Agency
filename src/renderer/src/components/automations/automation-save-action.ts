@@ -1,3 +1,9 @@
+import { useAppStore } from '@/store'
+import {
+  automationChatSupport,
+  automationDraftSurface,
+  automationLaunchWorkspace
+} from './automation-launch-surface'
 import { toast } from 'sonner'
 import { isTuiAgentEnabled } from '../../../../shared/tui-agent-selection'
 import {
@@ -11,8 +17,8 @@ import {
   getDraftExtraAgentArgsError,
   parseDraftTime
 } from './automation-draft-model'
-import { saveHermesAutomation } from './automation-hermes-save'
 import { saveOrcaAutomation } from './automation-orca-save'
+import { saveHermesAutomation } from './automation-hermes-save'
 import type { AutomationSaveContext } from './automation-save-context'
 
 /** Validates editor input then delegates the provider-specific save transaction. */
@@ -30,10 +36,27 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
     } = local
     const isHermesSave =
       editingAutomationId === null && (createTarget === 'hermes' || editingExternalTarget !== null)
+    const { draftAtOpen } = local
+    const targetEdited = editingAutomationId === null || local.targetEdited
+    const scheduleEdited =
+      editingAutomationId === null ||
+      !draftAtOpen ||
+      (['preset', 'time', 'dayOfWeek', 'customSchedule'] as const).some(
+        (key) => draft[key] !== draftAtOpen[key]
+      )
+    const extrasEdited =
+      editingAutomationId === null ||
+      !draftAtOpen ||
+      draft.surface !== draftAtOpen.surface ||
+      draft.extraAgentArgs !== draftAtOpen.extraAgentArgs ||
+      draft.agentId !== draftAtOpen.agentId ||
+      draft.reuseSession !== draftAtOpen.reuseSession ||
+      draft.workspaceMode !== draftAtOpen.workspaceMode
     const { hour, minute } = parseDraftTime(draft.time)
     if (
-      !draft.projectId ||
-      ((draft.workspaceMode === 'existing' || isHermesSave) && !draft.workspaceId) ||
+      ((isHermesSave || targetEdited) &&
+        (!draft.projectId ||
+          ((draft.workspaceMode === 'existing' || isHermesSave) && !draft.workspaceId))) ||
       !draft.prompt.trim()
     ) {
       toast.error(
@@ -44,7 +67,7 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
       )
       return
     }
-    if (draft.scheduleWarning) {
+    if (scheduleEdited && draft.scheduleWarning) {
       toast.error(
         translate(
           'auto.components.automations.AutomationsPage.64bdb2304f',
@@ -57,6 +80,7 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
       ? isValidAutomationCronSchedule
       : isValidAutomationSchedule
     if (
+      scheduleEdited &&
       draft.preset === 'custom' &&
       !acceptsAutomationDraftSchedule({
         customSchedule: draft.customSchedule,
@@ -85,24 +109,49 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
       )
       return
     }
+    let surface: 'chat' | 'terminal' = draft.surface ?? 'terminal'
     if (!isHermesSave) {
-      const extrasError = draftExtraAgentArgsNeedFreshSession(draft)
+      const resolution =
+        editingAutomationId !== null
+          ? destinationForm.editHostResolution
+          : destination.createDestination.control.resolution
+      const chatSupported = automationChatSupport(
+        useAppStore.getState(),
+        draft,
+        automationLaunchWorkspace(draft, resolution)
+      )
+      surface = automationDraftSurface(draft, settings, chatSupported)
+      if (surface === 'chat' && chatSupported !== true) {
+        return
+      }
+      const effectiveDraft = { ...draft, surface }
+      const extrasError = draftExtraAgentArgsNeedFreshSession(effectiveDraft)
         ? translate(
             'auto.components.automations.extraAgentArgs.needsFreshSession',
             'Extra arguments require a fresh session for every run.'
           )
-        : getDraftExtraAgentArgsError(draft)
-      if (extrasError) {
+        : getDraftExtraAgentArgsError(effectiveDraft)
+      if (extrasEdited && extrasError) {
         toast.error(extrasError)
         return
       }
     }
+    setEditorNotice(null)
     setIsSaving(true)
     try {
-      const selectedWorkspaceExists =
-        draft.workspaceMode !== 'existing' ||
-        destinationForm.dialogWorktrees.some((worktree) => worktree.id === draft.workspaceId)
-      if (!selectedWorkspaceExists) {
+      if (!isHermesSave && editingAutomationId === null) {
+        const checked = destination.createDestination.check(draft.projectId)
+        if (!checked.ok) {
+          setEditorNotice(checked.notice)
+          return
+        }
+      }
+      const selectedWorkspaceExists = isHermesSave
+        ? destinationForm.dialogWorktrees.some((worktree) => worktree.id === draft.workspaceId)
+        : destinationForm.recordedTargetSelected ||
+          draft.workspaceMode !== 'existing' ||
+          destinationForm.dialogWorktrees.some((worktree) => worktree.id === draft.workspaceId)
+      if ((isHermesSave || targetEdited) && !selectedWorkspaceExists) {
         toast.error(
           translate(
             'auto.components.automations.AutomationsPage.32534e7c9c',
@@ -111,16 +160,9 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
         )
         return
       }
-      if (!isHermesSave && editingAutomationId === null) {
-        const checked = destination.createDestination.check(draft.projectId)
-        if (!checked.ok) {
-          setEditorNotice(checked.notice)
-          return
-        }
-      }
       await (isHermesSave
         ? saveHermesAutomation(context)
-        : saveOrcaAutomation(context, { hour, minute, now }))
+        : saveOrcaAutomation(context, { hour, minute, now, surface }))
     } catch (error) {
       if (isHermesSave) {
         await context.pageRefresh.refresh().catch(() => undefined)

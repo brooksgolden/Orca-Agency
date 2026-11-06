@@ -18,6 +18,7 @@ import { installPreviewTerminalDictation } from './preview-terminal-dictation'
 import { installPreviewTerminalFileDrop } from './preview-terminal-file-drop'
 import type { PreviewTerminalWorkspace } from './agent-terminal-preview-props'
 import { installPreviewTerminalLinks } from './preview-terminal-links'
+import { terminalPreviewApiFor } from './terminal-preview-api'
 
 /** Cap on queued user-input signals; a burst beyond this is indistinguishable from a stuck key. */
 const MAX_PENDING_USER_INPUT_SIGNALS = 32
@@ -46,6 +47,8 @@ export function createPreviewInputInstallers(args: {
   getTerminalInput: () => DashboardCardTerminalInput | null
   /** Non-zero while replayed bytes are still being parsed; those must not echo back to the PTY. */
   getReplayDepth: () => number
+  /** Closes the hosting surface on the pane-close chord. */
+  requestClose?: () => void
 }): PreviewInputInstallers {
   let imeBridge: PreviewImeBridge | null = null
   let disposeNativeCopyGutterTrim: (() => void) | null = null
@@ -88,7 +91,7 @@ export function createPreviewInputInstallers(args: {
       if (userInputDisposable ? !signaledUserInput : args.getReplayDepth() > 0) {
         return
       }
-      void window.api.terminalPreview.input(args.ptyId, data)
+      void terminalPreviewApiFor(args.ptyId).input(args.ptyId, data)
     })
   }
 
@@ -107,6 +110,7 @@ export function createPreviewInputInstallers(args: {
       pasteClipboardText: (activeElement, source) => args.pasteClipboardText(activeElement, source),
       // Why: route through terminal.input so the chord's bytes carry core's user-input signal, like typed keys.
       sendInput: (data) => terminal.input(data),
+      requestClose: () => args.requestClose?.(),
       getShortcutContext: () => ({
         clientPlatform: getShortcutPlatform(),
         macOptionAsAlt: args.getMacOptionAsAlt(),

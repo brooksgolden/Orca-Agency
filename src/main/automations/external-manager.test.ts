@@ -1,13 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  createExternalAutomation,
-  listExternalAutomationRuns,
-  runExternalAutomationAction,
-  updateExternalAutomation
-} from './external-manager'
+import { runExternalAutomationAction } from './external-manager'
+import { createExternalAutomation, updateExternalAutomation } from './external-manager-mutations'
 import { mapHermesJobs, mapOpenClawJobs } from './external-job-mappers'
-import { EXTERNAL_AUTOMATION_SCOPE_CODES } from '../../shared/external-automation-scope'
-import { getActiveMultiplexer } from '../ssh/ssh-target-registry'
+import { SSH_HOST_NOT_SERVED_MESSAGE } from '../providers/ssh-host-not-served-error'
 import type {
   ExternalAutomationAction,
   ExternalAutomationProvider
@@ -17,7 +12,7 @@ import type * as Fs from 'node:fs'
 const runProcessMock = vi.hoisted(() => vi.fn())
 const existsSyncMock = vi.hoisted(() => vi.fn(() => false))
 
-vi.mock('../../shared/child-process/run-process', () => ({ runProcess: runProcessMock }))
+vi.mock('@orca/process-host', () => ({ runProcess: runProcessMock }))
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof Fs>('fs')
   return {
@@ -25,10 +20,6 @@ vi.mock('fs', async () => {
     existsSync: existsSyncMock
   }
 })
-
-vi.mock('../ssh/ssh-target-registry', () => ({
-  getActiveMultiplexer: vi.fn()
-}))
 
 beforeEach(() => {
   runProcessMock.mockReset()
@@ -40,7 +31,6 @@ beforeEach(() => {
     timedOut: false
   })
   existsSyncMock.mockReturnValue(false)
-  vi.mocked(getActiveMultiplexer).mockReset()
 })
 
 afterEach(() => {
@@ -283,27 +273,11 @@ describe('createExternalAutomation', () => {
 })
 
 describe('runExternalAutomationAction', () => {
-  it('runs local Hermes lifecycle actions through the CLI', async () => {
-    await runExternalAutomationAction({
-      managerId: 'hermes:local',
-      provider: 'hermes',
-      target: { type: 'local' },
-      jobId: 'job-1',
-      action: 'run'
-    })
-
-    expect(runProcessMock).toHaveBeenCalledWith({
-      program: 'hermes',
-      args: ['cron', 'run', 'job-1'],
-      timeoutMs: 30_000
-    })
-  })
-
   it('rejects job IDs that could be parsed as CLI options', async () => {
     await expect(
       runExternalAutomationAction({
-        managerId: 'hermes:local',
-        provider: 'hermes',
+        managerId: 'openclaw:local',
+        provider: 'openclaw',
         target: { type: 'local' },
         jobId: '-help',
         action: 'run'
@@ -316,8 +290,8 @@ describe('runExternalAutomationAction', () => {
   it('rejects an action name that is not in the provider table', async () => {
     await expect(
       runExternalAutomationAction({
-        managerId: 'hermes:local',
-        provider: 'hermes',
+        managerId: 'openclaw:local',
+        provider: 'openclaw',
         target: { type: 'local' },
         jobId: 'job-1',
         action: 'purge' as ExternalAutomationAction
@@ -330,8 +304,8 @@ describe('runExternalAutomationAction', () => {
   it('rejects an action inherited from the prototype chain', async () => {
     await expect(
       runExternalAutomationAction({
-        managerId: 'hermes:local',
-        provider: 'hermes',
+        managerId: 'openclaw:local',
+        provider: 'openclaw',
         target: { type: 'local' },
         jobId: 'job-1',
         action: 'toString' as unknown as ExternalAutomationAction
@@ -344,7 +318,7 @@ describe('runExternalAutomationAction', () => {
   it('rejects a provider that has no action table', async () => {
     await expect(
       runExternalAutomationAction({
-        managerId: 'hermes:local',
+        managerId: 'openclaw:local',
         provider: 'shellcat' as ExternalAutomationProvider,
         target: { type: 'local' },
         jobId: 'job-1',
@@ -355,119 +329,17 @@ describe('runExternalAutomationAction', () => {
     expect(runProcessMock).not.toHaveBeenCalled()
   })
 
-  it('maps OpenClaw lifecycle actions through its cron CLI names', async () => {
-    await runExternalAutomationAction({
-      managerId: 'openclaw:local',
-      provider: 'openclaw',
-      target: { type: 'local' },
-      jobId: 'job-1',
-      action: 'pause'
-    })
-
-    expect(runProcessMock).toHaveBeenCalledWith({
-      program: 'openclaw',
-      args: ['cron', 'disable', 'job-1'],
-      timeoutMs: 30_000
-    })
-  })
-})
-
-describe('listExternalAutomationRuns', () => {
-  it('requests paginated Hermes runs from the remote relay', async () => {
-    const request = vi.fn().mockResolvedValue({
-      total: 42,
-      runs: [
-        {
-          id: 'job-1:2026-05-15_09-00-00.md',
-          job_id: 'job-1',
-          run_at: '2026-05-15T09:00:00',
-          status: 'completed',
-          output_preview: 'No risky dependency changes.'
-        }
-      ]
-    })
-    vi.mocked(getActiveMultiplexer).mockReturnValue({
-      isDisposed: () => false,
-      request
-    } as unknown as ReturnType<typeof getActiveMultiplexer>)
-
+  it('refuses actions on an SSH host without launching locally', async () => {
     await expect(
-      listExternalAutomationRuns({
-        managerId: 'hermes:ssh:ssh-1',
-        provider: 'hermes',
+      runExternalAutomationAction({
+        managerId: 'openclaw:ssh:ssh-1',
+        provider: 'openclaw',
         target: { type: 'ssh', connectionId: 'ssh-1' },
         jobId: 'job-1',
-        page: 2,
-        pageSize: 10
+        action: 'run'
       })
-    ).resolves.toMatchObject({
-      managerId: 'hermes:ssh:ssh-1',
-      provider: 'hermes',
-      jobId: 'job-1',
-      page: 2,
-      pageSize: 10,
-      total: 42,
-      runs: [
-        {
-          id: 'job-1:2026-05-15_09-00-00.md',
-          managerId: 'hermes:ssh:ssh-1',
-          provider: 'hermes',
-          jobId: 'job-1',
-          runAt: '2026-05-15T09:00:00',
-          status: 'completed',
-          outputPreview: 'No risky dependency changes.'
-        }
-      ]
-    })
-
-    expect(request).toHaveBeenCalledWith('externalAutomations.runs', {
-      provider: 'hermes',
-      jobId: 'job-1',
-      page: 2,
-      pageSize: 10
-    })
-  })
-
-  it('reports a structured -32601 as an unsupported runs endpoint', async () => {
-    // Shaped like the multiplexer's rejection: a non-enumerable `code` that no
-    // amount of message parsing on the far side of IPC could recover.
-    const rejection = new Error('Method not found: externalAutomations.runs')
-    Object.defineProperty(rejection, 'code', { value: -32601 })
-    vi.mocked(getActiveMultiplexer).mockReturnValue({
-      isDisposed: () => false,
-      request: vi.fn().mockRejectedValue(rejection)
-    } as unknown as ReturnType<typeof getActiveMultiplexer>)
-
-    await expect(
-      listExternalAutomationRuns({
-        managerId: 'hermes:ssh:ssh-1',
-        provider: 'hermes',
-        target: { type: 'ssh', connectionId: 'ssh-1' },
-        jobId: 'job-1',
-        page: 1,
-        pageSize: 10
-      })
-    ).rejects.toMatchObject({ code: EXTERNAL_AUTOMATION_SCOPE_CODES.runsUnsupported })
-  })
-
-  it('propagates a relay failure that only reads like a missing method', async () => {
-    // No code, so the peer never declined the method — this is a broken call, and
-    // reporting it as "no runs endpoint" would show a truncated list as complete.
-    vi.mocked(getActiveMultiplexer).mockReturnValue({
-      isDisposed: () => false,
-      request: vi.fn().mockRejectedValue(new Error('relay crashed: method not found in registry'))
-    } as unknown as ReturnType<typeof getActiveMultiplexer>)
-
-    await expect(
-      listExternalAutomationRuns({
-        managerId: 'hermes:ssh:ssh-1',
-        provider: 'hermes',
-        target: { type: 'ssh', connectionId: 'ssh-1' },
-        jobId: 'job-1',
-        page: 1,
-        pageSize: 10
-      })
-    ).rejects.toThrow('relay crashed: method not found in registry')
+    ).rejects.toThrow(SSH_HOST_NOT_SERVED_MESSAGE)
+    expect(runProcessMock).not.toHaveBeenCalled()
   })
 })
 

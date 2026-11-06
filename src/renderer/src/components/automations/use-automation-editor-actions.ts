@@ -1,24 +1,26 @@
 import { useCallback } from 'react'
+import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
+import { useAppStore } from '@/store'
+import { buildAutomationEditDraft, buildExternalAutomationEditDraft } from './automation-edit-draft'
+import { AUTOMATION_DEFAULT_TIME, getDefaultWorktree } from './automation-draft-model'
+import type { AutomationTemplate } from './automation-templates'
 import type {
   ExternalAutomationJob,
   ExternalAutomationManager
 } from '../../../../shared/automations-types'
-import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
-import { useAppStore } from '@/store'
+import type { ExternalAutomationScope } from './external-automation-scope-client'
+import { desktopExternalAutomationOwner } from './external-automation-scope-client'
 import { getAutomationCreateRepos } from './automation-create-projects'
-import { buildAutomationEditDraft, buildExternalAutomationEditDraft } from './automation-edit-draft'
-import { AUTOMATION_DEFAULT_TIME, getDefaultWorktree } from './automation-draft-model'
-import type { AutomationTemplate } from './automation-templates'
+import { repoMatchesExternalAutomationTarget } from './automation-external-target-match'
 import { dispatchAutomationReread } from './automation-row-action-dispatch'
 import { listAutomationsForTarget } from './automation-host-client'
-import { repoMatchesExternalAutomationTarget } from './automation-external-target-match'
-import type { ExternalAutomationScope } from './external-automation-scope-client'
 import type { AutomationDraft } from './AutomationEditorDialog'
 import type { AutomationListRow } from './automation-list-row-identity'
 import type { AutomationsPageDestinationState } from './use-automations-page-destination-state'
 import type { AutomationsPageDestinationFormState } from './use-automations-page-destination-form'
 import type { AutomationsPageLocalState } from './use-automations-page-local-state'
 import type { AutomationsPageStoreState } from './use-automations-page-store-state'
+import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 
 /** Dialog open/edit actions, including host-captured re-reads and project changes. */
 export function useAutomationEditorActions({
@@ -32,33 +34,34 @@ export function useAutomationEditorActions({
   destination: AutomationsPageDestinationState
   destinationForm: AutomationsPageDestinationFormState
 }) {
-  const { defaultAgent, worktreesByRepo, repoMap, fetchWorktrees, repos } = store
+  const { defaultAgent, worktreesByRepo, fetchWorktrees, repos, repoMap } = store
   const {
     editRequestRef,
     setEditingAutomationId,
     setEditingRowKey,
     setEditingDestination,
     setEditingHostStableKey,
-    setEditingExternalTarget,
-    setCreateTarget,
     setDraft,
     setDraftAtOpen,
+    setTargetEdited,
     setCreateOpen,
+    setCreateTarget,
+    setEditingExternalTarget,
     draftRef,
     editingAutomationId,
     editingHostStableKey
   } = local
   const { getDefaultTarget, automationDispatchContext, rowRecoveryHost } = destination
-  const { destinationForProject, editHostResolution } = destinationForm
+  const { destinationForProject, editHostResolution, editDestinationControl } = destinationForm
 
   const openCreateDialog = (template?: AutomationTemplate): void => {
     editRequestRef.current += 1
     const target = getDefaultTarget()
     setEditingAutomationId(null)
     setEditingExternalTarget(null)
+    setCreateTarget('orca')
     setEditingDestination(null)
     setEditingHostStableKey(null)
-    setCreateTarget('orca')
     const baseDraft: AutomationDraft = {
       name: '',
       prompt: '',
@@ -94,13 +97,52 @@ export function useAutomationEditorActions({
       : baseDraft
     setDraft(nextDraft)
     setDraftAtOpen(nextDraft)
+    setTargetEdited(false)
+    setCreateOpen(true)
+  }
+
+  const openEditExternalDialog = (
+    manager: ExternalAutomationManager,
+    job: ExternalAutomationJob,
+    scope: ExternalAutomationScope
+  ): void => {
+    if (!desktopExternalAutomationOwner(scope)) {
+      return
+    }
+    editRequestRef.current += 1
+    const targetWorktree = Object.values(worktreesByRepo)
+      .flat()
+      .find((worktree) => {
+        const repo = repoMap.get(worktree.repoId)
+        return (
+          repo !== undefined &&
+          repoMatchesExternalAutomationTarget(repo, manager.target) &&
+          job.workdir !== null &&
+          worktree.path === job.workdir
+        )
+      })
+    const localRepos = getAutomationCreateRepos(repos, { kind: 'local' })
+    const fallbackRepo = localRepos[0] ?? null
+    const fallbackWorktree = fallbackRepo
+      ? getDefaultWorktree(worktreesByRepo[fallbackRepo.id] ?? [])
+      : null
+    const nextDraft = buildExternalAutomationEditDraft(job, {
+      projectId: targetWorktree?.repoId ?? fallbackRepo?.id ?? '',
+      workspaceId: targetWorktree?.id ?? fallbackWorktree?.id ?? ''
+    })
+    setEditingAutomationId(null)
+    setEditingRowKey(null)
+    setEditingDestination(null)
+    setEditingHostStableKey(null)
+    setEditingExternalTarget({ manager, job, scope })
+    setCreateTarget('hermes')
+    setDraft(nextDraft)
+    setDraftAtOpen(nextDraft)
     setCreateOpen(true)
   }
 
   const openEditDialog = async (row: AutomationListRow): Promise<void> => {
     const requestId = (editRequestRef.current += 1)
-    setEditingExternalTarget(null)
-    setCreateTarget('orca')
     const automationId = row.automation.id
     const reread = await dispatchAutomationReread(
       automationDispatchContext,
@@ -129,47 +171,19 @@ export function useAutomationEditorActions({
     const nextDraft = buildAutomationEditDraft(latest)
     setDraft(nextDraft)
     setDraftAtOpen(nextDraft)
-    setCreateOpen(true)
-  }
-
-  const openEditExternalDialog = (
-    manager: ExternalAutomationManager,
-    job: ExternalAutomationJob,
-    scope: ExternalAutomationScope
-  ): void => {
-    editRequestRef.current += 1
-    const targetWorktree = Object.values(worktreesByRepo)
-      .flat()
-      .find((worktree) => {
-        const repo = repoMap.get(worktree.repoId)
-        return (
-          repo !== undefined &&
-          repoMatchesExternalAutomationTarget(repo, manager.target) &&
-          job.workdir !== null &&
-          worktree.path === job.workdir
-        )
-      })
-    const localRepos = getAutomationCreateRepos(repos, { kind: 'local' })
-    const fallbackRepo = localRepos[0] ?? null
-    const fallbackWorktree = fallbackRepo
-      ? getDefaultWorktree(worktreesByRepo[fallbackRepo.id] ?? [])
-      : null
-    const projectId = targetWorktree?.repoId ?? fallbackRepo?.id ?? ''
-    const workspaceId = targetWorktree?.id ?? fallbackWorktree?.id ?? ''
-    const nextDraft = buildExternalAutomationEditDraft(job, { projectId, workspaceId })
-    setEditingAutomationId(null)
-    setEditingRowKey(null)
-    setEditingDestination(null)
-    setEditingHostStableKey(null)
-    setEditingExternalTarget({ manager, job, scope })
-    setCreateTarget('hermes')
-    setDraft(nextDraft)
-    setDraftAtOpen(nextDraft)
+    setTargetEdited(false)
     setCreateOpen(true)
   }
 
   const handleProjectChange = useCallback(
     (projectId: string): void => {
+      setTargetEdited(true)
+      if (
+        editDestinationControl.recordedProject?.id === projectId &&
+        draftRef.current.projectId === projectId
+      ) {
+        return
+      }
       const currentWorktrees = worktreesByRepo[projectId] ?? []
       const currentDefaultWorktree = getDefaultWorktree(currentWorktrees)
       const selectedEditDestination =
@@ -201,7 +215,7 @@ export function useAutomationEditorActions({
         baseBranch: ''
       }))
       void fetchWorktrees(projectId, worktreeFetchOptions).then(() => {
-        const latestWorktrees = useAppStore.getState().worktreesByRepo[projectId] ?? []
+        const latestWorktrees = selectWorktreesByRepo(useAppStore.getState())[projectId] ?? []
         const latestWorktree = getDefaultWorktree(latestWorktrees)
         if (!latestWorktree) {
           return
@@ -215,6 +229,8 @@ export function useAutomationEditorActions({
     },
     [
       destinationForProject,
+      editDestinationControl.recordedProject,
+      draftRef,
       editingAutomationId,
       editingHostStableKey,
       editHostResolution,
@@ -222,6 +238,7 @@ export function useAutomationEditorActions({
       setEditingHostStableKey,
       setEditingDestination,
       setDraft,
+      setTargetEdited,
       worktreesByRepo
     ]
   )
@@ -233,8 +250,11 @@ export function useAutomationEditorActions({
       setDraft(next)
       if (
         editingAutomationId !== null &&
-        (next.projectId !== current.projectId || next.workspaceId !== current.workspaceId)
+        (next.projectId !== current.projectId ||
+          next.workspaceId !== current.workspaceId ||
+          next.workspaceMode !== current.workspaceMode)
       ) {
+        setTargetEdited(true)
         const target = destinationForProject(next.projectId, editingHostStableKey)
         setEditingDestination(target ? { projectId: next.projectId, destination: target } : null)
         if (target) {
@@ -248,6 +268,7 @@ export function useAutomationEditorActions({
       editingAutomationId,
       editingHostStableKey,
       setDraft,
+      setTargetEdited,
       setEditingDestination,
       setEditingHostStableKey
     ]

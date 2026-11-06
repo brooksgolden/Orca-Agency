@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Why: The rendered split-drag suite shares DOM geometry and pointer helpers across drop-placement scenarios. */
 /**
  * @vitest-environment happy-dom
  */
@@ -6,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Tab, TabGroup, TabGroupLayoutNode } from '../../../../shared/tab-types'
 import { useAppStore } from '../../store'
+import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import type { TabDragItemData } from './useTabDragSplit'
 import { shouldActivateTabDragFromDistanceSample } from './tab-drag-pointer-sensor'
 import {
@@ -22,13 +24,39 @@ vi.mock('../browser-pane/host-guest/webview-registry', () => ({
   acquireWebviewsDragPassthrough: vi.fn(() => vi.fn())
 }))
 
-vi.mock('../../runtime/web-runtime-session', () => ({
-  isWebRuntimeSessionActive: vi.fn(() => false),
-  moveWebRuntimeSessionTab: vi.fn()
+vi.mock('../../runtime/web-runtime-session-environment', () => ({
+  isWebRuntimeSessionActive: vi.fn(() => false)
+}))
+vi.mock('../../runtime/web-runtime-session-tab-move', () => ({ moveWebRuntimeSessionTab: vi.fn() }))
+// A layout-owner build sends the drop to main, whose frame draws it (tab-moves-drawn-from-frames).
+const layoutOwner = vi.hoisted(() => ({ drop: vi.fn(() => true) }))
+vi.mock('./tab-group-layout-owner-commands', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  dropTabThroughLayoutOwner: layoutOwner.drop
 }))
 
 const WT = 'wt-1'
+
+/** The drop split tab-1 off beside group-2: through main in a layout-owner build, else here. */
+function expectSplitBesideGroup2(dropUnifiedTab: ReturnType<typeof vi.fn>): void {
+  if (ORCA_LAYOUT_OWNER_IS_MAIN) {
+    expect(layoutOwner.drop).toHaveBeenCalledWith(WT, {
+      kind: 'split',
+      tabId: 'tab-1',
+      groupId: 'group-2',
+      direction: 'right'
+    })
+    expect(dropUnifiedTab).not.toHaveBeenCalled()
+    return
+  }
+  expect(dropUnifiedTab).toHaveBeenCalledWith('tab-1', {
+    groupId: 'group-2',
+    splitDirection: 'right'
+  })
+}
 const mounted: { container: HTMLDivElement; root: Root }[] = []
+const originalReorderUnifiedTabs = useAppStore.getState().reorderUnifiedTabs
+const originalDropUnifiedTab = useAppStore.getState().dropUnifiedTab
 
 function makeGroup(id: string, tabOrder: string[]): TabGroup {
   return {
@@ -74,14 +102,33 @@ function rect({
 
 function addPanelGeometry(groupId: string, panelRect: DOMRect, bodyRect: DOMRect): HTMLElement {
   const panel = document.createElement('div')
+  const strip = document.createElement('div')
   const body = document.createElement('div')
+  strip.dataset.tabGroupStripId = groupId
+  strip.dataset.worktreeId = WT
+  strip.getBoundingClientRect = () =>
+    rect({ left: panelRect.left, top: panelRect.top, width: panelRect.width, height: 32 })
   body.dataset.tabGroupBodyId = groupId
   body.dataset.worktreeId = WT
   panel.getBoundingClientRect = () => panelRect
   body.getBoundingClientRect = () => bodyRect
+  panel.appendChild(strip)
   panel.appendChild(body)
   document.body.appendChild(panel)
   return panel
+}
+
+function addStripTab(
+  panel: HTMLElement,
+  visibleTabId: string,
+  unifiedTabId: string,
+  tabRect: DOMRect
+): void {
+  const tab = document.createElement('div')
+  tab.dataset.tabId = visibleTabId
+  tab.dataset.unifiedTabId = unifiedTabId
+  tab.getBoundingClientRect = () => tabRect
+  panel.querySelector('[data-tab-group-strip-id]')?.appendChild(tab)
 }
 
 function makeDragEvent(activeData: TabDragItemData, pointer: { x: number; y: number }) {
@@ -118,7 +165,10 @@ function renderDragHook(
 }
 
 beforeEach(() => {
+  layoutOwner.drop.mockClear()
   useAppStore.setState({
+    reorderUnifiedTabs: originalReorderUnifiedTabs,
+    dropUnifiedTab: originalDropUnifiedTab,
     activeWorktreeId: WT,
     activeGroupIdByWorktree: { [WT]: 'group-1' },
     groupsByWorktree: {
@@ -294,17 +344,18 @@ describe('useTabDragSplit', () => {
   it.each(['split', 'insertion'])(
     'does not restore a %s preview after blur cleared the drag',
     async (preview) => {
-      if (preview === 'split') {
-        addPanelGeometry(
-          'group-2',
-          rect({ left: 500, top: 0, width: 400, height: 600 }),
-          rect({ left: 500, top: 32, width: 400, height: 568 })
-        )
-      }
+      addPanelGeometry(
+        'group-2',
+        rect({ left: 500, top: 0, width: 400, height: 600 }),
+        rect({ left: 500, top: 32, width: 400, height: 568 })
+      )
       const onRender = vi.fn()
       const drag = renderDragHook(onRender)
       const event = {
-        ...makeDragEvent(makeDragData('group-1'), { x: 880, y: 300 }),
+        ...makeDragEvent(makeDragData('group-1'), {
+          x: 880,
+          y: preview === 'split' ? 300 : 16
+        }),
         ...(preview === 'insertion'
           ? {
               over: {
@@ -365,8 +416,7 @@ describe('useTabDragSplit', () => {
             typeof drag.onDragStart
           >[0]
         )
-        // Why: dispatch in the same turn as drag start so the fallback must be
-        // installed synchronously, before React can run passive effects.
+        // Dispatch before passive effects to verify missed-end listeners are installed synchronously.
         window.dispatchEvent(new MouseEvent(eventName, { bubbles: true }))
       })
       expect(drag.isTabDragActiveRef.current).toBe(true)
@@ -409,10 +459,386 @@ describe('useTabDragSplit', () => {
     })
 
     expect(drag.isTabDragActiveRef.current).toBe(false)
-    expect(dropUnifiedTab).toHaveBeenCalledWith('tab-1', {
-      groupId: 'group-2',
-      splitDirection: 'right'
+    expectSplitBesideGroup2(dropUnifiedTab)
+  })
+
+  it('commits the visible insertion marker when pointerup loses the hovered tab', () => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(
+      panel,
+      'editor-file-1',
+      'tab-1',
+      rect({ left: 100, top: 0, width: 100, height: 32 })
+    )
+    const onRender = vi.fn()
+    const drag = renderDragHook(onRender)
+    const activeData = makeDragData('group-1', 'tab-3')
+    const moveEvent = {
+      ...makeDragEvent(activeData, { x: 120, y: 16 }),
+      over: {
+        data: {
+          current: { ...makeDragData('group-1', 'tab-1'), visibleTabId: 'editor-file-1' }
+        },
+        rect: rect({ left: 100, top: 0, width: 100, height: 32 })
+      }
+    }
+    act(() => drag.onDragStart(moveEvent as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(moveEvent as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(onRender.mock.lastCall?.[0].hoveredTabInsertion).toEqual({
+      groupId: 'group-1',
+      unifiedTabId: 'tab-1',
+      visibleTabId: 'editor-file-1',
+      side: 'left'
     })
+
+    act(() =>
+      drag.onDragEnd(
+        makeDragEvent(activeData, { x: 120, y: 16 }) as unknown as Parameters<
+          typeof drag.onDragEnd
+        >[0]
+      )
+    )
+    expect(useAppStore.getState().groupsByWorktree[WT]?.[0]?.tabOrder).toEqual(['tab-3', 'tab-1'])
+  })
+
+  it('does not commit an old insertion marker after the pointer leaves the tab strip', () => {
+    addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    const drag = renderDragHook()
+    const activeData = makeDragData('group-1', 'tab-3')
+    const moveEvent = {
+      ...makeDragEvent(activeData, { x: 120, y: 16 }),
+      over: {
+        data: { current: makeDragData('group-1', 'tab-1') },
+        rect: rect({ left: 100, top: 0, width: 100, height: 32 })
+      }
+    }
+    act(() => drag.onDragStart(moveEvent as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(moveEvent as unknown as Parameters<typeof drag.onDragMove>[0]))
+    act(() =>
+      drag.onDragEnd(
+        makeDragEvent(activeData, { x: 120, y: 300 }) as unknown as Parameters<
+          typeof drag.onDragEnd
+        >[0]
+      )
+    )
+    expect(useAppStore.getState().groupsByWorktree[WT]?.[0]?.tabOrder).toEqual(['tab-1', 'tab-3'])
+  })
+
+  it('shows an append marker on a blank strip and commits that same reorder', () => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(panel, 'tab-1', 'tab-1', rect({ left: 0, top: 0, width: 100, height: 32 }))
+    addStripTab(panel, 'tab-3', 'tab-3', rect({ left: 100, top: 0, width: 100, height: 32 }))
+    const onRender = vi.fn()
+    const drag = renderDragHook(onRender)
+    const activeData = makeDragData('group-1', 'tab-1')
+    const event = {
+      ...makeDragEvent(activeData, { x: 390, y: 16 }),
+      over: { data: { current: { kind: 'pane-body', worktreeId: WT, groupId: 'group-1' } } }
+    }
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(onRender.mock.lastCall?.[0].hoveredDropTarget).toBeNull()
+    expect(onRender.mock.lastCall?.[0].hoveredTabInsertion).toEqual({
+      groupId: 'group-1',
+      unifiedTabId: 'tab-3',
+      visibleTabId: 'tab-3',
+      side: 'right'
+    })
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(useAppStore.getState().groupsByWorktree[WT]?.[0]?.tabOrder).toEqual(['tab-3', 'tab-1'])
+  })
+
+  it('shows an insert-before marker in blank space before the first tab', () => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(panel, 'tab-1', 'tab-1', rect({ left: 100, top: 0, width: 100, height: 32 }))
+    addStripTab(panel, 'tab-3', 'tab-3', rect({ left: 220, top: 0, width: 100, height: 32 }))
+    const onRender = vi.fn()
+    const drag = renderDragHook(onRender)
+    const activeData = makeDragData('group-1', 'tab-3')
+    const event = makeDragEvent(activeData, { x: 50, y: 16 })
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(onRender.mock.lastCall?.[0].hoveredTabInsertion).toEqual({
+      groupId: 'group-1',
+      unifiedTabId: 'tab-1',
+      visibleTabId: 'tab-1',
+      side: 'left'
+    })
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(useAppStore.getState().groupsByWorktree[WT]?.[0]?.tabOrder).toEqual(['tab-3', 'tab-1'])
+  })
+
+  it('does not append the dragged first tab when released in blank space before itself', () => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(panel, 'tab-1', 'tab-1', rect({ left: 100, top: 0, width: 100, height: 32 }))
+    addStripTab(panel, 'tab-3', 'tab-3', rect({ left: 220, top: 0, width: 100, height: 32 }))
+    const onRender = vi.fn()
+    const drag = renderDragHook(onRender)
+    const event = makeDragEvent(makeDragData('group-1', 'tab-1'), { x: 50, y: 16 })
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(onRender.mock.lastCall?.[0].hoveredTabInsertion).toBeNull()
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(useAppStore.getState().groupsByWorktree[WT]?.[0]?.tabOrder).toEqual(['tab-1', 'tab-3'])
+  })
+
+  it('ignores tabs clipped outside the scroll viewport when choosing an insertion target', () => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(panel, 'tab-1', 'tab-1', rect({ left: 0, top: 0, width: 100, height: 32 }))
+    addStripTab(panel, 'tab-3', 'tab-3', rect({ left: 300, top: 0, width: 100, height: 32 }))
+    const strip = panel.querySelector('[data-tab-group-strip-id]')
+    const scroller = document.createElement('div')
+    scroller.className = 'terminal-tab-strip'
+    scroller.getBoundingClientRect = () => rect({ left: 0, top: 0, width: 200, height: 32 })
+    while (strip?.firstChild) {
+      scroller.appendChild(strip.firstChild)
+    }
+    strip?.appendChild(scroller)
+    const onRender = vi.fn()
+    const drag = renderDragHook(onRender)
+    const event = makeDragEvent(makeDragData('group-1', 'tab-1'), { x: 350, y: 16 })
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(onRender.mock.lastCall?.[0].hoveredTabInsertion).toBeNull()
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(useAppStore.getState().groupsByWorktree[WT]?.[0]?.tabOrder).toEqual(['tab-1', 'tab-3'])
+  })
+
+  it('shows no insertion marker when the pointer is outside all panes', () => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(panel, 'tab-3', 'tab-3', rect({ left: 100, top: 0, width: 100, height: 32 }))
+    const onRender = vi.fn()
+    const drag = renderDragHook(onRender)
+    const activeData = makeDragData('group-1', 'tab-1')
+    const event = {
+      ...makeDragEvent(activeData, { x: 450, y: 16 }),
+      over: {
+        data: { current: makeDragData('group-1', 'tab-3') },
+        rect: rect({ left: 100, top: 0, width: 100, height: 32 })
+      }
+    }
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(onRender.mock.lastCall?.[0].hoveredTabInsertion).toBeNull()
+    expect(onRender.mock.lastCall?.[0].hoveredDropTarget).toBeNull()
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(useAppStore.getState().groupsByWorktree[WT]?.[0]?.tabOrder).toEqual(['tab-1', 'tab-3'])
+  })
+
+  it('keeps source focus when dnd-kit reports another pane outside all panes', () => {
+    addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    const drag = renderDragHook()
+    const activeData = makeDragData('group-1')
+    const event = {
+      ...makeDragEvent(activeData, { x: 450, y: 16 }),
+      over: { data: { current: { kind: 'pane-body', worktreeId: WT, groupId: 'group-2' } } }
+    }
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(useAppStore.getState().activeGroupIdByWorktree[WT]).toBe('group-1')
+  })
+
+  it('drops into the pane under the pointer when dnd-kit reports another group', () => {
+    addPanelGeometry(
+      'group-2',
+      rect({ left: 500, top: 0, width: 400, height: 600 }),
+      rect({ left: 500, top: 32, width: 400, height: 568 })
+    )
+    const dropUnifiedTab = vi.fn(() => true)
+    useAppStore.setState({ dropUnifiedTab } as Partial<ReturnType<typeof useAppStore.getState>>)
+    const drag = renderDragHook()
+    const activeData = makeDragData('group-1')
+    const event = {
+      ...makeDragEvent(activeData, { x: 700, y: 300 }),
+      over: { data: { current: { kind: 'pane-body', worktreeId: WT, groupId: 'group-1' } } }
+    }
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(useAppStore.getState().activeGroupIdByWorktree[WT]).toBe('group-2')
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(dropUnifiedTab).toHaveBeenCalledWith('tab-1', { groupId: 'group-2' })
+  })
+
+  it('appends to the strip under the pointer instead of another pane selected by dnd-kit', () => {
+    addPanelGeometry(
+      'group-2',
+      rect({ left: 500, top: 0, width: 400, height: 600 }),
+      rect({ left: 500, top: 32, width: 400, height: 568 })
+    )
+    const dropUnifiedTab = vi.fn(() => true)
+    useAppStore.setState({ dropUnifiedTab } as Partial<ReturnType<typeof useAppStore.getState>>)
+    const drag = renderDragHook()
+    const activeData = makeDragData('group-1', 'tab-3')
+    const event = {
+      ...makeDragEvent(activeData, { x: 760, y: 16 }),
+      over: {
+        data: { current: makeDragData('group-1', 'tab-1') },
+        rect: rect({ left: 100, top: 0, width: 100, height: 32 })
+      }
+    }
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+
+    expect(dropUnifiedTab).toHaveBeenCalledWith('tab-3', { groupId: 'group-2', index: 1 })
+  })
+
+  it('does not split or move a tab when release over itself loses the target', () => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(panel, 'tab-1', 'tab-1', rect({ left: 0, top: 0, width: 100, height: 32 }))
+    const dropUnifiedTab = vi.fn(() => true)
+    const reorderUnifiedTabs = vi.fn()
+    useAppStore.setState({ dropUnifiedTab, reorderUnifiedTabs })
+    const drag = renderDragHook()
+    const event = makeDragEvent(makeDragData('group-1'), { x: 5, y: 16 })
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+
+    expect(dropUnifiedTab).not.toHaveBeenCalled()
+    expect(reorderUnifiedTabs).not.toHaveBeenCalled()
+  })
+
+  it('does not move a tab when released over a control in another strip', () => {
+    const panel = addPanelGeometry(
+      'group-2',
+      rect({ left: 500, top: 0, width: 400, height: 600 }),
+      rect({ left: 500, top: 32, width: 400, height: 568 })
+    )
+    const button = document.createElement('button')
+    panel.querySelector('[data-tab-group-strip-id]')?.appendChild(button)
+    const previous = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => button
+    })
+    try {
+      const dropUnifiedTab = vi.fn(() => true)
+      useAppStore.setState({ dropUnifiedTab } as Partial<ReturnType<typeof useAppStore.getState>>)
+      const drag = renderDragHook()
+      const event = makeDragEvent(makeDragData('group-1'), { x: 760, y: 16 })
+      act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+      act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+      expect(useAppStore.getState().activeGroupIdByWorktree[WT]).toBe('group-1')
+      act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+      expect(dropUnifiedTab).not.toHaveBeenCalled()
+    } finally {
+      if (previous) {
+        Object.defineProperty(document, 'elementFromPoint', previous)
+      } else {
+        Reflect.deleteProperty(document, 'elementFromPoint')
+      }
+    }
+  })
+
+  it.each([
+    { activeTabId: 'tab-1', pointerX: 120 },
+    { activeTabId: 'tab-3', pointerX: 80 }
+  ])('shows no insertion line for an unchanged adjacent slot', ({ activeTabId, pointerX }) => {
+    const panel = addPanelGeometry(
+      'group-1',
+      rect({ left: 0, top: 0, width: 400, height: 600 }),
+      rect({ left: 0, top: 32, width: 400, height: 568 })
+    )
+    addStripTab(panel, 'tab-1', 'tab-1', rect({ left: 0, top: 0, width: 100, height: 32 }))
+    addStripTab(panel, 'tab-3', 'tab-3', rect({ left: 100, top: 0, width: 100, height: 32 }))
+    const reorderUnifiedTabs = vi.fn()
+    useAppStore.setState({ reorderUnifiedTabs } as Partial<ReturnType<typeof useAppStore.getState>>)
+    const onRender = vi.fn()
+    const drag = renderDragHook(onRender)
+    const event = makeDragEvent(makeDragData('group-1', activeTabId), {
+      x: pointerX,
+      y: 16
+    })
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+    expect(onRender.mock.lastCall?.[0].hoveredTabInsertion).toBeNull()
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(reorderUnifiedTabs).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { label: 'rejects a pane covered by another floating surface', hostWorktreeId: '' },
+    { label: 'accepts terminal content overlay', hostWorktreeId: WT },
+    { label: 'accepts browser content overlay', hostWorktreeId: WT },
+    { label: 'rejects an overlay from another worktree', hostWorktreeId: 'other' }
+  ])('$label', ({ hostWorktreeId }) => {
+    addPanelGeometry(
+      'group-2',
+      rect({ left: 500, top: 0, width: 400, height: 600 }),
+      rect({ left: 500, top: 32, width: 400, height: 568 })
+    )
+    const surface = document.createElement('div')
+    if (hostWorktreeId) {
+      surface.dataset.retainedPaneHost = ''
+      surface.dataset.retainedPaneGroupId = 'group-2'
+      surface.dataset.retainedPaneWorktreeId = hostWorktreeId
+    }
+    const content = document.createElement('div')
+    surface.appendChild(content)
+    document.body.appendChild(surface)
+    const previous = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => content
+    })
+    try {
+      const dropUnifiedTab = vi.fn(() => true)
+      useAppStore.setState({ dropUnifiedTab } as Partial<ReturnType<typeof useAppStore.getState>>)
+      const drag = renderDragHook()
+      const event = makeDragEvent(makeDragData('group-1'), { x: 880, y: 300 })
+      act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+      act(() => drag.onDragMove(event as unknown as Parameters<typeof drag.onDragMove>[0]))
+      act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+      if (hostWorktreeId === WT) {
+        expect(dropUnifiedTab).toHaveBeenCalledWith('tab-1', {
+          groupId: 'group-2',
+          splitDirection: 'right'
+        })
+      } else {
+        expect(dropUnifiedTab).not.toHaveBeenCalled()
+      }
+    } finally {
+      if (previous) {
+        Object.defineProperty(document, 'elementFromPoint', previous)
+      } else {
+        Reflect.deleteProperty(document, 'elementFromPoint')
+      }
+    }
   })
 
   it('commits a geometry-only pane split when drag end has no over target', () => {
@@ -442,9 +868,6 @@ describe('useTabDragSplit', () => {
       )
     })
 
-    expect(dropUnifiedTab).toHaveBeenCalledWith('tab-1', {
-      groupId: 'group-2',
-      splitDirection: 'right'
-    })
+    expectSplitBesideGroup2(dropUnifiedTab)
   })
 })

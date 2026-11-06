@@ -13,6 +13,7 @@ import type {
 } from '../terminal-pane/terminal-drop-surface'
 import { captureNativeTerminalFileDrop } from '../terminal-pane/terminal-native-file-drop-destination'
 import type { PreviewTerminalWorkspace } from './agent-terminal-preview-props'
+import { terminalPreviewApiFor } from './terminal-preview-api'
 
 export function usePreviewTerminalOsFileDropOwner(args: {
   ptyId: string
@@ -54,7 +55,7 @@ export function usePreviewTerminalOsFileDropOwner(args: {
         getPtyId: () => args.ptyId,
         isConnected: isCurrent,
         sendInput: () => false,
-        sendInputAccepted: (data) => window.api.terminalPreview.input(args.ptyId, data),
+        sendInputAccepted: (data) => terminalPreviewApiFor(args.ptyId).input(args.ptyId, data),
         getExecutionHostId: () => workspace.executionHostId,
         getRuntimeEnvironmentId: () => (host?.kind === 'runtime' ? host.environmentId : null)
       }

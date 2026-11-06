@@ -23,12 +23,17 @@ import {
   selectRuntimePaneTitlesForWorktree
 } from './worktree-card-status-inputs'
 import { getLatestWorkspaceAgentTitle } from './worktree-card-task-title'
+import { useStructuredChatTabNames } from '@/runtime/structured-chat-name-observation'
 
 export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const { worktree, repo } = props
   const foundation = useWorktreeCardFoundation({ worktree, repo })
   const showStatusContext = foundation.groupBy === 'workspace-status' && !props.affiliateListMode
   const statusContextAgents = useWorktreeAgentRows(worktree.id, showStatusContext)
+  const chatNames = useStructuredChatTabNames()
+  const unifiedTabs = useAppStore((s) =>
+    showStatusContext ? s.unifiedTabsByWorktree[worktree.id] : undefined
+  )
   const statusLayoutsByTabId = useAppStore(
     useShallow((s) =>
       showStatusContext ? selectTerminalLayoutsForWorktree(s, worktree.id) : EMPTY_TERMINAL_LAYOUTS
@@ -47,7 +52,9 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
           statusContextAgents,
           foundation.settings?.tabAutoGenerateTitle === true,
           statusLayoutsByTabId,
-          statusPaneTitlesByTabId
+          statusPaneTitlesByTabId,
+          chatNames,
+          unifiedTabs ? { [worktree.id]: unifiedTabs } : undefined
         )
       : null
   const review = useWorktreeCardReviewDetails({
@@ -70,14 +77,16 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   })
 
   const showStatus = foundation.cardProps.includes('status')
-  const showIssue = foundation.cardProps.includes('issue')
-  const showLinearIssue = foundation.cardProps.includes('linear-issue')
-  const showJiraIssue = foundation.cardProps.includes('jira-issue')
-  const showPR = foundation.cardProps.includes('pr')
-  const showAutomation = foundation.cardProps.includes('automation')
-  const showCli = foundation.cardProps.includes('cli')
-  const showComment = foundation.cardProps.includes('comment')
-  const showPorts = foundation.cardProps.includes('ports')
+  const {
+    issue: showIssue,
+    linearIssue: showLinearIssue,
+    jiraIssue: showJiraIssue,
+    pr: showPR,
+    automation: showAutomation,
+    cli: showCli,
+    comment: showComment,
+    ports: showPorts
+  } = foundation.cardDetails
   const shouldRefreshHostedReview = foundation.newCardStyle ? showStatus : showPR
   const detailsHoverControl = useWorktreeCardDetailsHoverControl()
   const hoverDetailsOpen = detailsHoverControl.hoverOpen
@@ -129,6 +138,7 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     isDeleting: linked.isDeleting,
     isSshDisconnected: foundation.isSshDisconnected,
     updateWorktreeMeta: foundation.updateWorktreeMeta,
+    setWorkspaceUnreadByUser: foundation.setWorkspaceUnreadByUser,
     openModal: foundation.openModal
   })
 
@@ -151,8 +161,6 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     onCardDragEnd: props.onCardDragEnd,
     onContextMenuSelect: props.onContextMenuSelect,
     folderWorkspaceId: review.folderWorkspaceId,
-    deleteFolderWorkspace: foundation.deleteFolderWorkspace,
-    setActiveWorktree: foundation.setActiveWorktree,
     setShowRenameErrorDialog: foundation.setShowRenameErrorDialog,
     isDeleting: linked.isDeleting,
     showDeleteQuickAction
@@ -180,9 +188,9 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     linkedBitbucketPR: review.linkedBitbucketPR,
     linkedAzureDevOpsPR: review.linkedAzureDevOpsPR,
     linkedGiteaPR: review.linkedGiteaPR,
-    cardProps: foundation.cardProps,
     newCardStyle: foundation.newCardStyle,
     compactCards: foundation.compactCards,
+    cardDetails: foundation.cardDetails,
     agentActivityDisplayMode: foundation.agentActivityDisplayMode,
     workspacePorts: foundation.workspacePorts,
     openTaskPage: foundation.openTaskPage,

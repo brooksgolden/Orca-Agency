@@ -360,7 +360,7 @@ describe('session-grid card ack (React #185)', () => {
 
   /**
    * The bell that arrives AFTER the card is already selected. A parked pane's BEL writes only
-   * `markTerminalTabUnread` — no agent status, no completion pane — so if the scan's guard does
+   * `markTerminalBell` — no agent status, no completion pane — so if the scan's guard does
    * not watch that map, nothing it tracks has moved and it takes the early exit. The card you
    * are looking at then wears a bell that no click can put out, and the Dock keeps the
    * workspace unread until you select something else and come back.
@@ -374,7 +374,9 @@ describe('session-grid card ack (React #185)', () => {
 
     // A parked pane rings while its card is the selected one.
     act(() => {
-      useAppStore.getState().markTerminalTabUnread('tab-2', 'terminal-bell')
+      useAppStore
+        .getState()
+        .markTerminalBell({ worktreeId: WT_ID, tabId: 'tab-2', paneKey: PANE_C })
     })
 
     expect(useAppStore.getState().unreadTerminalTabs['tab-2']).toBeUndefined()

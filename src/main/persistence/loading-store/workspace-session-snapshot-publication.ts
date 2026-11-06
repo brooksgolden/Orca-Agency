@@ -12,6 +12,8 @@ import {
 } from '../../terminal-scrollback-snapshot-async-migration'
 import { preserveRuntimeAuthoredWorkspaceSessionFields } from '../runtime-authored-workspace-session-fields'
 import { admitLocalWorkspaceTerminalMoves } from '../../runtime/workspace-session-terminal-moves'
+import { dropClosedTerminalTabs } from '../closed-terminal-tab-write-fence'
+import { keepWslMoveFrozenSessionsForStore } from '../moving-wsl-projects/wsl-move-session-freeze'
 import { registerPersistedPaneKeyAlias } from '../restoring-sessions/pane-alias-normalization'
 import {
   normalizeWorkspaceSessionPaneIdentities,
@@ -28,6 +30,7 @@ import {
   type SessionSnapshotOperations
 } from './session-snapshot-operations'
 import { scheduleSave } from './write-scheduling'
+import { orderTerminalRowsByTabGroups } from '../../../shared/workspace-layout/terminal-row-order'
 
 export function setLocalWorkspaceSession(
   owner: SessionSnapshotOperations,
@@ -41,15 +44,17 @@ export function setLocalWorkspaceSession(
   )
   const prior = admission.prior
   session = admission.session
+  session = keepWslMoveFrozenSessionsForStore(session, prior)
   // Why here and not at the callers: the before-unload stage path writes the renderer's payload
   // straight through, so a per-caller guard leaves the quit write erasing runtime-authored rows.
-  session = preserveRuntimeAuthoredWorkspaceSessionFields(session, prior)
+  // Quit staging bypasses caller guards; preserve runtime fields at the shared write boundary.
+  session = dropClosedTerminalTabs(preserveRuntimeAuthoredWorkspaceSessionFields(session, prior))
   session = sanitizeWorkspaceSessionTerminalRetirements(session, prior)
   session = pruneWorkspaceSessionBrowserHistory(
     pruneLocalTerminalScrollbackBuffers(session, context.runtime.state.repos)
   )
 
-  // Why (Issue #217): merge existing bindings when the incoming binding is empty, so a stale pre-spawn snapshot can't overwrite the durable PTY binding.
+  // Recover bindings from stale pre-spawn snapshots without reviving proven closes.
   const normalized = normalizeWorkspaceSessionPaneIdentities(session, prior?.terminalLayoutsByTabId)
   for (const entry of normalized.migrationUnsupportedEntries) {
     setMigrationUnsupportedPty(entry)
@@ -114,6 +119,8 @@ export function setLocalWorkspaceSession(
       retainedScrollbackRefs(context.runtime)
     )
   }
+  // Apply group ordering after prior steps finish rebasing stored rows.
+  session = orderTerminalRowsByTabGroups(session)
   context.runtime.state.workspaceSession = session
   if (deferSnapshotFiles) {
     enqueueTerminalScrollbackSnapshotWork(owner, prior, session)
@@ -124,11 +131,12 @@ export function setLocalWorkspaceSession(
     remappedManualUnread.changed
   ) {
     // UI remaps include protected fields, so keep the complete serializer boundary.
-    scheduleSave(context.scheduling)
+    scheduleSave(context.scheduling, undefined, LOCAL_EXECUTION_HOST_ID)
   } else {
     scheduleSave(
       context.scheduling,
-      remappedLeases.changed ? ['workspaceSession', 'sshRemotePtyLeases'] : ['workspaceSession']
+      remappedLeases.changed ? ['workspaceSession', 'sshRemotePtyLeases'] : ['workspaceSession'],
+      LOCAL_EXECUTION_HOST_ID
     )
   }
 }

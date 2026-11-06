@@ -12,7 +12,18 @@ describe('TERMINAL_ACCESSORY_KEYS', () => {
       bytes: '\x1b[1;2D',
       accessibilityLabel: 'Shift Left Arrow'
     })
-    expect(ids.indexOf('shiftArrowLeft')).toBe(ids.indexOf('shiftTab') - 1)
+    expect(ids.slice(0, 10)).toEqual([
+      'escape',
+      'enter',
+      'shiftArrowLeft',
+      'ctrlU',
+      'arrowUp',
+      'arrowDown',
+      'arrowLeft',
+      'arrowRight',
+      'tab',
+      'shiftTab'
+    ])
   })
 
   it('sends reverse-tab with a non-repeatable Shift+Tab key', () => {
@@ -47,7 +58,7 @@ describe('TERMINAL_ACCESSORY_KEYS', () => {
     expect(ids.indexOf('space')).toBeGreaterThan(ids.indexOf('shiftTab'))
     expect(ids.indexOf('space')).toBeLessThan(ids.indexOf('backspace'))
     expect(ids.indexOf('space')).toBeLessThan(ids.indexOf('delete'))
-    expect(ids.indexOf('space')).toBeLessThan(ids.indexOf('arrowUp'))
+    expect(ids.indexOf('space')).toBeGreaterThan(ids.indexOf('arrowRight'))
   })
 
   it('has unique non-empty built-in ids', () => {
@@ -133,6 +144,13 @@ describe('TERMINAL_ACCESSORY_KEYS', () => {
       bytes: '\x1b[3;3~',
       accessibilityLabel: 'Alt Del'
     })
+  })
+
+  it('builds desktop bytes for Shift+Enter and Ctrl+Backspace', () => {
+    expect(buildTerminalShortcutKey({ key: 'enter', modifiers: ['shift'] })?.bytes).toBe(
+      '\x1b[13;2u'
+    )
+    expect(buildTerminalShortcutKey({ key: 'backspace', modifiers: ['ctrl'] })?.bytes).toBe('\x17')
   })
 
   it('builds function-key terminal sequences', () => {

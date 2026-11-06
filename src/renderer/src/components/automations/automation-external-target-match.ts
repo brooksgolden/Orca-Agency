@@ -6,8 +6,7 @@ import {
 } from '../../../../shared/execution-host'
 import type { Repo } from '../../../../shared/repo-types'
 
-// Why: connectionId alone can disagree with the repo's pinned executionHostId;
-// the execution host is the authority for which Hermes target owns a repo.
+// connectionId can disagree with a repo's pinned executionHostId. The execution host owns the target.
 export function repoMatchesExternalAutomationTarget(
   repo: Pick<Repo, 'connectionId' | 'executionHostId'>,
   target: ExternalAutomationTarget

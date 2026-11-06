@@ -1,12 +1,19 @@
-import type { SpawnOptions as NodeSpawnOptions } from 'node:child_process'
 import { buildWindowsCmdShimCommandLine, isCmdInterpretedProgram } from './windows-command-line'
 import { resolveWindowsCmdShim } from './windows-cmd-shim-resolution'
 import type { ProcessSpec } from './process-spec'
 
+type SpawnOptions = Pick<
+  ProcessSpec,
+  'cwd' | 'env' | 'stdio' | 'serialization' | 'detached' | 'windowsVerbatimArguments'
+> & {
+  windowsHide?: boolean
+  shell?: false
+}
+
 export type ResolvedSpawn = {
   file: string
   args: readonly string[]
-  options: NodeSpawnOptions
+  options: SpawnOptions
 }
 
 /**
@@ -23,7 +30,7 @@ export type ResolvedSpawn = {
  */
 export function resolveSpawn(spec: ProcessSpec, platform: NodeJS.Platform): ResolvedSpawn {
   const args = spec.args ?? []
-  const base: NodeSpawnOptions = {
+  const base: SpawnOptions = {
     cwd: spec.cwd,
     env: spec.env,
     stdio: spec.stdio ?? ['pipe', 'pipe', 'pipe'],

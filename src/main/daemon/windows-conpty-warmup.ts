@@ -23,8 +23,7 @@ export function warmWindowsConptyOnce(spawnPty: typeof pty.spawn = spawnWarmupPt
   if (process.platform !== 'win32') {
     return
   }
-  // Why: setImmediate keeps the ready/handshake path ahead of the warm-up; a
-  // real spawn arriving first simply does the warming itself.
+  // Defer warmup so the daemon’s ready/handshake path can proceed first.
   setImmediate(() => {
     try {
       // Warm-up children must die with the daemon, even before its first real terminal.
@@ -58,7 +57,7 @@ export function warmWindowsConptyOnce(spawnPty: typeof pty.spawn = spawnWarmupPt
         releaseWarmupPty()
       })
     } catch {
-      /* warm-up is best-effort; real spawns surface their own errors */
+      /* Warmup is optional; real spawns report their own errors. */
     }
   })
 }

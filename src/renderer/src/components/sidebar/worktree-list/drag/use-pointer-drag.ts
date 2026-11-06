@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import type React from 'react'
-import type { WorkspaceStatus, Worktree } from '../../../../../../shared/worktree/types'
+import type { Worktree } from '../../../../../../shared/worktree/types'
 import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
 import { acquireWebviewsDragPassthrough } from '../../../browser-pane/host-guest/webview-drag-passthrough'
 import {
@@ -11,6 +11,7 @@ import {
 import { getWorktreeSidebarDragRectsForGroup } from '../../worktree-sidebar-drag-autoscroll'
 import { getWorktreeSidebarDragGrab } from '../../worktree-sidebar-drag-geometry'
 import type {
+  ShouldShowWorkspaceBoardDropIndicator,
   WorktreeDropCommitContext,
   WorktreeStatusDropAtIndexArgs
 } from './drop-commit-context'
@@ -20,6 +21,11 @@ import { useWorktreePointerDragAutoscroll } from './use-pointer-autoscroll'
 import { useWorktreePointerDragWindowEvents } from './use-pointer-window-events'
 import { flushWorktreePointerDragFrame } from './pointer-flush'
 import { EMPTY_WORKTREE_DRAG_PREVIEW_OFFSETS, type WorktreePointerDrag } from './row-state'
+import {
+  draggedWorktreeCopiesOf,
+  uniqueDraggedIds,
+  uniqueDraggedKeys
+} from './dragged-worktree-copies'
 
 export function useWorktreePointerDrag(args: {
   ctx: WorktreeDropCommitContext
@@ -33,10 +39,7 @@ export function useWorktreePointerDrag(args: {
   onWorkspaceBoardDragPreviewStart: () => void
   onWorkspaceBoardDragPreviewCommit: () => void
   onDropWorktreesOnWorkspaceBoard: (dropArgs: WorktreeStatusDropAtIndexArgs) => void
-  shouldShowWorkspaceBoardDropIndicator: (
-    worktreeIds: readonly string[],
-    status: WorkspaceStatus
-  ) => boolean
+  shouldShowWorkspaceBoardDropIndicator: ShouldShowWorkspaceBoardDropIndicator
 }) {
   const {
     ctx,
@@ -124,19 +127,20 @@ export function useWorktreePointerDrag(args: {
       suppressWorktreeClickUntilRef.current = window.performance.now() + 500
       setSidebarPointerDragDocumentStyles(true)
       session.worktreeDragSessionRef.current = {
-        draggingWorktreeId: drag.worktreeId,
+        draggingWorktreeId: drag.worktreeKey,
         sourceGroupKey: drag.sourceGroupKey,
         draggedIds: drag.draggedIds,
+        draggedCopies: drag.draggedCopies,
         reorderDraggedIds: drag.reorderDraggedIds,
-        reorderUnitDraggedIds: drag.reorderUnitDraggedIds,
+        reorderDraggedKeys: drag.reorderDraggedKeys,
+        reorderUnitDraggedKeys: drag.reorderUnitDraggedKeys,
         rects: drag.rects,
-        // Why: reuse the floating preview's own offset so the hit test tracks the
-        // card the user sees, not the raw pointer.
+        // Hit-test the floating card’s visual offset rather than the raw pointer.
         grab: getWorktreeSidebarDragGrab({ offsetY, height }),
         anchor: null
       }
       setWorktreeDragState({
-        draggingWorktreeId: drag.worktreeId,
+        draggingWorktreeId: drag.worktreeKey,
         sourceGroupKey: drag.sourceGroupKey,
         lineageDropTargetId: null,
         dropIndex: null,
@@ -172,14 +176,20 @@ export function useWorktreePointerDrag(args: {
         return
       }
       const rects = getWorktreeSidebarDragRectsForGroup(container, sourceGroupKey)
-      const draggedIds =
+      // Why: the board is opened only from its explicit toolbar button, never by starting a drag.
+      // Stable's drag-start board preview was not adopted (Agency keeps the terminal pane clear).
+      const draggedCopies = draggedWorktreeCopiesOf(
+        worktree,
+        selectedWorktrees,
         selectedWorktreeIds.has(getWorktreeHostIdentity(worktree)) && selectedWorktrees.length > 1
-          ? selectedWorktrees.map((worktree) => worktree.id)
-          : [worktreeId]
-      const reorderDraggedIds = session.getReorderDraggedIds(draggedIds)
-      const reorderUnitDraggedIds = session.getReorderUnitDraggedIds(
+      )
+      const draggedIds = draggedCopies.map((copy) => copy.id)
+      const reorderDraggedCopies = session.getReorderDraggedCopies(draggedCopies)
+      const reorderDraggedIds = uniqueDraggedIds(reorderDraggedCopies)
+      const reorderDraggedKeys = uniqueDraggedKeys(reorderDraggedCopies)
+      const reorderUnitDraggedKeys = session.getReorderUnitDraggedKeys(
         sourceGroupKey,
-        reorderDraggedIds
+        reorderDraggedKeys
       )
       worktreePointerDragRef.current = {
         pointerId: event.pointerId,
@@ -189,9 +199,12 @@ export function useWorktreePointerDrag(args: {
         currentX: event.clientX,
         currentY: event.clientY,
         worktreeId,
+        worktreeKey: getWorktreeHostIdentity(worktree),
         draggedIds,
+        draggedCopies: reorderDraggedCopies,
         reorderDraggedIds,
-        reorderUnitDraggedIds,
+        reorderDraggedKeys,
+        reorderUnitDraggedKeys,
         sourceGroupKey,
         rects,
         active: false,

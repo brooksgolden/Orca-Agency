@@ -3,6 +3,11 @@ import {
   type ChatSidebarRow,
   type ChatSidebarState
 } from './chat-sidebar-types'
+import {
+  chatInCheckedState,
+  resolveCollapseFolders,
+  resolveHideChats
+} from './chat-sidebar-chat-filters'
 import { chatCreationFolders, hiddenChatFolderLabels } from './chat-creation-folders'
 import { chatSidebarSplitGroups, type FocusedChatWorkspace } from './chat-sidebar-split-groups'
 import type { WorkspaceSplitGroup } from '@/lib/workspace-split-layout'
@@ -41,20 +46,32 @@ export function chatSidebarListItems(
   query: string,
   splits: readonly WorkspaceSplitGroup[] = [],
   collapsedGroups?: ReadonlySet<string>,
-  focused?: FocusedChatWorkspace
+  focused?: FocusedChatWorkspace,
+  /** Tabs on screen now; an idle chat in one of them stays visible. */
+  visibleTabIds?: ReadonlySet<string>
 ): ChatSidebarListItem[] {
   const settings = state.settings?.chatSidebar
   const groupBy = settings?.groupBy ?? 'status'
-  const keepEmptyFolders = !settings?.showOnlyOpenChats || settings.showOnlyInProgress === true
+  const hide = resolveHideChats(settings)
+  const collapse = resolveCollapseFolders(settings)
+  const collapseEnabled = collapse.doneClosed || collapse.doneOpen || collapse.idle
+  const hideEnabled = hide.doneClosed || hide.doneOpen || hide.idle
+  const keepEmptyFolders = !settings?.showOnlyOpenChats || hideEnabled
   const text = query.trim().toLocaleLowerCase()
   const hiddenFolders = hiddenChatFolderLabels(settings?.hiddenFolders, state.projectGroups)
   const matches = (row: ChatSidebarRow) =>
     `${row.title}\n${row.folder}`.toLocaleLowerCase().includes(text)
   const byWorkspace = new Map<string, ChatSidebarRow[]>()
   const folderCompletion = new Map<string, boolean>()
+  // Why: a folder whose chats were all hidden by Done or idle keeps its empty heading, as Done folders do.
+  const folderFilteredOut = new Map<string, boolean>()
+  // Why: a folder collapses only when every chat in it is in a checked Collapse Folders state.
+  const folderAllChecked = new Map<string, boolean>()
   for (const row of rows) {
     if (!row.automated) {
       folderCompletion.set(row.folder, (folderCompletion.get(row.folder) ?? true) && row.completed)
+      const filteredOut = chatInCheckedState(row, hide, visibleTabIds)
+      folderFilteredOut.set(row.folder, (folderFilteredOut.get(row.folder) ?? true) && filteredOut)
     }
   }
   const registeredFolders = chatCreationFolders(state.projectGroups).map((folder) => folder.name)
@@ -62,7 +79,7 @@ export function chatSidebarListItems(
     if (
       row.automated ||
       hiddenFolders.includes(row.folder) ||
-      (settings?.showOnlyInProgress && row.completed) ||
+      chatInCheckedState(row, hide, visibleTabIds) ||
       (settings?.showOnlyOpenChats && !row.tabId)
     ) {
       continue
@@ -112,12 +129,26 @@ export function chatSidebarListItems(
     })
     return { id, members }
   })
-  const joined = chatSidebarSplitGroups(
+  const workspaceSections = chatSidebarSplitGroups(
     chatSidebarPaneGroups(groups, state),
     splits,
     groupBy,
     focused
   )
+  const separatelyGroupedRows = new Set(
+    workspaceSections.flatMap((section) =>
+      section.groups.flatMap((group) =>
+        group.members.filter((row) => section.section !== row.folder).map((row) => row.id)
+      )
+    )
+  )
+  for (const row of rows) {
+    if (!row.automated && !separatelyGroupedRows.has(row.id)) {
+      const checked = chatInCheckedState(row, collapse, visibleTabIds)
+      folderAllChecked.set(row.folder, (folderAllChecked.get(row.folder) ?? true) && checked)
+    }
+  }
+  const joined = workspaceSections
     .filter((set) => !text || set.groups.some((group) => group.members.some(matches)))
     .map((set) => ({
       ...set,
@@ -136,6 +167,9 @@ export function chatSidebarListItems(
   const visibleFolders = new Set(
     joined.flatMap((set) => set.groups.flatMap((group) => group.members.map((row) => row.folder)))
   )
+  const emptiedFolders = new Set(
+    [...folderFilteredOut].filter(([, filteredOut]) => filteredOut).map(([folder]) => folder)
+  )
   const keys =
     groupBy === 'status'
       ? ['In progress', 'Done']
@@ -143,7 +177,7 @@ export function chatSidebarListItems(
         ? [
             ...new Set([
               ...sections.keys(),
-              ...(keepEmptyFolders ? [...folderCompletion.keys()] : []).filter(
+              ...(keepEmptyFolders ? [...folderCompletion.keys(), ...emptiedFolders] : []).filter(
                 (folder) =>
                   !hiddenFolders.includes(folder) &&
                   !visibleFolders.has(folder) &&
@@ -164,17 +198,17 @@ export function chatSidebarListItems(
       !section.length &&
       (groupBy !== 'folder' ||
         !keepEmptyFolders ||
-        (!folderCompletion.has(key) && !registeredFolders.includes(key)))
+        (!folderCompletion.has(key) &&
+          !emptiedFolders.has(key) &&
+          !registeredFolders.includes(key)))
     ) {
       return []
     }
     const headingId = `chat:${groupBy}:${key}`
     const doneFolder =
-      groupBy === 'folder' && settings?.collapseDoneFolders && folderCompletion.get(key)
-        ? key
-        : undefined
+      groupBy === 'folder' && collapseEnabled && folderAllChecked.get(key) ? key : undefined
     const sectionRows = section.flatMap((set) => set.groups.flatMap((group) => group.members))
-    const revealEnabled = groupBy === 'folder' && settings?.collapseDoneFolders
+    const revealEnabled = groupBy === 'folder' && collapseEnabled
     const workingChatIds = revealEnabled
       ? sectionRows
           .filter((row) => row.folder === key && !row.completed && chatHasWorkingTurn(row))

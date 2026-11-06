@@ -7,7 +7,7 @@ import { chatSidebarListItems } from './chat-sidebar-groups'
 import { chatSidebarPreferencePatch, chatCompletionEdit } from './chat-sidebar-identity'
 import { chatCompletionActivityTime } from './chat-sidebar-completion'
 import { chatSessionKey } from './chat-sidebar-types'
-import { resolveAgentStatusLiveEntryStateHistory } from '@/store/slices/agent-status-live-entry-state-history'
+import { resolveAgentStatusLiveEntryStateHistory } from '../../../../shared/agent-status-live-entry-state-history'
 import { normalizeAgentStatusEvent } from '@/hooks/ipc-events/normalize-agent-status-event'
 import { createTestStore } from '@/store/slices/store-test-helpers'
 import {

@@ -7,7 +7,10 @@ import { reattachDispatchConsumer } from './db/root-dispatch-test-fixture'
 const WORKER_PANE_KEY = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 let db: OrchestrationDb
 
-function createRuntime(promptError: Error | null): CoordinatorRuntime & { prompts: string[] } {
+function createRuntime(
+  promptError: Error | null,
+  promptReceipt?: unknown
+): CoordinatorRuntime & { prompts: string[] } {
   const prompts: string[] = []
   return {
     prompts,
@@ -15,6 +18,9 @@ function createRuntime(promptError: Error | null): CoordinatorRuntime & { prompt
       prompts.push(prompt)
       if (promptError) {
         throw promptError
+      }
+      if (promptReceipt) {
+        return promptReceipt
       }
       return { accepted: true }
     },
@@ -75,7 +81,6 @@ describe('coordinator dispatch with an unobserved prompt', () => {
 
     expect(result).toBe('dispatched-unobserved')
     expect(runtime.prompts).toHaveLength(1)
-    // The task stays dispatched, so the next coordinator tick cannot pick it up again.
     expect(db.getTask(task.id)?.status).toBe('dispatched')
     const ctx = db.getDispatchContext(task.id)
     expect(ctx).toMatchObject({
@@ -85,6 +90,24 @@ describe('coordinator dispatch with an unobserved prompt', () => {
     })
     expect(db.listTasks({ status: 'ready' })).toEqual([])
     expect(logs.join('\n')).toContain('turn start was not observed')
+  })
+
+  it('keeps accepted terminal input active without claiming a turn or resending it', async () => {
+    db = new OrchestrationDb(':memory:')
+    const task = db.createTask({ runId: 'run_legacy_local', spec: 'do the work' })
+    const runtime = createRuntime(null, {
+      accepted: true,
+      prompt: { stages: ['input_accepted'], observation: 'supported' }
+    })
+    const logs: string[] = []
+
+    const result = await dispatch(runtime, task.id, logs)
+
+    expect(result).toBe('dispatched-unobserved')
+    expect(runtime.prompts).toHaveLength(1)
+    expect(db.getTask(task.id)?.status).toBe('dispatched')
+    expect(logs.join('\n')).toContain('terminal input was accepted')
+    expect(logs.join('\n')).toContain('will not be resent')
   })
 
   it('lets a late worker report settle a dispatch whose prompt was unobserved', async () => {

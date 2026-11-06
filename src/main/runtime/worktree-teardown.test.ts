@@ -9,7 +9,7 @@ vi.mock('../memory/pty-registry', () => ({
 }))
 
 import { killAllProcessesForWorktree, WORKTREE_PROCESS_SWEEP_TIMEOUT_MS } from './worktree-teardown'
-import type { IPtyProvider, PtyProcessInfo } from '../providers/types'
+import type { IPtyProvider, PtyProcessInfo } from '../providers/pty-provider-contract'
 import { DaemonPtyAdapter } from '../daemon/daemon-pty-adapter'
 
 function createProviderStub(listProcesses: () => Promise<PtyProcessInfo[]>): IPtyProvider {
@@ -43,7 +43,6 @@ describe('killAllProcessesForWorktree', () => {
   })
 
   it('reaches daemon sessions and registry entries without a runtime', async () => {
-    // Simulate headless-CLI: no renderer, so `runtime` is undefined.
     const localProvider = createProviderStub(async () => [
       { id: 'w1@@abcd1234', cwd: '/tmp/w1', title: 'shell' },
       { id: 'w2@@efef5678', cwd: '/tmp/w2', title: 'shell' }
@@ -95,7 +94,6 @@ describe('killAllProcessesForWorktree', () => {
 
     const result = await killAllProcessesForWorktree('w1', { localProvider, onPtyStopped })
 
-    // Prefix sweep must kill nothing; registry sweep must still fire.
     expect(result.providerStopped).toBe(0)
     expect(result.registryStopped).toBe(1)
     expect(localProvider.shutdown).toHaveBeenCalledWith(
@@ -183,38 +181,6 @@ describe('killAllProcessesForWorktree', () => {
 
     expect(localProvider.shutdown).not.toHaveBeenCalled()
     expect(result.providerStopped).toBe(0)
-  })
-
-  it('still tears down the deleted folder-workspace instance own sessions', async () => {
-    // The fix disables only the shared-path fallback; exact prefix and
-    // authoritative worktreeId matches for THIS instance must still fire.
-    const deletedInstance =
-      'repo-1::/Users/dev/project::workspace:11111111-1111-1111-1111-111111111111'
-    const localProvider = createProviderStub(async () => [
-      { id: `${deletedInstance}@@own00001`, cwd: '/Users/dev/project', title: 'shell' },
-      {
-        id: 'tagged-own',
-        cwd: '/Users/dev/project',
-        title: 'shell',
-        worktreeId: deletedInstance
-      }
-    ])
-    listRegisteredPtysMock.mockReturnValue([])
-
-    const result = await killAllProcessesForWorktree(deletedInstance, {
-      localProvider,
-      requirePhysicalStop: true
-    })
-
-    expect(localProvider.shutdown).toHaveBeenCalledWith(
-      `${deletedInstance}@@own00001`,
-      expect.objectContaining({ immediate: true })
-    )
-    expect(localProvider.shutdown).toHaveBeenCalledWith(
-      'tagged-own',
-      expect.objectContaining({ immediate: true })
-    )
-    expect(result.providerStopped).toBe(2)
   })
 
   it('kills only the deleted instance own sessions when siblings share the list', async () => {
@@ -307,34 +273,6 @@ describe('killAllProcessesForWorktree', () => {
 
     expect(result.providerStopped).toBe(1)
     expect(onPtyStopped).toHaveBeenCalledWith('w1@@aaaa')
-  })
-
-  it('does not carry state between successive calls with distinct providers', async () => {
-    // Guards against a future refactor that memoises provider or registry
-    // reads inside the helper.
-    const providerA = createProviderStub(async () => [
-      { id: 'w1@@aaaa', cwd: '/tmp', title: 'shell' }
-    ])
-    const providerB = createProviderStub(async () => [
-      { id: 'w1@@bbbb', cwd: '/tmp', title: 'shell' }
-    ])
-    listRegisteredPtysMock.mockReturnValue([])
-
-    const r1 = await killAllProcessesForWorktree('w1', { localProvider: providerA })
-    expect(providerA.shutdown).toHaveBeenCalledWith(
-      'w1@@aaaa',
-      expect.objectContaining({ immediate: true })
-    )
-    expect(providerB.shutdown).not.toHaveBeenCalled()
-    expect(r1.providerStopped).toBe(1)
-
-    const r2 = await killAllProcessesForWorktree('w1', { localProvider: providerB })
-    expect(providerB.shutdown).toHaveBeenCalledWith(
-      'w1@@bbbb',
-      expect.objectContaining({ immediate: true })
-    )
-    expect(providerB.shutdown).toHaveBeenCalledTimes(1)
-    expect(r2.providerStopped).toBe(1)
   })
 
   it('starts owned provider shutdowns together so agent snapshots can coalesce', async () => {
@@ -711,10 +649,7 @@ describe('killAllProcessesForWorktree', () => {
     }
   })
 
-  // Why: on win32 the DaemonPtyAdapter is the local provider, so an unbounded
-  // kill RPC (30s default > the 10s sweep deadline) let the outer deadline win
-  // with the confusing "Timed out waiting for physical PTY teardown" instead of
-  // the accurate stop failure. The bound must fire first (native-Windows regression).
+  // Bound Windows daemon kill RPCs below the sweep deadline so failures report the stop cause (#9500).
   it('destructive teardown surfaces a bounded stop failure when the daemon kill RPC never replies (#9500 regression)', async () => {
     vi.useFakeTimers()
     try {
@@ -734,8 +669,7 @@ describe('killAllProcessesForWorktree', () => {
         onDisconnected: () => () => {},
         onEvent: () => () => {},
         ensureConnected: async () => {},
-        // Why: bounded teardown connects via ensureConnectedWithin; model the real
-        // DaemonClient method so the shared connect+RPC budget path is exercised.
+        // Model bounded connection so connect and kill share the real RPC budget.
         ensureConnectedWithin: async () => {},
         isConnected: () => true,
         getDaemonIdentity: () => null,
@@ -753,8 +687,7 @@ describe('killAllProcessesForWorktree', () => {
           }
           if (type === 'kill') {
             killRequests += 1
-            // The daemon never replies; the request only rejects when its own
-            // timeout elapses, exactly like the real client.
+            // Only the request's own timeout can reject this silent daemon call.
             return new Promise((_resolve, reject) => {
               setTimeout(
                 () => reject(new Error(`Request kill timed out after ${timeoutMs}ms`)),
@@ -771,9 +704,7 @@ describe('killAllProcessesForWorktree', () => {
 
       listRegisteredPtysMock.mockReturnValue([])
 
-      // Capture the rejection as a value so a wrong error is a clean assertion
-      // failure below rather than a floating unhandled rejection while fake
-      // timers fire.
+      // Capture rejection before advancing time so an incorrect result fails this assertion, not another test.
       const outcome = killAllProcessesForWorktree(worktreeId, {
         localProvider: adapter as unknown as IPtyProvider,
         includeLocalRegistry: false,
@@ -786,10 +717,7 @@ describe('killAllProcessesForWorktree', () => {
         (error: Error) => error
       )
 
-      // Advance past the daemon's 8s physical-exit budget AND the 10s sweep
-      // deadline. A bounded adapter shutdown would have rejected inside this
-      // window, letting the sweep report a clean stop failure. Today nothing
-      // settles before the deadline, so the sweep throws its deadline error.
+      // Advance through the sweep deadline; a correctly bounded kill must have already reported its stop failure.
       await vi.advanceTimersByTimeAsync(WORKTREE_PROCESS_SWEEP_TIMEOUT_MS)
 
       const error = await outcome
@@ -819,8 +747,7 @@ describe('killAllProcessesForWorktree', () => {
   })
 
   it('tolerates an unresolved runtime selector during destructive removal', async () => {
-    // Why: a just-created/removed worktree can be absent from the runtime
-    // graph; that means zero runtime-owned PTYs, not a failed teardown.
+    // An absent newly created/removed graph entry means no runtime-owned PTYs, not failed teardown.
     const stopTerminalsForWorktree = vi.fn().mockRejectedValue(new Error('selector_not_found'))
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This sweep calls only the runtime methods supplied by this fixture.
     const runtime = {

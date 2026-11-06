@@ -19,15 +19,17 @@ import { ChatSidebarRow } from './ChatSidebarRow'
 import type { ChatSidebarRow as Row } from './chat-sidebar-types'
 import { useChatSidebarData } from './use-chat-sidebar-data'
 import { setChatSidebarTitle } from './chat-sidebar-preferences'
-import { activeChatTarget, isChatRowSelected } from './chat-sidebar-selection'
+import { activeChatTarget, isChatRowSelected, visibleChatTabIds } from './chat-sidebar-selection'
 import { activateResidentSidebarChat, openSavedSidebarChat } from './chat-sidebar-open'
 import { startSavedChatDrag } from './chat-sidebar-saved-drag'
 import { NewChatFolderDialog } from './NewChatFolderDialog'
 import { chatSidebarListItems, chatSidebarItemHeight } from './chat-sidebar-groups'
 import { useChatSidebarSectionToggle } from './use-chat-sidebar-section-toggle'
+import { hasAnyCheck, resolveCollapseFolders } from './chat-sidebar-chat-filters'
 import { useRevealWorkingChatFolders } from './use-reveal-working-chat-folders'
 import {
   chatFolderDestinations,
+  chatFolderHeadingLabels,
   changeChatFolder,
   type ChatFolderDestination
 } from './chat-folder-destinations'
@@ -52,6 +54,8 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   const [newFolderRow, setNewFolderRow] = useState<Row | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const target = useAppStore(useShallow(activeChatTarget))
+  const visibleTabIds = useAppStore(useShallow(visibleChatTabIds))
+  const visibleTabIdSet = useMemo(() => new Set(visibleTabIds), [visibleTabIds])
   const focused = useAppStore(
     useShallow((s) => ({
       worktreeId: s.activeView === 'terminal' ? s.activeWorktreeId : null,
@@ -71,7 +75,12 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
     activeWorktreeId: null,
     targetState
   })
-  const folders = useMemo(() => chatFolderDestinations(targetState), [targetState])
+  // Why: the menu offers a branch or nested workspace only when the sidebar shows its heading.
+  const headingLabels = useMemo(() => chatFolderHeadingLabels(state, 0, rows), [rows, state])
+  const folders = useMemo(
+    () => chatFolderDestinations(targetState, { headingLabels }),
+    [targetState, headingLabels]
+  )
   const savedDragStart = useCallback(
     (event: React.DragEvent, row: Row) => startSavedChatDrag(event, row, handleResume),
     [handleResume]
@@ -106,14 +115,22 @@ export default function SidebarChatList({ onOpen }: { onOpen?: () => void }) {
   }, [])
   const items = useMemo(
     () =>
-      chatSidebarListItems(rows, { ...state, ...panes }, query, splits, collapsedGroups, focused),
-    [rows, state, panes, query, splits, collapsedGroups, focused]
+      chatSidebarListItems(
+        rows,
+        { ...state, ...panes },
+        query,
+        splits,
+        collapsedGroups,
+        focused,
+        visibleTabIdSet
+      ),
+    [rows, state, panes, query, splits, collapsedGroups, focused, visibleTabIdSet]
   )
   useRevealWorkingChatFolders(
     items,
     query,
     state.settings?.chatSidebar?.groupBy === 'folder' &&
-      !!state.settings.chatSidebar.collapseDoneFolders
+      hasAnyCheck(resolveCollapseFolders(state.settings.chatSidebar))
   )
   const chatsByTab = useMemo(() => {
     const counts = new Map<string, number>()

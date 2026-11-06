@@ -10,16 +10,14 @@ import {
   shouldMountRetainedBrowserOverlay
 } from './browser-pane/host-guest/browser-worktree-surface-paintability'
 import TabGroupSplitLayout from './tab-group/TabGroupSplitLayout'
-import TerminalPaneOverlayLayer from './terminal-pane/TerminalPaneOverlayLayer'
-import { RetainedBrowserPaneOverlayLayer } from './browser-pane/assemble-chrome/BrowserPaneOverlayLayer'
-import EmulatorPaneOverlayLayer from './emulator-pane/EmulatorPaneOverlayLayer'
-import StructuredAgentSessionPaneOverlayLayer from './native-chat/StructuredAgentSessionPaneOverlayLayer'
-import AiVaultSessionDropLayer from './tab-group/AiVaultSessionDropLayer'
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
 import type { WorkspaceSplitEdge } from '@/lib/workspace-split-layout'
 import { useAppStore } from '@/store'
 import { WorkspacePaneCloseButton } from './workspace-split/WorkspacePaneCloseButton'
 import type { WorkspacePaneRect } from './workspace-split/WorkspaceSplitLayoutSlots'
+import type { PositionedGroup } from './tab-group/TabGroupPositionedPanels'
+import { WorkspacePaneOverlayLayers } from './WorkspacePaneOverlayLayers'
+import type { TerminalPrewarmStage } from './terminal/terminal-worktree-prewarm'
 
 export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   worktreeId,
@@ -29,12 +27,14 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   isVisible,
   isFocused = isVisible,
   paneRect,
+  groupPositions,
   isMultiPane = false,
   reserveLeftWindowChrome = true,
   reserveRightWindowChrome = true,
   hoverEdge,
   hoverSwap,
   shouldMeasureHiddenWorktree,
+  prewarmStage,
   shouldColdParkTerminalPanes,
   isForceParked,
   activityTerminalPortals,
@@ -48,12 +48,15 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   isVisible: boolean
   isFocused?: boolean
   paneRect?: WorkspacePaneRect
+  groupPositions?: ReadonlyMap<string, PositionedGroup>
   isMultiPane?: boolean
   reserveLeftWindowChrome?: boolean
   reserveRightWindowChrome?: boolean
   hoverEdge?: WorkspaceSplitEdge | null
   hoverSwap?: boolean
   shouldMeasureHiddenWorktree: boolean
+  /** Hover intent: mount, then lay out, then render the revealable terminals while hidden. */
+  prewarmStage: TerminalPrewarmStage | null
   shouldColdParkTerminalPanes: boolean
   isForceParked: boolean
   activityTerminalPortals: ActivityTerminalPortalTarget[]
@@ -63,22 +66,26 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   const browserPageIds = useWorktreeBrowserPageIds(worktreeId)
   const needsBrowserGuestPaint = useBrowserGuestPaintRetention(browserPageIds)
   const shouldKeepPaintable = shouldKeepHiddenWorktreeSurfacePaintable({
-    shouldMeasureHiddenWorktree,
+    // A mount-stage prewarm stays display:none so its style/layout cost lands in a later task.
+    shouldMeasureHiddenWorktree: shouldMeasureHiddenWorktree && prewarmStage !== 'mount',
     needsBrowserGuestPaint
   })
-  const isPaintVisible = isVisible && (!isMultiPane || paneRect !== undefined)
+  const isPaintVisible =
+    isVisible && (!isMultiPane || paneRect !== undefined || groupPositions !== undefined)
 
   return (
     <div
       className={
         isPaintVisible
-          ? 'absolute inset-0 flex'
+          ? groupPositions
+            ? 'absolute inset-0 flex pointer-events-none'
+            : 'absolute inset-0 flex'
           : shouldKeepPaintable
             ? 'absolute inset-0 flex opacity-0 pointer-events-none'
             : 'absolute inset-0 hidden'
       }
       style={
-        isMultiPane && paneRect
+        isMultiPane && paneRect && !groupPositions
           ? {
               top: paneRect.top,
               left: paneRect.left,
@@ -120,6 +127,7 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
       ) : null}
       {layout ? (
         <TabGroupSplitLayout
+          positions={groupPositions}
           layout={layout}
           worktreeId={worktreeId}
           focusedGroupId={focusedGroupId}
@@ -144,35 +152,25 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
           </button>
         </div>
       ) : null}
-      <TerminalPaneOverlayLayer
+      <WorkspacePaneOverlayLayers
         worktreeId={worktreeId}
         worktreePath={worktreePath}
-        isWorktreeActive={isVisible}
+        isVisible={isVisible}
         isWorktreeFocused={isFocused}
-        coldParkTerminalPanes={shouldColdParkTerminalPanes}
-        isForceParked={isForceParked}
         shouldMeasureHiddenWorktree={shouldMeasureHiddenWorktree}
+        hiddenTerminalPrewarm={prewarmStage === 'mount' ? null : prewarmStage}
+        shouldColdParkTerminalPanes={shouldColdParkTerminalPanes}
+        isForceParked={isForceParked}
         activityTerminalPortals={activityTerminalPortals}
         backgroundMountTabIds={backgroundMountTabIds}
         activationDeferredMountTabIds={activationDeferredMountTabIds}
-      />
-      <RetainedBrowserPaneOverlayLayer
-        worktreeId={worktreeId}
-        isWorktreeActive={isVisible}
-        mountEligible={shouldMountRetainedBrowserOverlay({
+        mountRetainedBrowserOverlay={shouldMountRetainedBrowserOverlay({
           isWorktreeVisible: isVisible,
           hasDeferredBackgroundMounts: backgroundMountTabIds !== null,
           needsBrowserGuestPaint
         })}
+        mountEmulatorOverlay={isVisible || backgroundMountTabIds === null}
       />
-      {isVisible || backgroundMountTabIds === null ? (
-        <EmulatorPaneOverlayLayer worktreeId={worktreeId} isWorktreeActive={isVisible} />
-      ) : null}
-      <StructuredAgentSessionPaneOverlayLayer
-        worktreeId={worktreeId}
-        isWorktreeActive={isVisible}
-      />
-      <AiVaultSessionDropLayer worktreeId={worktreeId} enabled={isVisible} />
     </div>
   )
 })

@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import type * as WorkspaceLayoutModule from '@/lib/workspace-split-layout'
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -10,15 +11,33 @@ const mocks = vi.hoisted(() => {
     rightSidebarOpen: true,
     sidebarOpen: true,
     groupsByWorktree: {},
-    unsplitWorkspace: vi.fn()
+    workspaceSplitGroups: [],
+    unsplitWorkspace: vi.fn(),
+    setActiveWorktree: vi.fn(),
+    updateWorktreeMeta: vi.fn().mockResolvedValue({ ok: true })
   }
   const useAppStore = (selector: (current: typeof state) => unknown): unknown => selector(state)
   useAppStore.getState = () => state
-  return { capture: vi.fn(), deliver: vi.fn(), monacoSawDrop: vi.fn(), useAppStore }
+  return {
+    capture: vi.fn(),
+    deliver: vi.fn(),
+    monacoSawDrop: vi.fn(),
+    confirm: vi.fn(async (options: { onCancelClicked?: () => void }) => {
+      options.onCancelClicked?.()
+      return false
+    }),
+    useAppStore
+  }
 })
 vi.mock('@/store', () => ({ useAppStore: mocks.useAppStore }))
 vi.mock('../../store', () => ({ useAppStore: mocks.useAppStore }))
-vi.mock('@/lib/workspace-split-layout', () => ({ findWorkspaceSplitPartner: () => 'wt-partner' }))
+vi.mock('@/components/confirmation-dialog-context', () => ({
+  useConfirmationDialog: () => mocks.confirm
+}))
+vi.mock('@/lib/workspace-split-layout', async (importOriginal) => ({
+  ...(await importOriginal<typeof WorkspaceLayoutModule>()),
+  findWorkspaceSplitPartner: () => 'wt-partner'
+}))
 vi.mock('@/lib/worktree-activation', () => ({ activateAndRevealWorkspace: () => true }))
 vi.mock('../editor/editor-dropped-file-open', () => ({
   captureEditorFileDropOpen: mocks.capture,
@@ -95,17 +114,19 @@ afterEach(() => {
 describe('TabGroupPanel editor area OS file drops', () => {
   it("opens a file dropped on the editor in this group's worktree, and Monaco never sees it", async () => {
     const view = render(
-      <TabGroupPanel
-        groupId="group-b"
-        worktreeId="wt-b"
-        isVisible
-        isFocused={false}
-        hasSplitGroups
-        touchesLeftEdge={false}
-        touchesRightEdge={false}
-        reserveClosedExplorerToggleSpace={false}
-        reserveCollapsedSidebarHeaderSpace={false}
-      />
+      <TooltipProvider>
+        <TabGroupPanel
+          groupId="group-b"
+          worktreeId="wt-b"
+          isVisible
+          isFocused={false}
+          hasSplitGroups
+          touchesLeftEdge={false}
+          touchesRightEdge={false}
+          reserveClosedExplorerToggleSpace={false}
+          reserveCollapsedSidebarHeaderSpace={false}
+        />
+      </TooltipProvider>
     )
     const input = await view.findByTestId('monaco-input')
     drag(input, 'dragover')
@@ -117,7 +138,7 @@ describe('TabGroupPanel editor area OS file drops', () => {
     await waitFor(() => expect(mocks.deliver).toHaveBeenCalledWith(['/Users/me/dropped.md']))
   })
 
-  it('removes an occupied workspace pane from the split without closing its tabs', () => {
+  it('removes an occupied workspace pane from the split without closing its tabs', async () => {
     const view = render(
       <TooltipProvider>
         <TabGroupPanel
@@ -133,11 +154,13 @@ describe('TabGroupPanel editor area OS file drops', () => {
         />
       </TooltipProvider>
     )
-    fireEvent.click(view.getByRole('button', { name: 'Remove workspace from split' }))
-    expect(mocks.useAppStore.getState().unsplitWorkspace).toHaveBeenCalledWith('wt-b')
+    fireEvent.click(view.getByRole('button', { name: 'Close workspace' }))
+    await waitFor(() =>
+      expect(mocks.useAppStore.getState().unsplitWorkspace).toHaveBeenCalledWith('wt-b')
+    )
   })
 
-  it('keeps the workspace pane close control in the top-right internal split header', () => {
+  it('keeps the workspace pane close control in the top-right internal split header', async () => {
     const view = render(
       <TooltipProvider>
         <TabGroupPanel
@@ -154,7 +177,9 @@ describe('TabGroupPanel editor area OS file drops', () => {
         />
       </TooltipProvider>
     )
-    fireEvent.click(view.getByRole('button', { name: 'Remove workspace from split' }))
-    expect(mocks.useAppStore.getState().unsplitWorkspace).toHaveBeenCalledWith('wt-b')
+    fireEvent.click(view.getByRole('button', { name: 'Close workspace' }))
+    await waitFor(() =>
+      expect(mocks.useAppStore.getState().unsplitWorkspace).toHaveBeenCalledWith('wt-b')
+    )
   })
 })

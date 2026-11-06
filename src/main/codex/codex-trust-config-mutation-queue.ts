@@ -2,9 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 
 const tailByTomlPath = new Map<string, Promise<void>>()
-// Why: the grant lane runs inside the installer that already owns the file.
-// AsyncLocalStorage survives awaits, so the inner acquire can see the outer
-// one and pass through instead of queueing behind itself forever.
+// Preserve lane ownership across awaits so nested installer calls cannot deadlock.
 const heldKeys = new AsyncLocalStorage<ReadonlySet<string>>()
 
 /** Runs `run` holding no lane, so work it starts queues like any new caller. */
@@ -35,7 +33,7 @@ export function runExclusivelyForCodexTrustConfig<T>(
   owned.add(key)
   const enter = (): Promise<T> => heldKeys.run(owned, run)
   const previous = tailByTomlPath.get(key) ?? Promise.resolve()
-  // Why both handlers: a rejected predecessor must not cancel the queue.
+  // A rejected predecessor must not cancel the queue.
   const result = previous.then(enter, enter)
   const tail = result.then(
     () => undefined,

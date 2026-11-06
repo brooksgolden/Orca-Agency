@@ -68,12 +68,20 @@ async function openGridWithSessions(
 
 function markUnread(page: Page, tabId: string): Promise<{ paneKey: string | null }> {
   return page.evaluate((tabId) => {
-    const state = window.__store!.getState()
-    state.markTerminalTabUnread(tabId)
+    const store = window.__store!
+    const state = store.getState()
     const leafId = state.terminalLayoutsByTabId[tabId]?.activeLeafId ?? null
     const paneKey = leafId ? `${tabId}:${leafId}` : null
+    store.setState({
+      unreadTerminalTabs: { ...state.unreadTerminalTabs, [tabId]: 'agent-completion' }
+    })
     if (paneKey) {
-      state.markAgentCompletionPaneUnread(paneKey)
+      store.setState({
+        unreadAgentCompletionPanes: {
+          ...state.unreadAgentCompletionPanes,
+          [paneKey]: 'agent-completion'
+        }
+      })
     }
     return { paneKey }
   }, tabId)

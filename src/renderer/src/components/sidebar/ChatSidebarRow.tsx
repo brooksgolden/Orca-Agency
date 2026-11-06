@@ -23,6 +23,7 @@ import { clearAiVaultSessionDragData } from '@/lib/ai-vault-session-drag'
 import { AgentIcon } from '@/lib/agent-catalog'
 import { agentTypeToIconAgent, formatAgentTypeLabel } from '@/lib/agent-status'
 import { detachTerminalChat } from './chat-sidebar-detach'
+import { getIntlLocale } from '@/i18n/i18n'
 
 export const ChatSidebarRow = memo(function ChatSidebarRow({
   row,
@@ -163,7 +164,11 @@ export const ChatSidebarRow = memo(function ChatSidebarRow({
               </span>
               <span
                 className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
-                title={row.timestamp ? new Date(row.timestamp).toLocaleString() : undefined}
+                title={
+                  row.timestamp
+                    ? new Date(row.timestamp).toLocaleString(getIntlLocale())
+                    : undefined
+                }
               >
                 {(row.displayState ?? row.state) === 'working'
                   ? 'Now'

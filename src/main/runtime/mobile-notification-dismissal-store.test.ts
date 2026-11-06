@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -8,14 +8,18 @@ const write = async (path: string, value: unknown) => {
   writeSecureJsonFile(path, value)
 }
 const paths: string[] = []
-afterEach(() => {
+const stores: MobileNotificationDismissalStore[] = []
+afterEach(async () => {
+  await Promise.all(stores.splice(0).map((store) => store.close()))
   paths.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true }))
   vi.restoreAllMocks()
 })
 function fixture() {
   const path = mkdtempSync(join(tmpdir(), 'orca-dismissals-'))
   paths.push(path)
-  return { path, store: new MobileNotificationDismissalStore(path, write) }
+  const store = new MobileNotificationDismissalStore(path, write)
+  stores.push(store)
+  return { path, store }
 }
 const shown = { notificationId: 'same', notificationEpoch: 'old', notificationSeq: 12 }
 const alert = {
@@ -141,7 +145,7 @@ it('names the live deliveries a subject can still retire, across a restart', asy
     notificationEpoch: 'e',
     notificationSeq: 4
   })
-  await h.store.flush()
+  await h.store.close()
   const restarted = new MobileNotificationDismissalStore(h.path)
   expect(restarted.liveDeliveries('subject:').map((entry) => entry.notificationId)).toEqual([
     'subject:prompt:a1'
@@ -183,6 +187,7 @@ it('keeps a record whose origin a newer build wrote, losing only that origin', (
 
 it('retains in-memory delivery and retirement when durable writes fail', async () => {
   const h = fixture()
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   mkdirSync(join(h.path, 'mobile-notification-dismissals.json'))
   h.store.record({ ...alert, ...shown })
   await h.store.flush()
@@ -195,8 +200,54 @@ it('retains in-memory delivery and retirement when durable writes fail', async (
     dismissedDelivery: shown
   })
   await h.store.flush()
+  expect(warn).toHaveBeenCalledWith('[notifications] Could not persist dismissal recovery state')
   expect(h.store.liveDeliveries(shown.notificationId)).toEqual([])
   expect(h.store.reconcile([shown])).toEqual([shown])
+})
+
+it('coalesces a burst of records into writes of the latest entries, off the caller', async () => {
+  const h = fixture()
+  const file = join(h.path, 'mobile-notification-dismissals.json')
+  for (let seq = 0; seq < 20; seq += 1) {
+    h.store.record({
+      ...alert,
+      notificationId: `n${seq}`,
+      notificationEpoch: 'e',
+      notificationSeq: seq
+    })
+  }
+  expect(existsSync(file)).toBe(false)
+  await h.store.flush()
+  const saved: unknown = JSON.parse(readFileSync(file, 'utf8'))
+  expect(Array.isArray(saved) ? saved.length : 0).toBe(20)
+})
+
+it('saves records queued before and while close() is pending', async () => {
+  const h = fixture()
+  const savedIds = () =>
+    new MobileNotificationDismissalStore(h.path)
+      .liveDeliveries()
+      .map((entry) => entry.notificationId)
+  h.store.record({ ...alert, ...shown, notificationId: 'before-close' })
+  const closing = h.store.close()
+  h.store.record({ ...alert, ...shown, notificationId: 'while-closing' })
+  await closing
+  await h.store.flush()
+  expect(savedIds()).toEqual(['before-close', 'while-closing'])
+  h.store.record({ ...alert, ...shown, notificationId: 'after-close' })
+  await h.store.flush()
+  expect(savedIds()).toEqual(['before-close', 'while-closing', 'after-close'])
+})
+
+it('warns when a write after close fails and keeps the delivery in memory', async () => {
+  const h = fixture()
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  mkdirSync(join(h.path, 'mobile-notification-dismissals.json'))
+  await h.store.close()
+  expect(() => h.store.record({ ...alert, ...shown })).not.toThrow()
+  await h.store.flush()
+  expect(warn).toHaveBeenCalledWith('[notifications] Could not persist dismissal recovery state')
+  expect(h.store.liveDeliveries(shown.notificationId)).toHaveLength(1)
 })
 
 it('a targeted old delivery cannot retire a newer replacement with the same logical id', () => {

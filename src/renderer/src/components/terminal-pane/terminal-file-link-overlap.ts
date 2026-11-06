@@ -1,5 +1,5 @@
 import type { ILink } from '@xterm/xterm'
-import type { WrappedLogicalLine } from './wrapped-terminal-link-ranges'
+import type { WrappedLogicalLine } from '../../../../shared/wrapped-terminal-link-ranges'
 
 export type ProvidedFileLink = {
   link: ILink

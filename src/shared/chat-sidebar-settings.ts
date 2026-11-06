@@ -52,18 +52,37 @@ export type ChatSidebarSessionEntry = {
   resumeLauncher?: ChatSidebarResumeLauncher
 }
 
+/** Done Closed = Done with no open tab, Done Open = Done with an open tab, idle = grey idle dot (not Done). */
+export type ChatStateChecks = {
+  doneClosed?: boolean
+  doneOpen?: boolean
+  idle?: boolean
+}
+
 export type ChatSidebarSettings = {
   view?: 'chats' | 'workspaces'
   groupBy?: 'recent' | 'status' | 'folder'
+  /** Legacy Hide Done flag; mirrored from `hideChats` so a rollback keeps the same view. */
   showOnlyInProgress?: boolean
+  /** Chat states hidden by the Hide Chats menu. Absent means the legacy Done flag decides. */
+  hideChats?: ChatStateChecks
   showOnlyOpenChats?: boolean
+  /** Legacy Collapse Done flag; mirrored from `collapseFolders` for rollback safety. */
   collapseDoneFolders?: boolean
+  /** Chat states whose all-matching folders collapse. Absent means the legacy Done flag decides. */
+  collapseFolders?: ChatStateChecks
   /** Folder headings manually expanded while automatic Done-folder collapse is enabled. */
   expandedDoneFolders?: string[]
   /** Unchecked folder labels; new folders remain visible by default. */
   hiddenFolders?: string[]
   /** Automation-owned tab/pane and provider identities; retained after run cleanup. */
   automationChats?: string[]
+  /** Chats a person submitted a message in; they stay in the sidebar after the tab closes. */
+  humanChats?: string[]
+  /** Pane keys an agent spawned, with host; kept so a session the hook reports after restart is still tagged. */
+  agentSpawnedPanes?: Record<string, string>
+  /** Receipt of the one-time agent-spawn backlog migration; `addedKeys` were hidden and can be restored. */
+  agentSpawnBacklogMigration?: { id: string; appliedAt: string; addedKeys: string[] }
   /** Exact tabs the user reopened from session history, even when the provider was automated. */
   userResumedTabs?: string[]
   /** Next launch destination; never changes the owner of a running terminal. */

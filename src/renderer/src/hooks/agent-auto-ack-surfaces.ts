@@ -1,19 +1,9 @@
-/**
- * The surface half of auto-acknowledgement: which adapter owns a viewed target's address, what
- * the workspace still holds across every surface kind, and the write that acknowledges one target.
- */
 import type { useAppStore } from '@/store'
-import type {
-  AgentAttentionRemainder,
-  AgentAttentionSurface
-} from '@/attention/agent-attention-contract'
+import type { AgentAttentionSurface } from '@/attention/agent-attention-contract'
 import {
-  applyAgentAttentionAcknowledgement,
   computeAgentAcknowledgementTargets,
-  mergeAgentAttentionRemainders,
   readAgentAttentionTurnStartedAt,
   resolveViewedUnreadSubjectKey,
-  shouldClearWorkspaceAttention,
   type AgentAttentionTurnRecords
 } from '@/attention/agent-attention-acknowledgement'
 import { createTerminalAttentionSurface } from '@/components/terminal-pane/terminal-attention-surface'
@@ -36,23 +26,6 @@ export function surfaceForAutoAckTarget(
     : createTerminalAttentionSurface(state)
 }
 
-/**
- * Attention the workspace still holds, as every surface kind sees it.
- *
- * Why both: workspace unread belongs to the workspace, not to one surface kind, so asking only
- * the acknowledged kind would report a hidden sibling of the other kind as absent.
- */
-function collectWorkspaceAttentionRemainder(
-  state: StoreSnapshot,
-  workspaceId: string
-): AgentAttentionRemainder {
-  return mergeAgentAttentionRemainders([
-    createTerminalAttentionSurface(state).collectWorkspaceAttentionRemainder(workspaceId),
-    createStructuredAttentionSurface(state).collectWorkspaceAttentionRemainder(workspaceId)
-  ])
-}
-
-/** Subject-keyed view of the store's turn bookkeeping for the neutral acknowledgement policy. */
 export function readAgentAttentionTurnRecords(state: StoreSnapshot): AgentAttentionTurnRecords {
   return {
     liveTurns: state.agentStatusByPaneKey,
@@ -78,14 +51,13 @@ export function acknowledgeViewedAutoAckTarget(
     state.unreadAgentCompletionPanes,
     subjectKey
   )
-  const hasGroupUnread = Boolean(state.unreadTerminalTabs[groupId])
   const readViewed =
     options?.readViewed &&
     subjectKey !== null &&
     (state.manuallyUnreadTurnsByPaneKey[subjectKey] === undefined ||
       state.manuallyUnreadTurnsByPaneKey[subjectKey] !==
         readAgentAttentionTurnStartedAt(records, subjectKey))
-  if (toAck.length === 0 && !viewedUnreadSubjectKey && !readViewed && !hasGroupUnread) {
+  if (toAck.length === 0 && !viewedUnreadSubjectKey && !readViewed) {
     return
   }
   const clearedSubjectKeys = new Set(toAck)
@@ -96,27 +68,10 @@ export function acknowledgeViewedAutoAckTarget(
     clearedSubjectKeys.add(subjectKey)
   }
   emitAgentSubjectReads([...clearedSubjectKeys], options?.reads)
-  const workspaceId = target.worktreeId
-  applyAgentAttentionAcknowledgement(
-    {
-      acknowledgeSubjects: (keys) => state.acknowledgeAgents(keys, []),
-      clearWorkspaceUnread: state.clearWorktreeUnread,
-      clearGroupUnread: state.clearTerminalTabUnread,
-      clearSubjectUnread: state.clearTerminalPaneUnread
-    },
-    {
-      workspaceIdToClear:
-        workspaceId !== null &&
-        shouldClearWorkspaceAttention(collectWorkspaceAttentionRemainder(state, workspaceId), {
-          viewedGroupId: groupId,
-          clearedSubjectKeys
-        })
-          ? workspaceId
-          : null,
-      viewedGroupId: groupId,
-      subjectKeys: toAck,
-      viewedUnreadSubjectKey,
-      hasGroupUnread
-    }
-  )
+  // Why ack only: the tab's unread markers are read by `readOnScreenAttention` in the same scan.
+  // That scan also settles the workspace flag: it clears only when no live marker remains,
+  // so a hidden sibling's attention keeps the workspace marked (Agency's remainder rule).
+  if (toAck.length > 0) {
+    state.acknowledgeAgents(toAck, [])
+  }
 }

@@ -6,7 +6,7 @@ import {
 import { rowConversationName } from '../dashboard/dashboard-card-labels'
 import { lastEnteredDoneAt } from '../dashboard/agent-finished-timestamp'
 import type { DashboardAgentRow } from '../dashboard/useDashboardData'
-import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
+import { getAgentRowPrimaryText } from '../../../../shared/agent-row-primary-text'
 import { agentRowDisplayDotState } from '@/lib/agent-row-dot-state'
 import { agentStatusEvidenceObservedAt } from '../../../../shared/agent-status-freshness'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
@@ -204,7 +204,9 @@ export function buildAgentChatRows(args: {
         soleChat ? nameSource : { ...nameSource, tab: { ...nameSource.tab, customTitle: null } },
         state.settings?.tabAutoGenerateTitle === true,
         state.terminalLayoutsByTabId[agent.tab.id],
-        state.runtimePaneTitlesByTabId[agent.tab.id]
+        state.runtimePaneTitlesByTabId[agent.tab.id],
+        state.chatNames ?? new Map(),
+        state.unifiedTabsByWorktree
       ) ??
       session?.title ??
       (getAgentRowPrimaryText(agent.entry).split(/\r?\n/, 1)[0]?.trim() || 'New chat')

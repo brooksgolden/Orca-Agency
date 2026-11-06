@@ -46,7 +46,7 @@ function rebaseLayout(
   }
   return {
     ...candidate,
-    // Why: renderer layout metadata may move, but only host-persisted live bindings may name PTYs.
+    // Renderer metadata may move; PTY bindings remain host-authoritative.
     ptyIdsByLeafId: {
       ...candidate.ptyIdsByLeafId,
       ...current.ptyIdsByLeafId

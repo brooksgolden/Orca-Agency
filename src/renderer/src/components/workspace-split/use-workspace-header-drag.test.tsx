@@ -19,8 +19,8 @@ vi.mock('../browser-pane/host-guest/webview-registry', () => ({
   acquireWebviewsDragPassthrough: () => drag.release
 }))
 
-function Header() {
-  const onPointerDown = useWorkspaceHeaderDrag('source')
+function Header({ groupId }: { groupId?: string }) {
+  const onPointerDown = useWorkspaceHeaderDrag('source', groupId)
   return (
     <div data-testid="header" onPointerDown={onPointerDown}>
       <span>Drag surface</span>
@@ -34,8 +34,8 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function mountedHeader(): HTMLElement {
-  render(<Header />)
+function mountedHeader(groupId?: string): HTMLElement {
+  render(<Header groupId={groupId} />)
   const header = screen.getByTestId('header')
   Object.defineProperties(header, {
     hasPointerCapture: { value: () => false },
@@ -46,6 +46,23 @@ function mountedHeader(): HTMLElement {
 }
 
 describe('workspace header pointer drag', () => {
+  it('includes the document group when dragging its own header', () => {
+    const header = mountedHeader('markdown')
+    fireEvent.pointerDown(header.querySelector('span')!, {
+      button: 0,
+      pointerId: 3,
+      clientX: 0,
+      clientY: 0
+    })
+    fireEvent.pointerMove(window, { pointerId: 3, clientX: 20, clientY: 20 })
+    fireEvent.pointerUp(window, { pointerId: 3, clientX: 25, clientY: 25 })
+    expect(drag.drop).toHaveBeenCalledWith({
+      sourceId: 'source',
+      sourceGroupId: 'markdown',
+      x: 25,
+      y: 25
+    })
+  })
   it('starts only past the threshold and drops into the selected pane', () => {
     const header = mountedHeader()
     fireEvent.pointerDown(header.querySelector('span')!, {

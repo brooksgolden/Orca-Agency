@@ -10,14 +10,7 @@ export type WorkspaceTabDragState = {
   setDragRootNode: (node: HTMLDivElement | null) => void
 }
 
-/**
- * The one dnd-kit scope for a workspace's tab strips and split tree. Every strip and pane-body
- * droppable of the workspace must render inside it — two live DndContexts over the same tabs is
- * the drag-ownership bug this layer exists to prevent.
- *
- * Chrome-agnostic: children decide where strips and the tree render (per-group strips for the
- * main surface, a shell-owned titlebar strip for the floating panel).
- */
+/** Share one drag scope across workspace strips and pane bodies so duplicate DndContexts cannot compete for the same tabs. */
 export function WorkspaceTabDragLayer({
   worktreeId,
   enabled,
@@ -43,11 +36,7 @@ export function WorkspaceTabDragLayer({
         onDragOver={dragSplit.onDragOver}
         onDragEnd={dragSplit.onDragEnd}
         onDragCancel={dragSplit.onDragCancel}
-        // Why: dnd-kit auto-scrolls the tab strip when the cursor approaches its
-        // edge, which in a multi-group layout creates a feedback loop — scroll
-        // shifts tabs under the cursor, `over` re-resolves, scroll runs again.
-        // We don't need autoscroll for tab-bar drags (strip fits the viewport),
-        // so disabling it is the simplest fix.
+        // Disable edge autoscroll because moving tabs re-resolve hover targets and create a multi-group feedback loop.
         autoScroll={false}
       >
         {children({

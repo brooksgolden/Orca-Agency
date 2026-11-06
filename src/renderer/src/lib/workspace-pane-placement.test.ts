@@ -3,7 +3,8 @@ import { placeWorkspacePane } from './workspace-pane-placement'
 import {
   collectWorkspaceIds,
   placeWorkspaceAtEdge,
-  setWorkspaceSplitRatio
+  setWorkspaceSplitRatio,
+  type WorkspaceLayoutNode
 } from './workspace-split-layout'
 
 const grid = () => {
@@ -11,8 +12,191 @@ const grid = () => {
   groups = placeWorkspaceAtEdge(groups, 'c', 'a', 'bottom', 'unused')
   return placeWorkspaceAtEdge(groups, 'd', 'b', 'bottom', 'unused')
 }
+const leaf = (workspaceId: string): WorkspaceLayoutNode => ({ type: 'leaf', workspaceId })
+const split = (
+  direction: 'horizontal' | 'vertical',
+  first: WorkspaceLayoutNode,
+  second: WorkspaceLayoutNode,
+  ratio = 0.5
+): WorkspaceLayoutNode => ({ type: 'split', direction, first, second, ratio })
+const fourPaneColumns = () =>
+  split(
+    'horizontal',
+    split('horizontal', leaf('exampleCapital'), leaf('repair')),
+    split('vertical', leaf('orca'), leaf('exampleFirm'))
+  )
 
 describe('repositioning whole workspace panes', () => {
+  it('keeps the large left pane full height when an external fourth pane joins below the right pair', () => {
+    const rightPair = split('horizontal', leaf('audit'), leaf('exampleCapital'))
+    const original = split('horizontal', leaf('exampleFirm'), rightPair)
+    const result = placeWorkspacePane(
+      [{ id: 'window', layout: original }],
+      'incoming',
+      'exampleCapital',
+      { kind: 'quadrant', quadrant: 'bottom-right' },
+      'unused'
+    )
+    expect(result).toEqual([
+      {
+        id: 'window',
+        layout: split(
+          'horizontal',
+          leaf('exampleFirm'),
+          split('vertical', rightPair, leaf('incoming'))
+        )
+      }
+    ])
+    expect(original).toEqual(split('horizontal', leaf('exampleFirm'), rightPair))
+  })
+  it('pushes only the two left columns upward when dropping at bottom left', () => {
+    const original = split(
+      'horizontal',
+      split('horizontal', leaf('a'), leaf('b')),
+      split('horizontal', leaf('c'), leaf('d'))
+    )
+    const result = placeWorkspacePane(
+      [{ id: 'window', layout: original }],
+      'd',
+      'a',
+      { kind: 'quadrant', quadrant: 'bottom-left' },
+      'unused'
+    )
+    expect(result[0].layout).toEqual(
+      split(
+        'horizontal',
+        split('vertical', split('horizontal', leaf('a'), leaf('b')), leaf('d')),
+        leaf('c')
+      )
+    )
+  })
+  it.each([
+    split(
+      'horizontal',
+      split('horizontal', leaf('a'), leaf('b')),
+      split('horizontal', leaf('c'), leaf('d'))
+    ),
+    split(
+      'horizontal',
+      leaf('a'),
+      split('horizontal', leaf('b'), split('horizontal', leaf('c'), leaf('d')), 1 / 3),
+      0.25
+    )
+  ])('keeps two full-height left panes when the fourth column moves to bottom right', (layout) => {
+    const result = placeWorkspacePane(
+      [{ id: 'window', layout }],
+      'd',
+      'c',
+      { kind: 'quadrant', quadrant: 'bottom-right' },
+      'unused'
+    )
+    expect(result[0].layout).toEqual(
+      split(
+        'horizontal',
+        split('horizontal', leaf('a'), leaf('b')),
+        split('vertical', leaf('c'), leaf('d'))
+      )
+    )
+  })
+  it('partitions rounded column widths before removing the dragged source', () => {
+    const original = split(
+      'horizontal',
+      leaf('a'),
+      split('horizontal', leaf('b'), split('horizontal', leaf('c'), leaf('d'), 0.503), 0.337),
+      0.248
+    )
+    const result = placeWorkspacePane(
+      [{ id: 'window', layout: original }],
+      'd',
+      'd',
+      { kind: 'quadrant', quadrant: 'bottom-right' },
+      'unused'
+    )
+    const layout = result[0].layout
+    expect(layout).toMatchObject({
+      direction: 'horizontal',
+      first: { direction: 'horizontal', first: leaf('a'), second: leaf('b') },
+      second: { direction: 'vertical', first: leaf('c'), second: leaf('d') }
+    })
+    if (layout.type === 'split') {
+      expect(layout.ratio).toBeCloseTo(0.248 + 0.752 * 0.337)
+    }
+  })
+  it('keeps the right stack intact when adding a pane under two full-height left panes', () => {
+    const original = [{ id: 'grid', layout: fourPaneColumns() }]
+    const placed = placeWorkspacePane(
+      original,
+      'audit',
+      'exampleCapital',
+      { kind: 'quadrant', quadrant: 'bottom-left' },
+      'unused'
+    )
+    expect(placed[0].layout).toEqual(
+      split(
+        'horizontal',
+        split(
+          'vertical',
+          split('horizontal', leaf('exampleCapital'), leaf('repair')),
+          leaf('audit')
+        ),
+        split('vertical', leaf('orca'), leaf('exampleFirm'))
+      )
+    )
+  })
+  it('keeps the same layout when a full-height source pane is dropped on its own corner', () => {
+    const original = [{ id: 'grid', layout: split('horizontal', leaf('audit'), fourPaneColumns()) }]
+    const placed = placeWorkspacePane(
+      original,
+      'audit',
+      'audit',
+      { kind: 'quadrant', quadrant: 'bottom-left' },
+      'unused'
+    )
+    expect(placed[0].layout).toEqual(
+      split(
+        'horizontal',
+        split(
+          'vertical',
+          split('horizontal', leaf('exampleCapital'), leaf('repair')),
+          leaf('audit')
+        ),
+        split('vertical', leaf('orca'), leaf('exampleFirm'))
+      )
+    )
+  })
+  it('keeps the opposite stack and divider when the selected half is already split vertically', () => {
+    const right = split('vertical', leaf('orca'), leaf('exampleFirm'), 0.7)
+    const original = [
+      {
+        id: 'grid',
+        layout: split(
+          'horizontal',
+          split('vertical', leaf('exampleCapital'), leaf('repair'), 0.3),
+          right,
+          0.6
+        )
+      }
+    ]
+    const placed = placeWorkspacePane(
+      original,
+      'audit',
+      'exampleCapital',
+      { kind: 'quadrant', quadrant: 'bottom-left' },
+      'unused'
+    )
+    expect(placed[0].layout).toEqual(
+      split(
+        'horizontal',
+        split(
+          'vertical',
+          split('vertical', leaf('exampleCapital'), leaf('repair'), 0.3),
+          leaf('audit')
+        ),
+        right,
+        0.6
+      )
+    )
+  })
   it('keeps the bottom half intact when a third pane moves to the top-left', () => {
     const original = placeWorkspaceAtEdge([], 'b', 'a', 'bottom', 'grid')
     const placed = placeWorkspacePane(
@@ -53,7 +237,7 @@ describe('repositioning whole workspace panes', () => {
       second: { type: 'leaf', workspaceId: 'c' }
     })
   })
-  it('minimizes total movement when a fourth pane joins three rows', () => {
+  it('keeps the upper row unchanged when a fourth pane joins the bottom-right region', () => {
     const original = placeWorkspaceAtEdge(
       placeWorkspaceAtEdge([], 'b', 'a', 'bottom', 'grid'),
       'c',
@@ -69,9 +253,13 @@ describe('repositioning whole workspace panes', () => {
       'unused'
     )
     expect(placed[0].layout).toMatchObject({
-      direction: 'horizontal',
-      first: { direction: 'vertical', first: { workspaceId: 'a' }, second: { workspaceId: 'c' } },
-      second: { direction: 'vertical', first: { workspaceId: 'b' }, second: { workspaceId: 'd' } }
+      direction: 'vertical',
+      first: { workspaceId: 'a' },
+      second: {
+        direction: 'horizontal',
+        first: { direction: 'vertical', first: { workspaceId: 'b' }, second: { workspaceId: 'c' } },
+        second: { workspaceId: 'd' }
+      }
     })
   })
   it('keeps the left pane in place when adding a third pane at the top-right', () => {

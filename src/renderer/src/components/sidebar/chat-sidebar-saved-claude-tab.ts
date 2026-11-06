@@ -1,4 +1,4 @@
-import { collectRuntimePaneLeafIds } from '@/lib/runtime-pane-title-leaf-id'
+import { collectRuntimePaneLeafIds } from '../../../../shared/runtime-pane-title-leaf-id'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { Worktree } from '../../../../shared/worktree/types'

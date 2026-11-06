@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { cloneDefaultWorkspaceStatuses } from '../../../../shared/workspace-statuses'
-import { buildStatusGroupedSmartComparator, buildWorktreeComparator } from './smart-sort'
-import type { WorktreeAttention } from './smart-attention'
+import {
+  buildStatusGroupedSmartComparator,
+  buildWorktreeComparator
+} from '../../../../shared/sidebar-list/smart-sort'
+import type { WorktreeAttention } from '../../../../shared/sidebar-list/smart-attention'
 
 const NOW = Date.parse('2026-09-20T12:00:00Z')
 const repos = new Map<string, Repo>()
@@ -45,7 +48,7 @@ describe('status-grouped workspace sorting', () => {
     const old = worktree('old', NOW - 10_000)
     const recent = worktree('recent', NOW - 1_000)
     const attention = new Map<string, WorktreeAttention>([
-      [old.id, { cls: 1, attentionTimestamp: NOW - 20_000, cause: 'blocked' }],
+      [old.id, { cls: 1, attentionTimestamp: NOW - 20_000 }],
       [recent.id, { cls: 5, attentionTimestamp: 0 }]
     ])
     expect([old, recent].sort(groupedComparator(attention)).map((w) => w.id)).toEqual([

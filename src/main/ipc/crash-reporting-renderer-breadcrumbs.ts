@@ -9,6 +9,17 @@ import {
 } from '../crash-reporting/crash-breadcrumb-store'
 import { startSpan } from '../observability/tracer'
 import { TERMINAL_WEBGL_DIAGNOSTIC_BREADCRUMB } from '../../shared/terminal-webgl-diagnostics'
+import type { ProducerFlowTransition } from './pty-producer-flow-control'
+import {
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_RENDERER_LONG_FRAME_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB,
+  TERMINAL_INPUT_BULK_BREADCRUMB,
+  recordTerminalLatency
+} from './crash-reporting-terminal-latency'
+export { setTerminalLatencyCapture } from './crash-reporting-terminal-latency'
 
 function sanitizeRendererBreadcrumbData(value: unknown): CrashReportBreadcrumbData | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -37,19 +48,55 @@ function recordRendererBreadcrumbTrace(
       ...(data ? { 'breadcrumb.data': data } : {})
     }
   })
-  // Why: main-process native crashes cannot persist memory-only breadcrumbs.
-  // A tiny trace span gives the next crash report durable pre-crash context.
+  // Persist pre-crash context because native crashes cannot retain memory-only breadcrumbs.
   span.end()
 }
 
-// Why: a repeating renderer error (e.g. a ResizeObserver or SSH-rejection
-// storm, #8260) can flush the whole fixed-size breadcrumb ring in seconds,
-// erasing the pre-crash trail. Coalesce repeats into one entry that carries a
-// suppressed count instead.
+// Coalesce error storms so they cannot erase the bounded pre-crash trail (#8260).
 const DUPLICATE_TAB_OWNER_BREADCRUMB = 'terminal_tab_id_owned_by_multiple_worktrees'
 const PARK_VERDICT_CHURN_BREADCRUMB = 'terminal_park_verdict_churn'
 const REACT_COMMIT_CASCADE_BREADCRUMB = 'react_commit_cascade'
 const REPLAY_GUARD_WEDGED_BREADCRUMB = 'terminal_replay_guard_wedged_release'
+let terminalProducerFlowCapture: ((line: string) => void) | undefined
+let terminalProducerFlowSequence = 0
+
+export function setTerminalProducerFlowCapture(capture?: (line: string) => void): void {
+  terminalProducerFlowCapture = capture
+  terminalProducerFlowSequence = 0
+}
+
+export function recordTerminalProducerFlowTransition(
+  transition: ProducerFlowTransition,
+  context: {
+    scope: 'local' | 'ssh'
+    rendererInFlightChars: number | null
+    msSinceLastRendererAck: number | null
+  }
+): void {
+  const capture = terminalProducerFlowCapture
+  if (!capture) {
+    return
+  }
+  capture(
+    JSON.stringify({
+      at: new Date().toISOString(),
+      name: 'terminal_producer_flow',
+      sequence: ++terminalProducerFlowSequence,
+      event: transition.event,
+      // A short stable suffix correlates transitions without logging terminal content.
+      ptyIdSuffix: transition.id.slice(-10),
+      scope: context.scope,
+      pendingChars: transition.pendingChars,
+      rendererInFlightChars: context.rendererInFlightChars,
+      msSinceLastRendererAck: context.msSinceLastRendererAck,
+      sinceInitialRequestMs: transition.sinceInitialRequestMs,
+      sinceLastRequestMs: transition.sinceLastRequestMs,
+      trackedPausePtyCount: transition.trackedPausePtyCount,
+      requestStatus: transition.requestStatus
+    })
+  )
+}
+
 const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   'renderer_error',
   'renderer_unhandled_rejection',
@@ -58,6 +105,12 @@ const COALESCED_RENDERER_BREADCRUMB_NAMES = new Set([
   PARK_VERDICT_CHURN_BREADCRUMB,
   REACT_COMMIT_CASCADE_BREADCRUMB,
   REPLAY_GUARD_WEDGED_BREADCRUMB,
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_RENDERER_LONG_FRAME_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB,
+  TERMINAL_INPUT_BULK_BREADCRUMB,
   TERMINAL_WEBGL_DIAGNOSTIC_BREADCRUMB
 ])
 const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
@@ -70,12 +123,28 @@ const RENDERER_BREADCRUMB_COALESCE_MS = 30_000
 // mounted pane within ~60ms. Windows crash F0BKR84AHEH lost 26-90% of its
 // 30-entry ring to two such bursts. `suppressedSinceLast` keeps the pane count
 // — the only signal these carry — in one slot.
-const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set(['terminal_safe_fit_retry_exhausted'])
+const NAME_ONLY_COALESCED_BREADCRUMB_NAMES = new Set([
+  'terminal_safe_fit_retry_exhausted',
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_RENDERER_LONG_FRAME_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB,
+  TERMINAL_INPUT_BULK_BREADCRUMB
+])
 // Why: the 30-slot ring is the scarce sink; the durable span stream is not. For
 // bounded-rate pane telemetry whose multiplicity is the whole signal, spans are the
 // only place a burst survives the restart that clears the ring, so coalesce the ring
 // but keep every event's span.
-const PER_EVENT_TRACED_COALESCED_BREADCRUMB_NAMES = new Set([REPLAY_GUARD_WEDGED_BREADCRUMB])
+const PER_EVENT_TRACED_COALESCED_BREADCRUMB_NAMES = new Set([
+  REPLAY_GUARD_WEDGED_BREADCRUMB,
+  TERMINAL_PASTE_SLOW_BREADCRUMB,
+  TERMINAL_RENDERER_GAP_BREADCRUMB,
+  TERMINAL_RENDERER_LONG_FRAME_BREADCRUMB,
+  TERMINAL_INPUT_DISPATCH_DELAY_BREADCRUMB,
+  TERMINAL_INPUT_STREAM_BREADCRUMB,
+  TERMINAL_INPUT_BULK_BREADCRUMB
+])
 
 function rendererBreadcrumbCoalesceKey(
   name: string,
@@ -84,24 +153,15 @@ function rendererBreadcrumbCoalesceKey(
   if (NAME_ONLY_COALESCED_BREADCRUMB_NAMES.has(name)) {
     return name
   }
-  // Why presence and not value: `ptyId`/`tabIdHash` are absent on the restore call
-  // site (layout-serialization restoreScrollbackBuffers) and present on reattach, so
-  // their presence is the call-site identity a mixed burst would otherwise lose. Four
-  // slots per storm at most, regardless of pane count.
+  // Identity-field presence distinguishes restore and reattach call sites; bound to four slots per storm.
   if (name === REPLAY_GUARD_WEDGED_BREADCRUMB) {
     return `${name}:${data?.ptyId ? 'pty' : ''}:${data?.tabIdHash ? 'tab' : ''}`
   }
-  // Why trigger and not name alone: `burst` means damping engaged a commit
-  // short of React #185, `window` means slow benign churn. Collapsing them
-  // would drop the near-crash signal into a slow-churn slot. Still bounded —
-  // two slots per storm regardless of tab count.
+  // Preserve near-crash burst evidence separately from benign window churn.
   if (name === PARK_VERDICT_CHURN_BREADCRUMB) {
     return `${name}:${String(data?.trigger ?? '')}`
   }
-  // Why keyed on surface and driver frame: the popout and the main window can
-  // cascade independently, and two different driving writes are two different
-  // bugs that last-write coalescing would collapse into one. A driverless crumb
-  // (storeWrites 0, a useState loop) keys separately for the same reason.
+  // Preserve independent surfaces, drivers and driverless cascades instead of last-write collapse.
   if (name === REACT_COMMIT_CASCADE_BREADCRUMB) {
     return `${name}:${String(data?.rendererSurface ?? '')}:${String(data?.driverFrame ?? '')}`
   }
@@ -111,8 +171,7 @@ function rendererBreadcrumbCoalesceKey(
     const reason = kind === 'webgl-atlas-reset' ? data?.reason : undefined
     return reason ? `${name}:${kind}:${String(reason)}` : `${name}:${kind}`
   }
-  // Why: a stale map can emit once per tab-id/verdict; key by verdict so
-  // last-write coalescing cannot erase the other signal while remaining bounded.
+  // Bound per-tab storms without collapsing opposing convergence verdicts.
   if (name === DUPLICATE_TAB_OWNER_BREADCRUMB) {
     return `${name}:${String(data?.resolvedToActiveWorktree ?? '')}`
   }
@@ -124,15 +183,12 @@ function rendererBreadcrumbCoalesceKey(
       : typeof fallbackMessage === 'string' && fallbackMessage.length > 0
         ? fallbackMessage
         : undefined
-  // Why: message-less failures have no stable identity, so grouping them could
-  // erase unrelated crash evidence. Sanitization already caps messages at 240 chars.
+  // Message-less failures lack stable identity; do not collapse unrelated crash evidence.
   if (!message) {
     return undefined
   }
 
-  // Why: common messages such as "Script error" or "Cannot read properties"
-  // can come from unrelated sites. Include sanitized source evidence so one
-  // failure cannot suppress the breadcrumb for another.
+  // Include sanitized source identity so common error text cannot collapse unrelated failures.
   const sourceIdentity =
     name === 'renderer_error'
       ? [
@@ -145,7 +201,7 @@ function rendererBreadcrumbCoalesceKey(
           data?.errorMessage
         ]
       : [data?.reasonStack, data?.reasonType, data?.reasonName]
-  // Why: error storms re-serialize the same message + up-to-4KB stack per event just to build a map key — reuse the last key on field-equality.
+  // Reuse equal-field keys instead of serializing the same message/stack throughout a storm.
   if (
     lastCoalesceKey !== null &&
     lastCoalesceName === name &&
@@ -187,6 +243,7 @@ export function recordRendererBreadcrumbFromRenderer(
     return
   }
   const data = sanitizeRendererBreadcrumbData(args.data)
+  recordTerminalLatency(args.name, data, origin)
   if (COALESCED_RENDERER_BREADCRUMB_NAMES.has(args.name)) {
     const coalesceKey = rendererBreadcrumbCoalesceKey(args.name, data)
     if (!coalesceKey) {
@@ -206,12 +263,10 @@ export function recordRendererBreadcrumbFromRenderer(
       ...(origin ? { origin } : {})
     })
     if (PER_EVENT_TRACED_COALESCED_BREADCRUMB_NAMES.has(args.name)) {
-      // Why the raw data: every event already gets its own span, so folding the ring's
-      // running count in here would double-count in any span-stream total.
+      // Per-event spans already count multiplicity; do not add the ring's running total.
       recordRendererBreadcrumbTrace(args.name, data)
     } else if (coalesceResult) {
-      // Why gated: tracing every suppressed duplicate would preserve the same
-      // serialization and disk churn that breadcrumb coalescing removes.
+      // Avoid per-duplicate serialization and disk churn after coalescing.
       recordRendererBreadcrumbTrace(
         args.name,
         coalesceResult.suppressedSinceLast > 0

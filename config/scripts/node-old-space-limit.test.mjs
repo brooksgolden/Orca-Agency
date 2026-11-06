@@ -17,4 +17,22 @@ describe('node old-space build limit', () => {
       '--trace-warnings --max-old-space-size=8192 --max-old-space-size=3072'
     )
   })
+
+  it('preserves a smaller caller heap limit', () => {
+    expect(appendBuildOldSpaceOption('--trace-warnings --max-old-space-size=2048', 8 * gib)).toBe(
+      '--trace-warnings --max-old-space-size=2048 --max-old-space-size=2048'
+    )
+    expect(appendBuildOldSpaceOption('--max_old_space_size=1536', 8 * gib)).toBe(
+      '--max_old_space_size=1536 --max-old-space-size=1536'
+    )
+  })
+
+  it('keeps the smallest caller limit when Node options contain two', () => {
+    expect(
+      appendBuildOldSpaceOption('--max_old_space_size=3072 --max-old-space-size=2048', 8 * gib)
+    ).toBe('--max_old_space_size=3072 --max-old-space-size=2048 --max-old-space-size=2048')
+    expect(
+      appendBuildOldSpaceOption('--max_old_space_size=1536 --max-old-space-size=3072', 8 * gib)
+    ).toBe('--max_old_space_size=1536 --max-old-space-size=3072 --max-old-space-size=1536')
+  })
 })

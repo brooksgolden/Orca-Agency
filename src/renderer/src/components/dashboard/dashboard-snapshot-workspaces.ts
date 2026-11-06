@@ -15,6 +15,7 @@ import {
 import { folderWorkspaceToWorktree } from '../../../../shared/folder-workspace-worktree'
 import { isFolderRepo } from '../../../../shared/repo-kind'
 import { parseAppSshPtyId } from '../../../../shared/ssh-pty-id'
+import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 
 export type ActiveDashboardWorkspace = {
   projectId: string
@@ -29,11 +30,7 @@ export type ActiveDashboardWorkspace = {
   hostLabel?: string
 }
 
-/** With `includeMapMetadata: false`, `collectActiveDashboardWorkspaces` reads only
- *  `repos`, `worktreesByRepo`, `folderWorkspaces` and `projectGroups` — every other
- *  slice here sits behind a metadata gate. Callers memoize the result on exactly those
- *  four (see `build-dashboard-bucket-counts`), so widening the metadata-free read set
- *  means widening that key too. */
+/** Metadata-free reads use only repos/worktreesByRepo/folderWorkspaces/projectGroups; widen the bucket-count memo key whenever this ungated set grows. */
 export type DashboardWorkspaceState = Pick<AppState, 'repos' | 'worktreesByRepo'> &
   Partial<
     Pick<
@@ -55,7 +52,7 @@ export function collectActiveDashboardWorkspaces(
   })
 
   for (const repo of state.repos ?? []) {
-    for (const worktree of state.worktreesByRepo?.[repo.id] ?? []) {
+    for (const worktree of selectWorktreesByRepo(state)?.[repo.id] ?? []) {
       if (worktree.isArchived) {
         continue
       }

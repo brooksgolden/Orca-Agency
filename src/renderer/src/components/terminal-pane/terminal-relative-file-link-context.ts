@@ -1,27 +1,46 @@
 import type { IBufferLine } from '@xterm/xterm'
 import {
-  extractTerminalFileLinks,
+  extractTerminalFileLinkReadings,
   resolveTerminalFileLink,
   type ParsedTerminalFileLink
-} from '@/lib/terminal-links'
-import { joinAbsolutePath, normalizeAbsolutePath } from '@/lib/terminal-path-normalization'
-import { isRemoteRuntimeFileOperation } from '@/runtime/runtime-file-client'
+} from '../../../../shared/terminal-links'
+import {
+  joinAbsolutePath,
+  normalizeAbsolutePath
+} from '../../../../shared/terminal-path-normalization'
+import { isRemoteRuntimeFileOperation } from '@/runtime/runtime-file-routing'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client-types'
 import { mapTerminalFilePath, terminalLinkWslDistro } from './terminal-file-open-routing'
 import { mayCheckFileLinkTargetUnprompted } from './terminal-file-link-target'
 import {
   getTerminalPathExistsCacheKey,
-  readTerminalPathExistsCache,
-  wasTerminalPathExistsCacheRecentlyProbed,
-  writeTerminalPathExistsCache
+  readTerminalPathExistence,
+  writeTerminalPathExistence,
+  type TerminalPathExistsCache
 } from './terminal-path-exists-cache'
 import { resolveKnownWorktreeRootPathLink } from './terminal-worktree-path-link'
 import {
   buildHardWrappedPathLogicalLineCandidates,
   buildWrappedLogicalLine
-} from './wrapped-terminal-link-ranges'
+} from '../../../../shared/wrapped-terminal-link-ranges'
 
 export type ContextualFileLinkTarget = { anchorPath: string; absolutePath: string }
+
+// Why: Agency trusts a contextual reading only from a probe that is seconds old.
+const CONTEXT_PROOF_MAX_AGE_MS = 5000
+
+/** An existence reading only while its probe is fresh enough to prove a contextual link. */
+export function readRecentTerminalPathExistence(
+  cache: TerminalPathExistsCache,
+  key: string,
+  now: number = Date.now()
+): boolean | undefined {
+  const entry = cache.get(key)
+  if (!entry || now - entry.checkedAt > CONTEXT_PROOF_MAX_AGE_MS) {
+    return undefined
+  }
+  return readTerminalPathExistence(cache, key, now)
+}
 
 const MAX_PRIOR_LINES = 80
 const MAX_PRIOR_ANCHORS = 24
@@ -65,7 +84,8 @@ export function collectPriorTerminalFileLinkAnchors(
         continue
       }
       seenLines.add(text)
-      for (const link of extractTerminalFileLinks(text)) {
+      const readings = extractTerminalFileLinkReadings(text)
+      for (const link of [...readings.links, ...readings.guesses]) {
         if (!/^(?:~[\\/]|[\\/]|\.{1,2}[\\/]|[A-Za-z]:[\\/])/.test(link.pathText)) {
           continue
         }
@@ -164,7 +184,7 @@ export async function resolveExistingTerminalFileLinkPath(args: {
   wslDistro?: string | null
   runtimeEnvironmentId: string | null
   fileContext: RuntimeFileOperationArgs
-  pathExistsCache: Map<string, boolean>
+  pathExistsCache: TerminalPathExistsCache
   pathExists: (context: RuntimeFileOperationArgs, path: string, remote: boolean) => Promise<boolean>
   getPriorAnchors?: () => readonly string[]
 }): Promise<string | null> {
@@ -189,16 +209,17 @@ export async function resolveExistingTerminalFileLinkPath(args: {
   }
   const exists = async (path: string, refresh = false, proof = false): Promise<boolean> => {
     const key = cacheKey(path)
-    const cached =
-      refresh || (proof && !wasTerminalPathExistsCacheRecentlyProbed(args.pathExistsCache, key))
-        ? undefined
-        : readTerminalPathExistsCache(args.pathExistsCache, key)
+    const cached = refresh
+      ? undefined
+      : proof
+        ? readRecentTerminalPathExistence(args.pathExistsCache, key)
+        : readTerminalPathExistence(args.pathExistsCache, key)
     if (cached !== undefined) {
       return cached
     }
     const remote = isRemoteRuntimeFileOperation(args.fileContext, path)
     const value = await args.pathExists(args.fileContext, path, remote)
-    writeTerminalPathExistsCache(args.pathExistsCache, key, value)
+    writeTerminalPathExistence(args.pathExistsCache, key, value)
     return value
   }
   const mappedPath = mapPath(resolved.absolutePath)
@@ -228,8 +249,8 @@ export async function resolveExistingTerminalFileLinkPath(args: {
   }
   const mappedKey = cacheKey(mappedPath)
   const staleMiss =
-    args.pathExistsCache.get(mappedKey) === false &&
-    !wasTerminalPathExistsCacheRecentlyProbed(args.pathExistsCache, mappedKey)
+    args.pathExistsCache.get(mappedKey)?.exists === false &&
+    readRecentTerminalPathExistence(args.pathExistsCache, mappedKey) === undefined
   if (await exists(mappedPath, staleMiss)) {
     return mappedPath
   }

@@ -4,8 +4,8 @@ import { translate } from '@/i18n/i18n'
 
 type AutomationEditorDialogFooterProps = {
   isEditing: boolean
-  isEditingExternal: boolean
-  isHermesCreate: boolean
+  isEditingExternal?: boolean
+  isHermesCreate?: boolean
   isSaving: boolean
   canSave: boolean
   hasProjects: boolean
@@ -15,8 +15,8 @@ type AutomationEditorDialogFooterProps = {
 
 export function AutomationEditorDialogFooter({
   isEditing,
-  isEditingExternal,
-  isHermesCreate,
+  isEditingExternal = false,
+  isHermesCreate = false,
   isSaving,
   canSave,
   hasProjects,
@@ -45,7 +45,7 @@ export function AutomationEditorDialogFooter({
         <Button variant="outline" onClick={() => onOpenChange(false)}>
           {translate('auto.components.automations.AutomationEditorDialog.fb1896a5e7', 'Cancel')}
         </Button>
-        <Button onClick={onSave} disabled={isSaving || !hasProjects || !canSave}>
+        <Button onClick={onSave} disabled={isSaving || (!isEditing && !hasProjects) || !canSave}>
           {saveLabel}
         </Button>
       </div>

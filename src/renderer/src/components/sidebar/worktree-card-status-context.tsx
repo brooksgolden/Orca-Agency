@@ -3,7 +3,7 @@ import React from 'react'
 import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timestamp'
 import { useNow } from '@/hooks/use-now'
 import { formatShortTimeAgo } from '@/lib/short-time-ago'
-import { translate } from '@/i18n/i18n'
+import { getIntlLocale, translate } from '@/i18n/i18n'
 import { projectGroupIdFromRepoId } from '../../../../shared/folder-workspace-worktree'
 import { useWorktreeActivityStatus } from './use-worktree-activity-status'
 import type { WorktreeCardController } from './use-worktree-card-controller'
@@ -59,11 +59,11 @@ function VisibleWorktreeCardStatusContext({
           'Agent working now'
         )
       : latestWorkingAt
-        ? `${translate('auto.components.sidebar.WorktreeCardStatusContext.lastAgentUpdate', 'Last agent update')} ${new Date(latestWorkingAt).toLocaleString()}`
+        ? `${translate('auto.components.sidebar.WorktreeCardStatusContext.lastAgentUpdate', 'Last agent update')} ${new Date(latestWorkingAt).toLocaleString(getIntlLocale())}`
         : latestCompletionAt
-          ? `${translate('auto.components.sidebar.WorktreeCardStatusContext.lastAgentFinished', 'Last agent finished')} ${new Date(latestCompletionAt).toLocaleString()}`
+          ? `${translate('auto.components.sidebar.WorktreeCardStatusContext.lastAgentFinished', 'Last agent finished')} ${new Date(latestCompletionAt).toLocaleString(getIntlLocale())}`
           : timestamp > 0
-            ? `${translate('auto.components.sidebar.WorktreeCardStatusContext.lastWorkspaceActivity', 'Last workspace activity')} ${new Date(timestamp).toLocaleString()}`
+            ? `${translate('auto.components.sidebar.WorktreeCardStatusContext.lastWorkspaceActivity', 'Last workspace activity')} ${new Date(timestamp).toLocaleString(getIntlLocale())}`
             : undefined
 
   return (

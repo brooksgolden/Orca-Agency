@@ -11,20 +11,24 @@ import { useResetCountdownClock } from '@/hooks/useResetCountdownClock'
 import { barColor, clampUsedPercent } from './tooltip'
 import { formatRateLimitWindowChipLabel } from '@/lib/window-label-formatter'
 import { formatUsagePercentageLabel } from './usage-percentage-label'
+import { getUsageRosterRowState } from './usage-roster-row-state'
 import { translate } from '@/i18n/i18n'
+import { visibleFableUsage } from './fable-usage-visibility'
 
 export function InlineUsageBars({
-  limits,
+  limits: rawLimits,
   isFetching
 }: {
   limits: ProviderRateLimits
   isFetching: boolean
 }): React.JSX.Element {
+  const showFableUsage = useAppStore((state) => state.settings?.showFableUsage !== false)
+  const limits = visibleFableUsage(rawLimits, showFableUsage)
   const display = normalizeUsagePercentageDisplay(
     useAppStore((state) => state.usagePercentageDisplay)
   )
   // Why: tick the session countdown live via one boundary-scheduled clock, not just the usage poll (#5399).
-  const now = useResetCountdownClock([limits.session?.resetsAt])
+  const now = useResetCountdownClock([limits.session?.resetsAt, limits.monthly?.resetsAt])
   const usageWindows = [
     limits.session
       ? {
@@ -47,8 +51,21 @@ export function InlineUsageBars({
           used: clampUsedPercent(limits.fableWeekly.usedPercent),
           label: translate('auto.components.status.bar.StatusBar.54e8d6bb2d', 'Fable')
         }
+      : null,
+    // Why: matches the status bar chip; monthly is the only limit when there is no 5h/7d window.
+    limits.monthly && !limits.session && !limits.weekly
+      ? {
+          key: 'monthly',
+          used: clampUsedPercent(limits.monthly.usedPercent),
+          label: formatRateLimitWindowChipLabel(limits.monthly, now)
+        }
       : null
   ].filter((window): window is { key: string; used: number; label: string } => window !== null)
+  // Why: a lapsed token or failed refresh is not a sign-out; ask for a sign-in only when one is confirmed.
+  const emptyState =
+    usageWindows.length === 0 && limits.status === 'error'
+      ? getUsageRosterRowState(limits, false)
+      : null
 
   return (
     <div
@@ -71,9 +88,11 @@ export function InlineUsageBars({
           </span>
         </div>
       ))}
-      {usageWindows.length === 0 && limits.status === 'error' ? (
+      {emptyState ? (
         <span className="text-[10px] text-muted-foreground">
-          {translate('auto.components.status.bar.StatusBar.f19a63e7cd', 'Sign in to see usage')}
+          {emptyState.kind === 'sign-in'
+            ? translate('auto.components.status.bar.StatusBar.f19a63e7cd', 'Sign in to see usage')
+            : emptyState.statusLabel}
         </span>
       ) : null}
     </div>
@@ -81,7 +100,13 @@ export function InlineUsageBars({
 }
 
 export function isUnavailableInactiveUsage(limits: ProviderRateLimits | null | undefined): boolean {
-  return limits?.status === 'error' && !limits.session && !limits.weekly && !limits.fableWeekly
+  return (
+    limits?.status === 'error' &&
+    !limits.session &&
+    !limits.weekly &&
+    !limits.fableWeekly &&
+    !limits.monthly
+  )
 }
 
 export function InlineUsageSignInAction({
@@ -89,18 +114,22 @@ export function InlineUsageSignInAction({
   isSigningIn,
   disabled,
   onSignInPointerDown,
-  onSignIn
+  onSignIn,
+  reason
 }: {
   isFetching: boolean
   isSigningIn: boolean
   disabled: boolean
   onSignInPointerDown?: () => void
   onSignIn: () => void
+  /** Why it needs a sign-in; defaults to the usage it would show. */
+  reason?: string
 }): React.JSX.Element {
   return (
     <div className={`flex w-full items-center gap-2 ${isFetching ? 'animate-pulse' : ''}`}>
       <span className="min-w-0 flex-1 text-[10px] text-muted-foreground">
-        {translate('auto.components.status.bar.StatusBar.f19a63e7cd', 'Sign in to see usage')}
+        {reason ??
+          translate('auto.components.status.bar.StatusBar.f19a63e7cd', 'Sign in to see usage')}
       </span>
       <Button
         type="button"

@@ -63,7 +63,12 @@ export function checkTranslationCompleteness({
   return { debt, regressions, resolved, requiredCount: required.size }
 }
 
-export async function createTranslationCompletenessCheck(root, english, references) {
+export async function createTranslationCompletenessCheck(
+  root,
+  english,
+  references,
+  debtDirectory = path.join('config', 'localization-debt')
+) {
   let policies = {}
   try {
     policies = JSON.parse(
@@ -79,7 +84,7 @@ export async function createTranslationCompletenessCheck(root, english, referenc
       return true
     }
     const baseline = JSON.parse(
-      await fs.readFile(path.join(root, 'config', 'localization-debt', `${locale}.json`), 'utf8')
+      await fs.readFile(path.join(root, debtDirectory, `${locale}.json`), 'utf8')
     )
     const result = checkTranslationCompleteness({
       english,

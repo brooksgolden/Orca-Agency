@@ -5,20 +5,31 @@ import {
   columnForTerminalFileLinkTap
 } from '../../../shared/terminal-file-link-conformance'
 import {
-  extractTerminalFileLinkCandidates,
+  extractTerminalFileLinkReadings,
   extractTerminalFileLinks,
   isPathInsideWorktree,
   resolveTerminalFileLink,
-  resolveTerminalFileLinkText,
   toWorktreeRelativePath
-} from './terminal-links'
+} from '../../../shared/terminal-links'
+import {
+  parseExplicitFileLinkTarget,
+  resolveExplicitFileLinkTarget
+} from '../../../shared/explicit-file-link-target'
+
+function extractTerminalFileLinkCandidates(lineText: string) {
+  const { links, guesses } = extractTerminalFileLinkReadings(lineText)
+  return [...links, ...guesses]
+}
+
+function resolveTerminalFileLinkText(text: string, cwd: string) {
+  const parsed = parseExplicitFileLinkTarget(text)
+  return parsed ? resolveExplicitFileLinkTarget(parsed, cwd) : null
+}
 
 function extractTerminalFileLinkAtColumn(lineText: string, column: number) {
-  return (
-    extractTerminalFileLinks(lineText).find(
-      (link) => column >= link.startIndex && column < link.endIndex
-    ) ?? null
-  )
+  return extractTerminalFileLinkCandidates(lineText)
+    .filter((link) => column >= link.startIndex && column < link.endIndex)
+    .map(({ pathText, line, column }) => ({ pathText, line, column }))
 }
 
 describe('terminal path helpers', () => {
@@ -28,9 +39,11 @@ describe('terminal path helpers', () => {
         testCase.lineText,
         columnForTerminalFileLinkTap(testCase)
       )
-      expect(
-        link ? { pathText: link.pathText, line: link.line, column: link.column } : null
-      ).toEqual(testCase.expected)
+      if (testCase.expected) {
+        expect(link).toContainEqual(testCase.expected)
+      } else {
+        expect(link).toEqual([])
+      }
     })
   })
 
@@ -157,41 +170,47 @@ describe('terminal path helpers', () => {
     })
 
     it('detects absolute paths with spaces before the filename', () => {
-      const links = extractTerminalFileLinks('/Users/Path/FolderName with Space/content.js')
-      expect(links).toHaveLength(1)
-      expect(links[0]).toMatchObject({
-        pathText: '/Users/Path/FolderName with Space/content.js',
-        displayText: '/Users/Path/FolderName with Space/content.js'
-      })
+      const links = extractTerminalFileLinkCandidates(
+        '/Users/Path/FolderName with Space/content.js'
+      )
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          pathText: '/Users/Path/FolderName with Space/content.js',
+          displayText: '/Users/Path/FolderName with Space/content.js'
+        })
+      )
     })
 
     it('stops a spaced absolute path before trailing prose', () => {
-      const links = extractTerminalFileLinks(
+      const links = extractTerminalFileLinkCandidates(
         'Open /Users/Path/FolderName with Space/content.js for details'
       )
-      expect(links).toHaveLength(1)
-      expect(links[0]).toMatchObject({
-        pathText: '/Users/Path/FolderName with Space/content.js',
-        displayText: '/Users/Path/FolderName with Space/content.js'
-      })
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          pathText: '/Users/Path/FolderName with Space/content.js',
+          displayText: '/Users/Path/FolderName with Space/content.js'
+        })
+      )
     })
 
     it('detects an extensionless absolute path ending in a spaced segment', () => {
-      const links = extractTerminalFileLinks('/Users/alice/My Folder')
-      expect(links).toHaveLength(1)
-      expect(links[0]).toMatchObject({
-        pathText: '/Users/alice/My Folder',
-        displayText: '/Users/alice/My Folder'
-      })
+      const links = extractTerminalFileLinkCandidates('/Users/alice/My Folder')
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          pathText: '/Users/alice/My Folder',
+          displayText: '/Users/alice/My Folder'
+        })
+      )
     })
 
     it('trims terminal padding after line-ending spaced paths', () => {
-      const links = extractTerminalFileLinks('/Users/alice/My Folder   ')
-      expect(links).toHaveLength(1)
-      expect(links[0]).toMatchObject({
-        pathText: '/Users/alice/My Folder',
-        displayText: '/Users/alice/My Folder'
-      })
+      const links = extractTerminalFileLinkCandidates('/Users/alice/My Folder   ')
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          pathText: '/Users/alice/My Folder',
+          displayText: '/Users/alice/My Folder'
+        })
+      )
     })
 
     it('does not treat mid-line command arguments as line-ending spaced paths', () => {
@@ -218,12 +237,13 @@ describe('terminal path helpers', () => {
     })
 
     it('detects an extensionless relative path ending in a spaced segment', () => {
-      const links = extractTerminalFileLinks('./My Folder')
-      expect(links).toHaveLength(1)
-      expect(links[0]).toMatchObject({
-        pathText: './My Folder',
-        displayText: './My Folder'
-      })
+      const links = extractTerminalFileLinkCandidates('./My Folder')
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          pathText: './My Folder',
+          displayText: './My Folder'
+        })
+      )
     })
 
     it('detects framework route paths with bracket and paren segments', () => {
@@ -242,19 +262,18 @@ describe('terminal path helpers', () => {
     it('handles large spaced path lists without quadratic overlap scans', () => {
       const line = Array.from({ length: 20_000 }, () => '/tmp/Foo Bar/file').join(', ')
 
-      const links = extractTerminalFileLinks(line)
+      const links = extractTerminalFileLinkCandidates(line)
 
-      expect(links).toHaveLength(20_000)
-      expect(links[0].pathText).toBe('/tmp/Foo Bar/file')
+      expect(links.filter((link) => link.pathText === '/tmp/Foo Bar/file')).toHaveLength(20_000)
     }, 5_000)
 
     it('keeps extension-heavy assistant prose on a bounded scan path', () => {
       const filenames = Array.from({ length: 20_000 }, (_, index) => `report-${index}.txt`)
-      const links = extractTerminalFileLinks(`/tmp/root/${filenames.join(' ')}`)
+      const { links, guesses } = extractTerminalFileLinkReadings(`/tmp/root/${filenames.join(' ')}`)
 
-      expect(links).toHaveLength(2)
-      expect(links[0].pathText).toBe(`/tmp/root/${filenames.slice(0, -1).join(' ')}`)
+      expect(links[0].pathText).toBe('/tmp/root/report-0.txt')
       expect(links.at(-1)?.pathText).toBe('report-19999.txt')
+      expect(guesses.length).toBeLessThanOrEqual(10)
     })
   })
 
@@ -355,8 +374,10 @@ describe('terminal path helpers', () => {
     })
   })
 
-  it('does not resolve partial text as an OSC hyperlink target', () => {
-    expect(resolveTerminalFileLinkText('open docs/README.md', '/repo')).toBeNull()
+  it('keeps prose outside the detected file-link range', () => {
+    expect(extractTerminalFileLinks('open docs/README.md')).toEqual([
+      expect.objectContaining({ pathText: 'docs/README.md', startIndex: 5 })
+    ])
   })
 
   describe('plain-text file:// URIs', () => {

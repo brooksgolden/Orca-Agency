@@ -50,10 +50,7 @@ describe('useTerminalProviderSnapshotCapability', () => {
     delete storeState.terminalLayoutsByTabId
   })
 
-  // Why: synchronization PRUNES cached verdicts outside its collected set, so
-  // the ongoing collector must gather the same fields startup does
-  // (pending-reconnect and split-leaf layout ptys) or their startup answers
-  // decay back into exempt-by-default unknown.
+  // Synchronization prunes absent PTYs; match startup’s split-leaf/pending-reconnect set or valid answers revert to unknown.
   it('keeps startup verdicts for split-leaf and pending-reconnect ptys alive', async () => {
     storeState.pendingReconnectPtyIdByTabId = { 'tab-2': 'repo::worktree@@restored' }
     storeState.terminalLayoutsByTabId = {

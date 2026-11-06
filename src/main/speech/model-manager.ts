@@ -1,4 +1,4 @@
-import { app } from 'electron'
+/* eslint-disable max-lines -- Why: Speech model management keeps download, integrity validation, installation, and cleanup for one model lifecycle. */
 import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs'
 import { rename, rm } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
@@ -16,6 +16,8 @@ import {
 } from './model-cache-path'
 import { SpeechModelDownloadTransport } from './speech-model-download-transport'
 import * as speechPlatform from './speech-platform-support'
+import type { OpenSpeechDownloadRequest } from './speech-model-download-response'
+import { getAppEnvironment } from '../../shared/app-environment'
 import {
   removeModelDownloadFiles,
   removeModelDownloadStaging
@@ -35,13 +37,18 @@ export class ModelManager extends SpeechModelDownloadTransport {
   private modelStates = new Map<string, SpeechModelState>()
   private progressCallbacks = new Set<ProgressCallback>()
 
-  constructor(customModelsDir?: string) {
-    super()
-    const requestedModelsDir = customModelsDir || join(app.getPath('userData'), 'speech-models')
+  constructor(
+    customModelsDir: string | undefined,
+    openRequest: OpenSpeechDownloadRequest,
+    private readonly hasOpenAiKey: () => boolean = hasOpenAiSpeechApiKey
+  ) {
+    super(openRequest)
+    const requestedModelsDir =
+      customModelsDir || join(getAppEnvironment().getPath('userData'), 'speech-models')
     const prepared = this.prepareModelsDir(requestedModelsDir)
     this.modelsDir = prepared.modelsDir
     this.migrationSourceDir = prepared.migrationSourceDir
-    // Why: migration copies large model files, so run it async and gate state reads on it to keep the UI responsive.
+    // Gate reads on asynchronous migration so large copies do not block the UI.
     this.migrationReady = migrateSpeechModelCacheIfNeeded(
       prepared.migrationSourceDir,
       prepared.modelsDir
@@ -49,7 +56,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
   }
 
   setProgressCallback(cb: ProgressCallback): () => void {
-    // Why: return an unsubscribe so concurrent settings windows don't replace each other's callback.
+    // Subscriptions let concurrent settings windows receive progress.
     this.progressCallbacks.add(cb)
     return () => {
       this.progressCallbacks.delete(cb)
@@ -99,10 +106,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
     }
 
     if (manifest.provider === 'openai') {
-      return {
-        id: modelId,
-        status: hasOpenAiSpeechApiKey() ? 'ready' : 'not-downloaded'
-      }
+      return { id: modelId, status: this.hasOpenAiKey() ? 'ready' : 'not-downloaded' }
     }
 
     if (!speechPlatform.supportsLocalSpeech()) {
@@ -150,7 +154,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
   }
 
   async downloadModel(modelId: string): Promise<void> {
-    // Why: no migration await — it never races a download, and awaiting would defer setup cancelDownload relies on.
+    // Do not await migration: downloads cannot race it, and cancellation needs synchronous setup.
     if (this.activeDownloads.has(modelId)) {
       return
     }
@@ -177,7 +181,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
 
     const stagingDir = `${modelDir}.partial`
     const legacyArchivePath = join(this.modelsDir, `${modelId}.tar.bz2`)
-    // Why: resuming an unverified file left by a crashed process could preserve corrupt bytes.
+    // Crash leftovers are unverified; resuming could retain corrupt bytes.
     rmSync(stagingDir, { recursive: true, force: true })
     try {
       rmSync(legacyArchivePath, { force: true })
@@ -191,7 +195,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
     const handle: DownloadHandle = {
       abort: () => {
         aborted = true
-        // Why: a stalled HTTPS request may never deliver another chunk, so tear it down immediately.
+        // Abort immediately: stalled HTTPS may never deliver another chunk.
         abortController.abort()
       }
     }
@@ -220,7 +224,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
       }
       removeModelDownloadFiles(modelDir, stagingDir, legacyArchivePath)
       if (!aborted) {
-        // Why: the settings UI awaits this to surface failures; stay quiet on cancellation, rethrow real errors.
+        // Settings awaits real failures; cancellation stays quiet.
         throw err
       }
     } finally {
@@ -253,7 +257,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
     }
     await rm(`${modelDir}.partial`, { recursive: true, force: true })
     await rm(join(this.modelsDir, `${modelId}.tar.bz2`), { force: true })
-    // Why: also delete the pre-migration copy, or the next launch re-migrates it and resurrects the model.
+    // Remove the migration source too or next launch resurrects the model.
     if (this.migrationSourceDir) {
       const sourceModelDir = this.getSafeModelDir(modelId, this.migrationSourceDir)
       if (existsSync(sourceModelDir)) {
@@ -285,7 +289,7 @@ export class ModelManager extends SpeechModelDownloadTransport {
     }
     const state: SpeechModelState = { id: modelId, status, progress: reportedProgress, error }
     this.modelStates.set(modelId, state)
-    // Repeated non-download states can be the requesting window's only resync signal.
+    // Repeated non-download states may be a window's only resync signal.
     const progressValue = reportedProgress ?? (status === 'extracting' ? 0.95 : -1)
     for (const callback of this.progressCallbacks) {
       callback(modelId, progressValue)

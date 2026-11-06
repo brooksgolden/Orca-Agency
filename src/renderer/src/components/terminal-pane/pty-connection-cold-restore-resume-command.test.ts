@@ -218,8 +218,7 @@ describe('connectPanePty', () => {
       expect(transport.connect).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
-          command:
-            "codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' 'resume' 'codex-session-1'",
+          command: "codex 'resume' 'codex-session-1'",
           commandDelivery: 'provider',
           startupCommandDelivery: 'shell-ready',
           env: expect.objectContaining({
@@ -231,9 +230,7 @@ describe('connectPanePty', () => {
           })
         })
       )
-      expect(transport.sendInput).not.toHaveBeenCalledWith(
-        "codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' 'resume' 'codex-session-1'\r"
-      )
+      expect(transport.sendInput).not.toHaveBeenCalledWith("codex 'resume' 'codex-session-1'\r")
     } finally {
       globalThis.setTimeout = originalSetTimeout
     }
@@ -321,8 +318,7 @@ describe('connectPanePty', () => {
       expect(transport.connect).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
-          command:
-            "codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' 'resume' 'codex-session-1'",
+          command: "codex 'resume' 'codex-session-1'",
           env: expect.objectContaining({
             ORCA_PANE_KEY: paneKey,
             ORCA_AGENT_LAUNCH_TOKEN: expect.stringMatching(new RegExp(`^${UUID_RE}$`))
@@ -440,7 +436,7 @@ describe('connectPanePty', () => {
 
   it('quotes a cold-restore resume command for a cmd.exe Windows tab', async () => {
     await expect(runWindowsColdRestoreResume({ terminalWindowsShell: 'cmd.exe' })).resolves.toBe(
-      'codex "--dangerously-bypass-approvals-and-sandbox" "--cd" "." "resume" "codex-session-1"'
+      'codex "resume" "codex-session-1"'
     )
   })
 
@@ -450,17 +446,13 @@ describe('connectPanePty', () => {
         terminalWindowsShell: 'powershell.exe',
         tabShellOverride: 'cmd.exe'
       })
-    ).resolves.toBe(
-      'codex "--dangerously-bypass-approvals-and-sandbox" "--cd" "." "resume" "codex-session-1"'
-    )
+    ).resolves.toBe('codex "resume" "codex-session-1"')
   })
 
   it('keeps PowerShell quoting for a cold-restore resume on a PowerShell Windows tab', async () => {
     await expect(
       runWindowsColdRestoreResume({ terminalWindowsShell: 'powershell.exe' })
-    ).resolves.toBe(
-      "codex '--dangerously-bypass-approvals-and-sandbox' '--cd' '.' 'resume' 'codex-session-1'"
-    )
+    ).resolves.toBe("codex 'resume' 'codex-session-1'")
   })
 
   async function expectLiveNoteKeepsContentlessReattach(state: 'working' | 'done'): Promise<void> {
