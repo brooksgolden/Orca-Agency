@@ -28,7 +28,7 @@ _Demo workspaces captured in the app. Example names and content keep private cli
 
 Daily use feels noticeably more responsive, though occasional terminal stalls still happen and no comparative speed benchmarks exist.
 
-The public package and source are at [version 1.4.1072](https://github.com/brooksgolden/Orca-Agency/releases/tag/v1.4.1072). These improvements are free to reuse under the MIT license.
+The downloadable Windows ARM64 package remains verified [v1.4.1072](https://github.com/brooksgolden/Orca-Agency/releases/tag/v1.4.1072). The public [main](https://github.com/brooksgolden/Orca-Agency/tree/main) branch contains later CI compatibility and persistence repairs not yet included in that archive. These improvements are free to reuse under the MIT license.
 
 - **Less disk activity:** Reuses saved chat scans, caps title lookups, and cancels outdated scans.
 - **Responsive interface:** Moves heavy background tasks off the main thread and reduces redundant sidebar checks.
