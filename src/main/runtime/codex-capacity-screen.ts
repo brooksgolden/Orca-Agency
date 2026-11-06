@@ -3,7 +3,7 @@ import { capacityGoalFooterState } from './codex-capacity-goal'
 
 // A host resize can wrap inside a word before Codex repaints for the new width.
 const CAPACITY_NOTICE = new RegExp(
-  `(?:^|\\n)■\\s*${'Selected model is at capacity. Please try a different model.'
+  `(?:^|\\n)\u25a0\\s*${'Selected model is at capacity. Please try a different model.'
     .split(' ')
     .map((word) => [...word].map((char) => (char === '.' ? '\\.' : char)).join('(?:\\n[ \\t]*)?'))
     .join('\\s+')}`,
@@ -21,9 +21,9 @@ const BAD_REQUEST_NOTICE = new RegExp(
 
 export function isCodexCapacitySafeChrome(line: string): boolean {
   return (
-    /^\s*• Completed `\/root\/[a-zA-Z0-9_/-]+`\s*$/.test(line) ||
+    /^\s*\u2022 Completed `\/root\/[a-zA-Z0-9_/-]+`\s*$/.test(line) ||
     capacityGoalFooterState(line) !== 'unknown' ||
-    /^\s*\d+ background terminals? running(?:\s*·\s*\/ps to view(?:\s*·\s*\/stop to close)?)?\s*$/.test(
+    /^\s*\d+ background terminals? running(?:\s*\u00b7\s*\/ps to view(?:\s*\u00b7\s*\/stop to close)?)?\s*$/.test(
       line
     )
   )
@@ -61,16 +61,16 @@ export function isCodexCapacityScreen(
       inRecap = false
       continue
     }
-    if (/^\s{0,2}↳ Recap:\s+\S/.test(line)) {
+    if (/^\s{0,2}\u21b3 Recap:\s+\S/.test(line)) {
       inRecap = true
       continue
     }
     // Composer and footer end the recap even when their own text is indented.
-    if (/^\s*(?:[›>]|GPT-)/.test(line)) {
+    if (/^\s*(?:[\u203a>]|GPT-)/.test(line)) {
       inRecap = false
     }
     if (inRecap && /^ {4,}\S/.test(line)) {
-      if (/^\s*[•■›>]/.test(line)) {
+      if (/^\s*[\u2022\u25a0\u203a>]/.test(line)) {
         return false
       }
       continue
@@ -81,7 +81,7 @@ export function isCodexCapacityScreen(
   const after = remaining.join('\n').trim()
   return (
     after === '' ||
-    /^(?:[›>](?:\s*Ask Codex to do anything)?\s*)?(?:GPT-[^\n]*\s*)?(?:\? for shortcuts)?$/.test(
+    /^(?:[\u203a>](?:\s*Ask Codex to do anything)?\s*)?(?:GPT-[^\n]*\s*)?(?:\? for shortcuts)?$/.test(
       after
     )
   )
